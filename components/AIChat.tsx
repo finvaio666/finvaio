@@ -1,0 +1,133 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface AIChatProps {
+  initialMessage?: string;
+  height?: string;
+  quickPrompts?: { label: string; prompt: string }[];
+  placeholder?: string;
+  preloadPrompt?: string | null;
+}
+
+export default function AIChat({
+  initialMessage = "👋 Hi Bill! I have live access to your Notion workspace. Click a quick prompt or ask me anything about your clients.",
+  height = "340px",
+  quickPrompts = [],
+  placeholder = "Ask about any client...",
+  preloadPrompt = null,
+}: AIChatProps) {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'assistant', content: initialMessage },
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<{ role: string; content: string }[]>([]);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const hasPreloaded = useRef(false);
+
+  useEffect(() => {
+    if (preloadPrompt && !hasPreloaded.current) {
+      hasPreloaded.current = true;
+      sendMessage(preloadPrompt, preloadPrompt.length > 60 ? preloadPrompt.slice(0, 60) + '...' : preloadPrompt);
+    }
+  }, [preloadPrompt]);
+
+  useEffect(() => {
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  async function sendMessage(prompt: string, displayText?: string) {
+    const userDisplay = displayText || prompt;
+    const newHistory = [...history, { role: 'user', content: prompt }];
+    setHistory(newHistory);
+    setMessages(prev => [...prev, { role: 'user', content: userDisplay }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newHistory }),
+      });
+      const data = await res.json();
+      const reply = data.content || data.error || 'Unable to get a response.';
+      setHistory(prev => [...prev, { role: 'assistant', content: reply }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Connection error. Please check your API key in .env.local.' }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleSend() {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    sendMessage(text);
+  }
+
+  return (
+    <div className="ai-panel" style={{ minHeight: height }}>
+      <div className="section-header">
+        <div className="section-title">
+          <span className="section-dot" style={{ background: 'var(--gold)' }} />
+          AI Assistant
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Claude-powered</div>
+      </div>
+
+      {quickPrompts.length > 0 && (
+        <div className="quick-prompts">
+          {quickPrompts.map((qp) => (
+            <button
+              key={qp.label}
+              className="qp"
+              onClick={() => sendMessage(qp.prompt, qp.label)}
+              disabled={loading}
+            >
+              {qp.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="ai-messages" ref={messagesRef} style={{ maxHeight: height }}>
+        {messages.map((msg, i) => (
+          <div key={i} className={`ai-msg ${msg.role}`}>
+            {msg.content}
+          </div>
+        ))}
+        {loading && (
+          <div className="ai-msg loading">
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+          </div>
+        )}
+      </div>
+
+      <div className="ai-input-area">
+        <input
+          className="ai-input"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
+          placeholder={placeholder}
+          disabled={loading}
+        />
+        <button className="ai-send" onClick={handleSend} disabled={loading || !input.trim()}>
+          ➤
+        </button>
+      </div>
+    </div>
+  );
+}

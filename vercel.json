@@ -1,0 +1,11 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "env": {
+    "GEMINI_API_KEY": "@gemini-api-key",
+    "NOTION_API_KEY": "@notion-api-key",
+    "NOTION_DATABASE_ID": "@notion-database-id"
+  }
+}
