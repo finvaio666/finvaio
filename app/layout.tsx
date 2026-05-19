@@ -1,18 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Serif_Display, DM_Sans, DM_Mono } from "next/font/google";
+import { Sofia_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 
-const dmSerif = DM_Serif_Display({
-  weight: ["400"],
-  style: ["normal", "italic"],
+const sofiaSans = Sofia_Sans({
+  weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
-  variable: "--font-dm-serif",
-});
-
-const dmSans = DM_Sans({
-  weight: ["300", "400", "500", "600"],
-  subsets: ["latin"],
-  variable: "--font-dm-sans",
+  variable: "--font-sofia",
 });
 
 const dmMono = DM_Mono({
@@ -33,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A0F0D",
+  themeColor: "#F3F0EE",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -41,7 +34,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${dmSerif.variable} ${dmSans.variable} ${dmMono.variable}`}>
+    <html lang="en" className={`${sofiaSans.variable} ${dmMono.variable}`}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
