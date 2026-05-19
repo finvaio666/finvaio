@@ -48,6 +48,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === 'portfolio') {
+      // Build client ID → name map first
+      const clientRes = await notion.databases.query({ database_id: DB.clients });
+      const clientMap: Record<string, string> = {};
+      clientRes.results.filter(isFullPage).forEach(page => {
+        const name = page.properties['Client Name']?.type === 'title'
+          ? page.properties['Client Name'].title[0]?.plain_text ?? '' : '';
+        if (name) clientMap[page.id] = name;
+      });
+
       const res = await notion.databases.query({
         database_id: DB.portfolio,
         sorts: [{ property: 'Holding Name', direction: 'ascending' }],
@@ -55,22 +64,26 @@ export async function GET(req: NextRequest) {
       const data = res.results.filter(isFullPage).map(page => {
         const p = page.properties;
         const currency      = p['Currency']?.type === 'select'  ? p['Currency'].select?.name ?? 'MYR'  : 'MYR';
-        const valueOrig     = p['Value (original currency)']?.type === 'number'         ? p['Value (original currency)'].number ?? 0  : 0;
+        const valueOrig     = p['Value (Original Currency)']?.type === 'number' ? p['Value (Original Currency)'].number ?? 0 : 0;
         const purchaseOrig  = p['Purchase price (original currency)']?.type === 'number' ? p['Purchase price (original currency)'].number ?? 0 : 0;
         const fxRate        = p['FX Rate to MYR']?.type === 'number' ? p['FX Rate to MYR'].number ?? 1 : 1;
-        // Fall back to legacy MYR fields for rows that predate the multi-currency update
         const value    = p['Value (MYR)']?.type === 'number'          ? p['Value (MYR)'].number ?? (valueOrig * fxRate)           : (valueOrig * fxRate);
         const purchase = p['Purchase price (MYR)']?.type === 'number' ? p['Purchase price (MYR)'].number ?? (purchaseOrig * fxRate) : (purchaseOrig * fxRate);
         const gain     = value - purchase;
         const ret      = purchase > 0 ? Math.round((gain / purchase) * 100) : 0;
+
+        // Resolve client name from relation
+        const clientRelIds = p['👥 Clients']?.type === 'relation' ? p['👥 Clients'].relation.map(r => r.id) : [];
+        const clientName   = clientRelIds.map(id => clientMap[id] ?? '').filter(Boolean).join(', ');
+
         return {
-          id:            page.id,
-          name:          p['Holding Name']?.type === 'title'  ? p['Holding Name'].title[0]?.plain_text ?? '' : '',
-          clientName:    p['Client Name']?.type === 'rich_text' ? p['Client Name'].rich_text[0]?.plain_text ?? '' : '',
-          assetClass:    p['Asset class']?.type === 'select'  ? p['Asset class'].select?.name ?? ''           : '',
-          institution:   p['Institution']?.type === 'select'  ? p['Institution'].select?.name ?? ''           : '',
-          status:        p['Status']?.type === 'select'       ? p['Status'].select?.name ?? ''                : '',
-          maturity:      p['Maturity date']?.type === 'date'  ? p['Maturity date'].date?.start ?? ''          : '',
+          id:          page.id,
+          name:        p['Holding Name']?.type === 'title'     ? p['Holding Name'].title[0]?.plain_text ?? ''        : '',
+          clientName,
+          assetClass:  p['Asset class']?.type === 'select'     ? p['Asset class'].select?.name ?? ''                 : '',
+          institution: p['Institution']?.type === 'rich_text'  ? p['Institution'].rich_text[0]?.plain_text ?? ''     : '',
+          status:      p['Status']?.type === 'select'          ? p['Status'].select?.name ?? ''                      : '',
+          maturity:    p['Maturity date']?.type === 'date'     ? p['Maturity date'].date?.start ?? ''                 : '',
           currency,
           valueOrig,
           purchaseOrig,
