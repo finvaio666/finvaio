@@ -111,42 +111,65 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* ── Client tabs ── */}
+      {/* ── Client filter ── */}
       {!loading && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-          {tabs.map(tab => {
-            const count = tab === 'All' ? holdings.length : holdings.filter(h => h.clientName === tab).length;
-            const label = tab === 'All' ? 'All Clients' : tab.split(' ').slice(0, 2).join(' ');
-            const isActive = activeTab === tab;
-            return (
-              <button key={tab} onClick={() => setTab(tab)} style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '7px 16px', borderRadius: 'var(--r-pill)',
-                background: isActive ? 'var(--text)' : 'var(--surface)',
-                color: isActive ? 'var(--bg)' : 'var(--text2)',
-                border: isActive ? 'none' : '1px solid var(--border)',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                boxShadow: isActive ? 'none' : 'var(--shadow-sm)',
-                transition: 'all 0.15s',
-              }}>
-                {tab !== 'All' && (
-                  <span style={{
-                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-                    background: isActive ? 'rgba(255,255,255,0.2)' : 'var(--accent-dim)',
-                    color: isActive ? 'var(--bg)' : 'var(--accent2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 9, fontWeight: 800,
-                  }}>{initials(tab)}</span>
-                )}
-                {label}
-                <span style={{
-                  padding: '1px 7px', borderRadius: 'var(--r-pill)', fontSize: 11,
-                  background: isActive ? 'rgba(255,255,255,0.15)' : 'var(--surface2)',
-                  color: isActive ? 'var(--bg)' : 'var(--text3)',
-                }}>{count}</span>
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          {/* Search input */}
+          <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--text3)', pointerEvents: 'none' }}>🔍</span>
+            <input
+              type="text"
+              placeholder="Search client name…"
+              value={activeTab === 'All' ? '' : activeTab}
+              onChange={e => {
+                const val = e.target.value;
+                if (!val) { setTab('All'); return; }
+                const match = clientNames.find(n => n.toLowerCase().includes(val.toLowerCase()));
+                if (match) setTab(match); else setTab('All');
+              }}
+              style={{
+                width: '100%', padding: '9px 14px 9px 38px',
+                borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
+                background: 'var(--surface)', color: 'var(--text)',
+                fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            />
+          </div>
+
+          {/* Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <select
+              value={activeTab}
+              onChange={e => setTab(e.target.value)}
+              style={{
+                padding: '9px 36px 9px 16px', borderRadius: 'var(--r-pill)',
+                border: '1px solid var(--border)', background: 'var(--surface)',
+                color: activeTab === 'All' ? 'var(--text3)' : 'var(--text)',
+                fontSize: 13, fontFamily: 'var(--font-sans)', fontWeight: 600,
+                cursor: 'pointer', outline: 'none', appearance: 'none',
+                boxShadow: 'var(--shadow-sm)', minWidth: 180,
+              }}
+            >
+              <option value="All">All Clients ({holdings.length})</option>
+              {clientNames.map(name => (
+                <option key={name} value={name}>
+                  {name} ({holdings.filter(h => h.clientName === name).length})
+                </option>
+              ))}
+            </select>
+            <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+          </div>
+
+          {/* Clear button — shown only when filtered */}
+          {activeTab !== 'All' && (
+            <button onClick={() => setTab('All')} style={{
+              padding: '8px 16px', borderRadius: 'var(--r-pill)',
+              background: 'var(--surface2)', border: '1px solid var(--border)',
+              color: 'var(--text3)', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer',
+            }}>✕ Clear</button>
+          )}
         </div>
       )}
 
