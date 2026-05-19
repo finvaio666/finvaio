@@ -54,17 +54,27 @@ export async function GET(req: NextRequest) {
       });
       const data = res.results.filter(isFullPage).map(page => {
         const p = page.properties;
-        const value    = p['Value (MYR)']?.type === 'number'         ? p['Value (MYR)'].number ?? 0         : 0;
-        const purchase = p['Purchase price (MYR)']?.type === 'number' ? p['Purchase price (MYR)'].number ?? 0 : 0;
+        const currency      = p['Currency']?.type === 'select'  ? p['Currency'].select?.name ?? 'MYR'  : 'MYR';
+        const valueOrig     = p['Value (original currency)']?.type === 'number'         ? p['Value (original currency)'].number ?? 0  : 0;
+        const purchaseOrig  = p['Purchase price (original currency)']?.type === 'number' ? p['Purchase price (original currency)'].number ?? 0 : 0;
+        const fxRate        = p['FX Rate to MYR']?.type === 'number' ? p['FX Rate to MYR'].number ?? 1 : 1;
+        // Fall back to legacy MYR fields for rows that predate the multi-currency update
+        const value    = p['Value (MYR)']?.type === 'number'          ? p['Value (MYR)'].number ?? (valueOrig * fxRate)           : (valueOrig * fxRate);
+        const purchase = p['Purchase price (MYR)']?.type === 'number' ? p['Purchase price (MYR)'].number ?? (purchaseOrig * fxRate) : (purchaseOrig * fxRate);
         const gain     = value - purchase;
         const ret      = purchase > 0 ? Math.round((gain / purchase) * 100) : 0;
         return {
-          id:          page.id,
-          name:        p['Holding Name']?.type === 'title'    ? p['Holding Name'].title[0]?.plain_text ?? '' : '',
-          assetClass:  p['Asset class']?.type === 'select'    ? p['Asset class'].select?.name ?? ''          : '',
-          institution: p['Institution']?.type === 'select'    ? p['Institution'].select?.name ?? ''          : '',
-          status:      p['Status']?.type === 'select'         ? p['Status'].select?.name ?? ''               : '',
-          maturity:    p['Maturity date']?.type === 'date'    ? p['Maturity date'].date?.start ?? ''         : '',
+          id:            page.id,
+          name:          p['Holding Name']?.type === 'title'  ? p['Holding Name'].title[0]?.plain_text ?? '' : '',
+          clientName:    p['Client Name']?.type === 'rich_text' ? p['Client Name'].rich_text[0]?.plain_text ?? '' : '',
+          assetClass:    p['Asset class']?.type === 'select'  ? p['Asset class'].select?.name ?? ''           : '',
+          institution:   p['Institution']?.type === 'select'  ? p['Institution'].select?.name ?? ''           : '',
+          status:        p['Status']?.type === 'select'       ? p['Status'].select?.name ?? ''                : '',
+          maturity:      p['Maturity date']?.type === 'date'  ? p['Maturity date'].date?.start ?? ''          : '',
+          currency,
+          valueOrig,
+          purchaseOrig,
+          fxRate,
           value,
           purchase,
           gain,
