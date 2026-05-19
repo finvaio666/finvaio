@@ -164,7 +164,7 @@ body {
 @keyframes pulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);} }
 
 /* ── PAGE ─────────────────────────────────────────────────────────────────── */
-.page-content { padding: 32px; animation: fadeIn 0.2s ease; }
+.page-content { padding: 32px 32px 80px; animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);} }
 
 /* ── STAT CARDS ───────────────────────────────────────────────────────────── */

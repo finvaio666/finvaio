@@ -337,7 +337,7 @@ export default function PortfolioPage() {
 
       {/* ── Asset allocation ── */}
       {!loading && visible.length > 0 && (
-        <div className="section">
+        <div className="section" style={{ marginBottom: 48 }}>
           <div className="section-header">
             <div className="section-title">
               <span className="section-dot" style={{ background: 'var(--gold)' }} />
