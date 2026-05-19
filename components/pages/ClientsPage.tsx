@@ -1,11 +1,31 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, statusClass } from '@/components/useClients';
 
 export default function ClientsPage() {
-  const { clients, loading, error, totalAum, activeCount, prospectCount } = useClients();
+  const { clients, loading, error, totalAum, activeCount, prospectCount, reload } = useClients();
   const inactiveCount = clients.filter(c => c.status?.toLowerCase().includes('inactive')).length;
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  async function handleSyncAUM() {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch('/api/sync-aum', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+      setSyncMsg(`✅ Synced ${data.updated.length} client${data.updated.length !== 1 ? 's' : ''}`);
+      reload();
+    } catch (e: unknown) {
+      setSyncMsg(`❌ ${e instanceof Error ? e.message : 'Error'}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   return (
     <>
@@ -36,8 +56,34 @@ export default function ClientsPage() {
             <span className="section-dot" style={{ background: 'var(--accent)' }} />
             All Clients — Notion CRM
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {loading ? 'Loading…' : `${clients.length} client${clients.length !== 1 ? 's' : ''}`}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {syncMsg && (
+              <span style={{ fontSize: 11, color: syncMsg.startsWith('✅') ? 'var(--green)' : 'var(--red)' }}>
+                {syncMsg}
+              </span>
+            )}
+            <button
+              onClick={handleSyncAUM}
+              disabled={syncing}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 'var(--r-pill)',
+                background: syncing ? 'var(--surface2)' : 'var(--text)',
+                color: syncing ? 'var(--text3)' : 'var(--bg)',
+                border: 'none', cursor: syncing ? 'not-allowed' : 'pointer',
+                fontSize: 12, fontWeight: 600, transition: 'all 0.15s',
+              }}
+            >
+              {syncing ? (
+                <>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--text3)', borderTopColor: 'transparent', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                  Syncing…
+                </>
+              ) : '↻ Sync AUM'}
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+              {loading ? 'Loading…' : `${clients.length} client${clients.length !== 1 ? 's' : ''}`}
+            </span>
           </div>
         </div>
         <div className="client-table">

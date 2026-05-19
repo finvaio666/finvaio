@@ -23,8 +23,10 @@ export function useClients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
     fetch('/api/notion?type=clients', { cache: 'no-store' })
       .then(r => r.json())
       .then(json => {
@@ -33,7 +35,9 @@ export function useClients() {
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tick]);
+
+  const reload = () => setTick(t => t + 1);
 
   const totalAum = clients.reduce((sum, c) => sum + (c.aum || 0), 0);
   const activeCount = clients.filter(c => c.status?.includes('Active')).length;
@@ -45,7 +49,7 @@ export function useClients() {
     return days >= 0 && days <= 30;
   }).length;
 
-  return { clients, loading, error, totalAum, activeCount, prospectCount, reviewsDue };
+  return { clients, loading, error, totalAum, activeCount, prospectCount, reviewsDue, reload };
 }
 
 export function formatAUM(n: number) {
