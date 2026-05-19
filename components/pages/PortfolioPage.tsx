@@ -344,7 +344,7 @@ export default function PortfolioPage() {
               Asset Class Allocation
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 28 }}>
             {Object.entries(
               visible.reduce<Record<string, number>>((acc, h) => {
                 acc[h.assetClass] = (acc[h.assetClass] ?? 0) + h.value;

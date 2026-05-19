@@ -225,6 +225,9 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
 }
+/* Prevent border-radius from clipping last child content */
+.section > *:last-child { padding-bottom: 24px; }
+.section > *:last-child.section-header { padding-bottom: 18px; }
 .section-title {
   font-size: 12px; font-weight: 700;
   color: var(--text3);
