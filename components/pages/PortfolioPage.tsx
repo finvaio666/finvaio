@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import PortfolioSwitchPanel from '@/components/PortfolioSwitchPanel';
 
 interface Holding {
   id: string;
+  clientId: string;
   name: string;
   clientName: string;
   assetClass: string;
@@ -35,16 +37,20 @@ const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` :
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 export default function PortfolioPage() {
-  const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [activeTab, setTab]     = useState('All');
+  const [holdings,     setHoldings]    = useState<Holding[]>([]);
+  const [loading,      setLoading]     = useState(true);
+  const [activeTab,    setTab]         = useState('All');
+  const [showSwitch,   setShowSwitch]  = useState(false);
 
-  useEffect(() => {
+  const loadHoldings = () => {
+    setLoading(true);
     fetch('/api/notion?type=portfolio', { cache: 'no-store' })
       .then(r => r.json())
       .then(json => { if (json.data) setHoldings(json.data); })
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadHoldings(); }, []);
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
   const tabs = ['All', ...clientNames];
@@ -111,6 +117,15 @@ export default function PortfolioPage() {
         </div>
       )}
 
+      {/* ── Switch panel ── */}
+      {showSwitch && (
+        <PortfolioSwitchPanel
+          holdings={holdings}
+          onClose={() => setShowSwitch(false)}
+          onSuccess={() => { setShowSwitch(false); loadHoldings(); }}
+        />
+      )}
+
       {/* ── Client filter ── */}
       {!loading && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -170,6 +185,20 @@ export default function PortfolioPage() {
               cursor: 'pointer',
             }}>✕ Clear</button>
           )}
+
+          {/* Switch button */}
+          <button onClick={() => setShowSwitch(true)} style={{
+            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
+            padding: '9px 18px', borderRadius: 'var(--r-pill)',
+            background: 'var(--accent2)', border: 'none',
+            color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
+          }}
+            onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
+            onMouseOut={e => (e.currentTarget.style.opacity = '1')}
+          >
+            🔄 Switch / Redeem
+          </button>
         </div>
       )}
 

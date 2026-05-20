@@ -76,9 +76,11 @@ export async function GET(req: NextRequest) {
         // Resolve client name from relation
         const clientRelIds = p['👥 Clients']?.type === 'relation' ? p['👥 Clients'].relation.map(r => r.id) : [];
         const clientName   = clientRelIds.map(id => clientMap[id] ?? '').filter(Boolean).join(', ');
+        const clientId     = clientRelIds[0] ?? '';
 
         return {
           id:          page.id,
+          clientId,
           name:        p['Holding Name']?.type === 'title'     ? p['Holding Name'].title[0]?.plain_text ?? ''        : '',
           clientName,
           assetClass:  p['Asset class']?.type === 'select'     ? p['Asset class'].select?.name ?? ''                 : '',
