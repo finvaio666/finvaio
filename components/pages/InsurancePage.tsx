@@ -333,7 +333,7 @@ export default function InsurancePage() {
             fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none', appearance: 'none',
             fontFamily: 'var(--font-sans)', minWidth: 180,
           }}>
-            <option value="All">All Clients ({policies.length})</option>
+            <option value="All">All Clients</option>
             {clientNames.map(n => <option key={n} value={n}>{n} ({policies.filter(p => p.clientName === n).length})</option>)}
           </select>
           <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text3)', fontSize: 10 }}>▼</span>

@@ -166,7 +166,7 @@ export default function PortfolioPage() {
                 boxShadow: 'var(--shadow-sm)', minWidth: 180,
               }}
             >
-              <option value="All">All Clients ({holdings.length})</option>
+              <option value="All">All Clients</option>
               {clientNames.map(name => (
                 <option key={name} value={name}>
                   {name} ({holdings.filter(h => h.clientName === name).length})
