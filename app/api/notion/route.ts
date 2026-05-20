@@ -157,6 +157,11 @@ export async function GET(req: NextRequest) {
           maturityDate:     p['Maturity Date']?.type === 'date'         ? p['Maturity Date'].date?.start ?? ''                 : '',
           beneficiary:      p['Beneficiary']?.type === 'rich_text'      ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''      : '',
           notes:            p['Notes']?.type === 'rich_text'            ? p['Notes'].rich_text[0]?.plain_text ?? ''            : '',
+          lifeCover:        p['Life Cover (MYR)']?.type === 'number'     ? p['Life Cover (MYR)'].number ?? 0                  : 0,
+          ciCover:          p['CI Cover (MYR)']?.type === 'number'       ? p['CI Cover (MYR)'].number ?? 0                    : 0,
+          paCover:          p['PA Cover (MYR)']?.type === 'number'       ? p['PA Cover (MYR)'].number ?? 0                    : 0,
+          tpdCover:         p['TPD Cover (MYR)']?.type === 'number'      ? p['TPD Cover (MYR)'].number ?? 0                   : 0,
+          medicalClass:     p['Medical Class']?.type === 'rich_text'     ? p['Medical Class'].rich_text[0]?.plain_text ?? ''  : '',
         };
       });
       return NextResponse.json({ data });

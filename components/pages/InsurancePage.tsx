@@ -18,6 +18,11 @@ interface Policy {
   maturityDate: string;
   beneficiary: string;
   notes: string;
+  lifeCover:    number;
+  ciCover:      number;
+  paCover:      number;
+  tpdCover:     number;
+  medicalClass: string;
 }
 
 interface ClientData {
@@ -96,14 +101,34 @@ function CoverageGapCard({ clientName, clientData, policies }: {
   const activePolicies = policies.filter(p => p.status?.includes('Active'));
 
   const hasBenefit = (key: string) => activePolicies.some(p => p.benefits.includes(key));
-  const sumForBenefit = (key: string) => activePolicies.filter(p => p.benefits.includes(key)).reduce((s, p) => s + p.sumAssured, 0);
+
+  // Map each benefit key to the specific coverage field
+  const coverField: Record<string, keyof Policy> = {
+    '🛡️ Life Cover':             'lifeCover',
+    '❤️ Critical Illness (CI)':  'ciCover',
+    '🦺 Personal Accident':      'paCover',
+    '♿ TPD':                     'tpdCover',
+  };
+
+  const sumForBenefit = (key: string) => {
+    const field = coverField[key];
+    if (!field) return 0;
+    return activePolicies
+      .filter(p => p.benefits.includes(key))
+      .reduce((s, p) => s + ((p[field] as number) || 0), 0);
+  };
+
+  // True if all specific coverage amounts are still 0 (data not yet filled)
+  const coverageNotFilled = activePolicies.every(
+    p => p.lifeCover === 0 && p.ciCover === 0 && p.paCover === 0 && p.tpdCover === 0
+  );
 
   const gaps = COVERAGE_RULES.map(rule => {
     const has = hasBenefit(rule.key);
     const current = sumForBenefit(rule.key);
     const recommended = rule.rec(income);
-    const isMedian = rule.key === 'Medical';
-    const adequate = isMedian ? has : (has && (recommended === 0 || current >= recommended * 0.8));
+    const isMedical = rule.key === '🏥 Medical';
+    const adequate = isMedical ? has : (has && (recommended === 0 || current >= recommended * 0.8));
     return { ...rule, has, current, recommended, adequate };
   });
 
@@ -130,30 +155,55 @@ function CoverageGapCard({ clientName, clientData, policies }: {
         }
       </div>
 
+      {coverageNotFilled && (
+        <div style={{ margin: '0 20px 0', padding: '8px 14px', background: 'var(--gold-dim, #FEF3C720)', border: '1px solid var(--gold, #F59E0B)44', borderRadius: 8, fontSize: 11, color: 'var(--gold, #F59E0B)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>⚠️</span>
+          <span>Individual coverage amounts not filled yet — fill in the update template and import to get accurate gap analysis.</span>
+        </div>
+      )}
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 24 }}>
-        {gaps.map(g => (
-          <div key={g.key} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 150px 36px', alignItems: 'center', gap: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{g.label}</div>
-            <div>
-              {g.recommended > 0 ? (
-                <div style={{ position: 'relative', height: 8, borderRadius: 'var(--r-pill)', background: 'var(--surface2)', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 'var(--r-pill)', background: g.adequate ? 'var(--green)' : 'var(--red)', width: `${Math.min((g.current / (g.recommended || 1)) * 100, 100)}%`, transition: 'width 0.4s' }} />
-                  <div style={{ position: 'absolute', left: '80%', top: 0, width: 2, height: '100%', background: 'var(--text)', opacity: 0.2 }} />
-                </div>
-              ) : (
-                <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>{g.desc}</div>
-              )}
+        {gaps.map(g => {
+          const isMedical = g.key === '🏥 Medical';
+          const medClass = isMedical
+            ? activePolicies.filter(p => p.benefits.includes(g.key)).map(p => p.medicalClass).filter(Boolean).join(', ')
+            : '';
+          return (
+            <div key={g.key} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 180px 36px', alignItems: 'center', gap: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{g.label}</div>
+              <div>
+                {g.recommended > 0 ? (
+                  <div>
+                    <div style={{ position: 'relative', height: 8, borderRadius: 'var(--r-pill)', background: 'var(--surface2)', overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 'var(--r-pill)', background: g.adequate ? 'var(--green)' : coverageNotFilled ? 'var(--gold, #F59E0B)' : 'var(--red)', width: coverageNotFilled ? 0 : `${Math.min((g.current / (g.recommended || 1)) * 100, 100)}%`, transition: 'width 0.4s' }} />
+                      <div style={{ position: 'absolute', left: '80%', top: 0, width: 2, height: '100%', background: 'var(--text)', opacity: 0.2 }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{g.desc}</div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>{g.desc}</div>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                {isMedical
+                  ? g.has
+                    ? <span style={{ color: 'var(--green)' }}>✓ {medClass || 'Active policy'}</span>
+                    : <span style={{ color: 'var(--red)' }}>Not covered</span>
+                  : coverageNotFilled
+                    ? <span style={{ color: 'var(--gold, #F59E0B)', fontStyle: 'italic' }}>Amounts pending</span>
+                    : g.recommended > 0
+                      ? `${fmtK(g.current)} / ${fmtK(g.recommended)}`
+                      : g.has ? '✓ Active' : 'Not covered'}
+              </div>
+              <div style={{ textAlign: 'center', fontSize: 14 }}>
+                {isMedical || !coverageNotFilled
+                  ? g.adequate
+                    ? <span style={{ color: 'var(--green)' }}>✓</span>
+                    : <span style={{ color: 'var(--red)' }}>⚠️</span>
+                  : <span style={{ color: 'var(--gold, #F59E0B)' }}>—</span>}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-              {g.recommended > 0
-                ? `${fmtK(g.current)} / ${fmtK(g.recommended)}`
-                : g.has ? '✓ Active policy' : 'Not covered'}
-            </div>
-            <div style={{ textAlign: 'center', fontSize: 14 }}>
-              {g.adequate ? <span style={{ color: 'var(--green)' }}>✓</span> : <span style={{ color: 'var(--red)' }}>⚠️</span>}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -193,13 +243,23 @@ export default function InsurancePage() {
     clientData: clients.find(c => c.name === name),
   }));
 
+  const coverFieldMap: Record<string, keyof Policy> = {
+    '🛡️ Life Cover':            'lifeCover',
+    '❤️ Critical Illness (CI)': 'ciCover',
+    '🦺 Personal Accident':     'paCover',
+    '♿ TPD':                    'tpdCover',
+  };
+
   const gapCount = grouped.reduce((count, g) => {
     const income = (g.clientData?.income ?? 0) * 12;
     const active = g.policies.filter(p => p.status?.includes('Active'));
+    const allZero = active.every(p => p.lifeCover === 0 && p.ciCover === 0 && p.paCover === 0 && p.tpdCover === 0);
     const hasGap = COVERAGE_RULES.some(rule => {
       const has = active.some(p => p.benefits.includes(rule.key));
       if (rule.key === '🏥 Medical') return !has;
-      const sum = active.filter(p => p.benefits.includes(rule.key)).reduce((s, p) => s + p.sumAssured, 0);
+      if (allZero) return false; // can't assess without amounts
+      const field = coverFieldMap[rule.key];
+      const sum = field ? active.filter(p => p.benefits.includes(rule.key)).reduce((s, p) => s + ((p[field] as number) || 0), 0) : 0;
       const rec = rule.rec(income);
       return !has || (rec > 0 && sum < rec * 0.8);
     });
@@ -335,10 +395,22 @@ export default function InsurancePage() {
               <div><TypeBadge type={p.insuranceType} /></div>
 
               {/* Benefits */}
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {p.benefits.length > 0
-                  ? p.benefits.map(b => <BenefitPill key={b} benefit={b} />)
-                  : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
+              <div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {p.benefits.length > 0
+                    ? p.benefits.map(b => <BenefitPill key={b} benefit={b} />)
+                    : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
+                </div>
+                {/* Per-benefit coverage amounts (shown when filled) */}
+                {(p.lifeCover > 0 || p.ciCover > 0 || p.paCover > 0 || p.tpdCover > 0) && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-mono)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {p.lifeCover > 0 && <span>🛡️ {fmtK(p.lifeCover)}</span>}
+                    {p.ciCover   > 0 && <span>❤️ {fmtK(p.ciCover)}</span>}
+                    {p.paCover   > 0 && <span>🦺 {fmtK(p.paCover)}</span>}
+                    {p.tpdCover  > 0 && <span>♿ {fmtK(p.tpdCover)}</span>}
+                    {p.medicalClass  && <span>🏥 {p.medicalClass}</span>}
+                  </div>
+                )}
               </div>
 
               {/* Sum Assured */}
