@@ -43,26 +43,23 @@ const typeColor = (t: string) => {
 };
 
 const BENEFIT_COLORS: Record<string, string> = {
-  'Life Cover':             '#60A5FA',
-  'Critical Illness':       '#F87171',
-  'Early CI':               '#FB923C',
-  'Medical':                '#4ADE80',
-  'Personal Accident':      '#F59E0B',
-  'TPD':                    '#A78BFA',
-  'Waiver of Premium':      '#34D399',
-  'Payor Benefit':          '#E879F9',
+  '🛡️ Life Cover':              '#60A5FA',
+  '❤️ Critical Illness (CI)':   '#F87171',
+  '🌟 Early CI':                '#FB923C',
+  '🏥 Medical':                 '#4ADE80',
+  '🦺 Personal Accident':       '#F59E0B',
+  '♿ TPD':                     '#A78BFA',
+  '⏸️ Waiver of Premium':       '#34D399',
+  '👶 Payor Benefit':           '#E879F9',
 };
-const benefitColor = (b: string) => {
-  const key = Object.keys(BENEFIT_COLORS).find(k => b?.includes(k));
-  return key ? BENEFIT_COLORS[key] : '#9CB8A0';
-};
+const benefitColor = (b: string) => BENEFIT_COLORS[b] ?? '#9CB8A0';
 
-// Coverage gap rules — keyed to Benefit names
+// Coverage gap rules — keys match actual Notion benefit names
 const COVERAGE_RULES = [
-  { key: 'Life Cover',       label: '🛡️ Life Cover',              rec: (income: number) => income * 10, desc: 'Recommended: 10× annual income' },
-  { key: 'Medical',          label: '🏥 Medical / Hospitalisation', rec: () => 0,                       desc: 'Should have active medical cover' },
-  { key: 'Critical Illness', label: '❤️ Critical Illness (CI)',    rec: (income: number) => income * 5,  desc: 'Recommended: 5× annual income' },
-  { key: 'Personal Accident',label: '🦺 Personal Accident (PA)',   rec: (income: number) => income * 3,  desc: 'Recommended: 3× annual income' },
+  { key: '🛡️ Life Cover',            label: '🛡️ Life Cover',         rec: (income: number) => income * 10, desc: 'Recommended: 10× annual income' },
+  { key: '🏥 Medical',               label: '🏥 Medical',             rec: () => 0,                        desc: 'Should have active medical cover' },
+  { key: '❤️ Critical Illness (CI)', label: '❤️ Critical Illness',    rec: (income: number) => income * 5,  desc: 'Recommended: 5× annual income' },
+  { key: '🦺 Personal Accident',     label: '🦺 Personal Accident',   rec: (income: number) => income * 3,  desc: 'Recommended: 3× annual income' },
 ];
 
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n).toLocaleString()}`;
@@ -98,8 +95,8 @@ function CoverageGapCard({ clientName, clientData, policies }: {
   const income = (clientData?.income ?? 0) * 12;
   const activePolicies = policies.filter(p => p.status?.includes('Active'));
 
-  const hasBenefit = (key: string) => activePolicies.some(p => p.benefits.some(b => b.includes(key)));
-  const sumForBenefit = (key: string) => activePolicies.filter(p => p.benefits.some(b => b.includes(key))).reduce((s, p) => s + p.sumAssured, 0);
+  const hasBenefit = (key: string) => activePolicies.some(p => p.benefits.includes(key));
+  const sumForBenefit = (key: string) => activePolicies.filter(p => p.benefits.includes(key)).reduce((s, p) => s + p.sumAssured, 0);
 
   const gaps = COVERAGE_RULES.map(rule => {
     const has = hasBenefit(rule.key);
@@ -200,9 +197,9 @@ export default function InsurancePage() {
     const income = (g.clientData?.income ?? 0) * 12;
     const active = g.policies.filter(p => p.status?.includes('Active'));
     const hasGap = COVERAGE_RULES.some(rule => {
-      const has = active.some(p => p.benefits.some(b => b.includes(rule.key)));
-      if (rule.key === 'Medical') return !has;
-      const sum = active.filter(p => p.benefits.some(b => b.includes(rule.key))).reduce((s, p) => s + p.sumAssured, 0);
+      const has = active.some(p => p.benefits.includes(rule.key));
+      if (rule.key === '🏥 Medical') return !has;
+      const sum = active.filter(p => p.benefits.includes(rule.key)).reduce((s, p) => s + p.sumAssured, 0);
       const rec = rule.rec(income);
       return !has || (rec > 0 && sum < rec * 0.8);
     });

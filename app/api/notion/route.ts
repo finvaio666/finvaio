@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
       });
       const data = res.results.filter(isFullPage).map(page => {
         const p = page.properties;
-        const clientRelIds = p['👥 Clients']?.type === 'relation' ? p['👥 Clients'].relation.map((r: { id: string }) => r.id) : [];
+        const clientRelIds = p['Clients']?.type === 'relation' ? p['Clients'].relation.map((r: { id: string }) => r.id) : [];
         const clientInfo   = clientRelIds.map((id: string) => clientMap[id]).filter(Boolean)[0];
         return {
           id:               page.id,
