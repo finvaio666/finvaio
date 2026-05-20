@@ -8,6 +8,7 @@ interface Policy {
   clientName: string;
   clientIncome: number;
   insuranceType: string;
+  benefits: string[];
   status: string;
   insurer: string;
   policyNumber: string;
@@ -19,111 +20,140 @@ interface Policy {
   notes: string;
 }
 
-interface Client {
+interface ClientData {
   id: string;
   name: string;
   income: number;
   aum: number;
 }
 
+// ── Colors ──────────────────────────────────────────────────────────────────
+
 const TYPE_COLORS: Record<string, string> = {
-  'Life':             '#60A5FA',
-  'Medical':          '#4ADE80',
-  'Critical Illness': '#F87171',
-  'Personal Accident':'#F59E0B',
-  'Disability':       '#A78BFA',
-  'Endowment':        '#34D399',
+  'ILP':       '#60A5FA',
+  'IUL':       '#818CF8',
+  'UL':        '#A78BFA',
+  'VUL':       '#F59E0B',
+  'Term Life': '#4ADE80',
+  'Endowment': '#34D399',
 };
 const typeColor = (t: string) => {
   const key = Object.keys(TYPE_COLORS).find(k => t?.includes(k));
   return key ? TYPE_COLORS[key] : '#9CB8A0';
 };
 
+const BENEFIT_COLORS: Record<string, string> = {
+  'Life Cover':             '#60A5FA',
+  'Critical Illness':       '#F87171',
+  'Early CI':               '#FB923C',
+  'Medical':                '#4ADE80',
+  'Personal Accident':      '#F59E0B',
+  'TPD':                    '#A78BFA',
+  'Waiver of Premium':      '#34D399',
+  'Payor Benefit':          '#E879F9',
+};
+const benefitColor = (b: string) => {
+  const key = Object.keys(BENEFIT_COLORS).find(k => b?.includes(k));
+  return key ? BENEFIT_COLORS[key] : '#9CB8A0';
+};
+
+// Coverage gap rules — keyed to Benefit names
+const COVERAGE_RULES = [
+  { key: 'Life Cover',       label: '🛡️ Life Cover',              rec: (income: number) => income * 10, desc: 'Recommended: 10× annual income' },
+  { key: 'Medical',          label: '🏥 Medical / Hospitalisation', rec: () => 0,                       desc: 'Should have active medical cover' },
+  { key: 'Critical Illness', label: '❤️ Critical Illness (CI)',    rec: (income: number) => income * 5,  desc: 'Recommended: 5× annual income' },
+  { key: 'Personal Accident',label: '🦺 Personal Accident (PA)',   rec: (income: number) => income * 3,  desc: 'Recommended: 3× annual income' },
+];
+
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n).toLocaleString()}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+// ── Badge components ─────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: string }) {
   const color = typeColor(type);
   return (
-    <span style={{
-      padding: '3px 10px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 600,
-      background: `${color}18`, color, border: `1px solid ${color}33`, whiteSpace: 'nowrap',
-    }}>{type}</span>
+    <span style={{ padding: '3px 10px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 700, background: `${color}18`, color, border: `1px solid ${color}33`, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
+      {type}
+    </span>
   );
 }
 
-// Coverage gap analysis rules
-const COVERAGE_RULES = [
-  { key: 'Life',             label: '🛡️ Life',             desc: 'Recommended: 10× annual income' },
-  { key: 'Medical',          label: '🏥 Medical',          desc: 'Should have active medical card' },
-  { key: 'Critical Illness', label: '❤️ Critical Illness', desc: 'Recommended: 5× annual income' },
-  { key: 'Personal Accident',label: '🦺 Personal Accident', desc: 'Recommended: 3× annual income' },
-];
+function BenefitPill({ benefit }: { benefit: string }) {
+  const color = benefitColor(benefit);
+  return (
+    <span style={{ padding: '2px 8px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 600, background: `${color}15`, color, border: `1px solid ${color}30`, whiteSpace: 'nowrap' }}>
+      {benefit}
+    </span>
+  );
+}
 
-function CoverageGapCard({ client, policies }: { client: Client; policies: Policy[] }) {
-  const income = client.income * 12; // annual
+// ── Coverage gap card ────────────────────────────────────────────────────────
 
-  const hasCoverage = (key: string) => policies.some(p => p.insuranceType?.includes(key) && p.status?.includes('Active'));
-  const sumFor      = (key: string) => policies.filter(p => p.insuranceType?.includes(key) && p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0);
+function CoverageGapCard({ clientName, clientData, policies }: {
+  clientName: string;
+  clientData: ClientData | undefined;
+  policies: Policy[];
+}) {
+  const income = (clientData?.income ?? 0) * 12;
+  const activePolicies = policies.filter(p => p.status?.includes('Active'));
+
+  const hasBenefit = (key: string) => activePolicies.some(p => p.benefits.some(b => b.includes(key)));
+  const sumForBenefit = (key: string) => activePolicies.filter(p => p.benefits.some(b => b.includes(key))).reduce((s, p) => s + p.sumAssured, 0);
 
   const gaps = COVERAGE_RULES.map(rule => {
-    const covered = hasCoverage(rule.key);
-    const current = sumFor(rule.key);
-    let recommended = 0;
-    if (rule.key === 'Life')             recommended = income * 10;
-    if (rule.key === 'Critical Illness') recommended = income * 5;
-    if (rule.key === 'Personal Accident')recommended = income * 3;
-    const adequate = rule.key === 'Medical' ? covered : (covered && current >= recommended * 0.8);
-    return { ...rule, covered, current, recommended, adequate };
+    const has = hasBenefit(rule.key);
+    const current = sumForBenefit(rule.key);
+    const recommended = rule.rec(income);
+    const isMedian = rule.key === 'Medical';
+    const adequate = isMedian ? has : (has && (recommended === 0 || current >= recommended * 0.8));
+    return { ...rule, has, current, recommended, adequate };
   });
 
-  const totalPremium = policies.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.annualPremium, 0);
-  const premiumRatio = income > 0 ? ((totalPremium / income) * 100).toFixed(1) : '0.0';
+  const totalPremium = activePolicies.reduce((s, p) => s + p.annualPremium, 0);
+  const premiumRatio = income > 0 ? ((totalPremium / income) * 100).toFixed(1) : '—';
   const gapCount = gaps.filter(g => !g.adequate).length;
 
   return (
     <div className="section" style={{ marginBottom: 12 }}>
-      {/* Client header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{initials(client.name)}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
+        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+          {initials(clientName)}
+        </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{client.name}</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{clientName}</div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-            Annual income {fmtK(income)} · Premium {fmtK(totalPremium)}/yr ({premiumRatio}% of income)
+            Annual income {income > 0 ? fmtK(income) : '—'} · Premium {fmtK(totalPremium)}/yr
+            {income > 0 && <span style={{ marginLeft: 6, color: Number(premiumRatio) > 15 ? 'var(--red)' : 'var(--green)' }}>({premiumRatio}% of income)</span>}
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          {gapCount === 0
-            ? <span style={{ padding: '4px 12px', borderRadius: 'var(--r-pill)', background: 'var(--green-dim)', color: 'var(--green)', fontSize: 12, fontWeight: 600 }}>✓ Well covered</span>
-            : <span style={{ padding: '4px 12px', borderRadius: 'var(--r-pill)', background: 'var(--red-dim)', color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>{gapCount} gap{gapCount > 1 ? 's' : ''}</span>
-          }
-        </div>
+        {gapCount === 0
+          ? <span style={{ padding: '4px 14px', borderRadius: 'var(--r-pill)', background: 'var(--green-dim)', color: 'var(--green)', fontSize: 12, fontWeight: 700 }}>✓ Well covered</span>
+          : <span style={{ padding: '4px 14px', borderRadius: 'var(--r-pill)', background: 'var(--red-dim)', color: 'var(--red)', fontSize: 12, fontWeight: 700 }}>⚠️ {gapCount} gap{gapCount > 1 ? 's' : ''}</span>
+        }
       </div>
 
-      {/* Coverage rows */}
-      <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 20 }}>
+      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 24 }}>
         {gaps.map(g => (
-          <div key={g.key} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 130px 80px', alignItems: 'center', gap: 12, fontSize: 13 }}>
-            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{g.label}</div>
+          <div key={g.key} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 150px 36px', alignItems: 'center', gap: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{g.label}</div>
             <div>
               {g.recommended > 0 ? (
                 <div style={{ position: 'relative', height: 8, borderRadius: 'var(--r-pill)', background: 'var(--surface2)', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 'var(--r-pill)', background: g.adequate ? 'var(--green)' : 'var(--red)', width: `${Math.min((g.current / (g.recommended || 1)) * 100, 100)}%`, transition: 'width 0.4s' }} />
-                  {/* 80% adequacy line */}
-                  <div style={{ position: 'absolute', left: '80%', top: 0, width: 2, height: '100%', background: 'var(--text3)', opacity: 0.4 }} />
+                  <div style={{ position: 'absolute', left: '80%', top: 0, width: 2, height: '100%', background: 'var(--text)', opacity: 0.2 }} />
                 </div>
               ) : (
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{g.desc}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>{g.desc}</div>
               )}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-              {g.recommended > 0 ? `${fmtK(g.current)} / ${fmtK(g.recommended)}` : g.covered ? '✓ Active' : '—'}
+              {g.recommended > 0
+                ? `${fmtK(g.current)} / ${fmtK(g.recommended)}`
+                : g.has ? '✓ Active policy' : 'Not covered'}
             </div>
-            <div style={{ textAlign: 'right' }}>
-              {g.adequate
-                ? <span style={{ color: 'var(--green)', fontSize: 12, fontWeight: 700 }}>✓</span>
-                : <span style={{ color: 'var(--red)', fontSize: 12, fontWeight: 700 }}>⚠️</span>
-              }
+            <div style={{ textAlign: 'center', fontSize: 14 }}>
+              {g.adequate ? <span style={{ color: 'var(--green)' }}>✓</span> : <span style={{ color: 'var(--red)' }}>⚠️</span>}
             </div>
           </div>
         ))}
@@ -132,9 +162,11 @@ function CoverageGapCard({ client, policies }: { client: Client; policies: Polic
   );
 }
 
+// ── Main page ────────────────────────────────────────────────────────────────
+
 export default function InsurancePage() {
   const [policies, setPolicies] = useState<Policy[]>([]);
-  const [clients,  setClients]  = useState<Client[]>([]);
+  const [clients,  setClients]  = useState<ClientData[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [filterClient, setFilter] = useState('All');
   const [activeView, setView]   = useState<'policies' | 'gaps'>('policies');
@@ -152,18 +184,30 @@ export default function InsurancePage() {
 
   const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
   const visible = filterClient === 'All' ? policies : policies.filter(p => p.clientName === filterClient);
+  const activePolicies = visible.filter(p => p.status?.includes('Active'));
 
-  const totalSumAssured   = visible.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0);
-  const totalAnnualPremium= visible.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.annualPremium, 0);
-  const activePolicies    = visible.filter(p => p.status?.includes('Active')).length;
-  const clientsCovered    = new Set(visible.map(p => p.clientName)).size;
+  const totalSumAssured    = activePolicies.reduce((s, p) => s + p.sumAssured, 0);
+  const totalAnnualPremium = activePolicies.reduce((s, p) => s + p.annualPremium, 0);
+  const clientsCovered     = new Set(visible.map(p => p.clientName)).size;
 
-  // Group by client for policy view
   const grouped = (filterClient === 'All' ? clientNames : [filterClient]).map(name => ({
-    client: name,
-    policies: visible.filter(p => p.clientName === name),
+    clientName: name,
+    policies:   visible.filter(p => p.clientName === name),
     clientData: clients.find(c => c.name === name),
   }));
+
+  const gapCount = grouped.reduce((count, g) => {
+    const income = (g.clientData?.income ?? 0) * 12;
+    const active = g.policies.filter(p => p.status?.includes('Active'));
+    const hasGap = COVERAGE_RULES.some(rule => {
+      const has = active.some(p => p.benefits.some(b => b.includes(rule.key)));
+      if (rule.key === 'Medical') return !has;
+      const sum = active.filter(p => p.benefits.some(b => b.includes(rule.key))).reduce((s, p) => s + p.sumAssured, 0);
+      const rec = rule.rec(income);
+      return !has || (rec > 0 && sum < rec * 0.8);
+    });
+    return count + (hasGap ? 1 : 0);
+  }, 0);
 
   return (
     <>
@@ -173,7 +217,7 @@ export default function InsurancePage() {
           <div className="stat-icon blue">🛡️</div>
           <div className="stat-label">Clients Covered</div>
           <div className="stat-value">{loading ? '…' : clientsCovered}</div>
-          <div className="stat-sub">{activePolicies} active policies</div>
+          <div className="stat-sub">{activePolicies.length} active policies</div>
         </div>
         <div className="stat-card green">
           <div className="stat-icon green">💰</div>
@@ -185,33 +229,20 @@ export default function InsurancePage() {
           <div className="stat-icon gold">📋</div>
           <div className="stat-label">Annual Premium</div>
           <div className="stat-value">{loading ? '…' : fmtK(totalAnnualPremium)}</div>
-          <div className="stat-sub">{fmtK(totalAnnualPremium / 12)}/month</div>
+          <div className="stat-sub">{fmtK(Math.round(totalAnnualPremium / 12))}/month</div>
         </div>
         <div className="stat-card red">
           <div className="stat-icon red">⚠️</div>
           <div className="stat-label">Coverage Gaps</div>
-          <div className="stat-value">
-            {loading ? '…' : grouped.reduce((count, g) => {
-              if (!g.clientData) return count;
-              const income = g.clientData.income * 12;
-              const hasGap = COVERAGE_RULES.some(rule => {
-                const active = g.policies.filter(p => p.insuranceType?.includes(rule.key) && p.status?.includes('Active'));
-                const sum = active.reduce((s, p) => s + p.sumAssured, 0);
-                if (rule.key === 'Medical') return active.length === 0;
-                const rec = rule.key === 'Life' ? income * 10 : rule.key === 'Critical Illness' ? income * 5 : income * 3;
-                return sum < rec * 0.8;
-              });
-              return count + (hasGap ? 1 : 0);
-            }, 0)}
-          </div>
+          <div className="stat-value">{loading ? '…' : gapCount}</div>
           <div className="stat-sub">Clients with under-coverage</div>
         </div>
       </div>
 
-      {/* ── View toggle + filter ── */}
+      {/* ── Controls ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {/* View toggle */}
-        <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: 3 }}>
+        <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: 3, gap: 2 }}>
           {(['policies', 'gaps'] as const).map(v => (
             <button key={v} onClick={() => setView(v)} style={{
               padding: '6px 16px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
@@ -256,26 +287,23 @@ export default function InsurancePage() {
         )}
       </div>
 
-      {/* ── Empty / loading state ── */}
-      {loading && (
-        <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading from Notion…</div>
-      )}
-
+      {/* ── Empty / loading ── */}
+      {loading && <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading from Notion…</div>}
       {!loading && policies.length === 0 && (
-        <div className="section" style={{ padding: 40, textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>🛡️</div>
+        <div className="section" style={{ padding: 48, textAlign: 'center' }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🛡️</div>
           <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No insurance policies yet</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Import data using the Excel template, or add policies directly in Notion</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies directly in your Notion Insurance database</div>
         </div>
       )}
 
       {/* ── Policies view ── */}
-      {!loading && activeView === 'policies' && policies.length > 0 && grouped.map(({ client, policies: rows }) => (
-        <div key={client} className="section" style={{ marginBottom: 12 }}>
+      {!loading && activeView === 'policies' && policies.length > 0 && grouped.map(({ clientName, policies: rows }) => (
+        <div key={clientName} className="section" style={{ marginBottom: 12 }}>
           {/* Client header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
-            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, flexShrink: 0 }}>{initials(client)}</div>
-            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', flex: 1 }}>{client}</span>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, flexShrink: 0 }}>{initials(clientName)}</div>
+            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', flex: 1 }}>{clientName}</span>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rows.length} {rows.length === 1 ? 'policy' : 'policies'}</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
               {fmtK(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0))} assured
@@ -283,49 +311,73 @@ export default function InsurancePage() {
           </div>
 
           {/* Column header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 110px 110px 90px 80px', padding: '8px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            <div>Policy</div><div>Type</div><div style={{ textAlign: 'right' }}>Sum Assured</div><div style={{ textAlign: 'right' }}>Premium/yr</div><div style={{ textAlign: 'right' }}>Maturity</div><div style={{ textAlign: 'right' }}>Status</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 200px 110px 110px 80px', padding: '8px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div>Policy / Insurer</div>
+            <div>Type</div>
+            <div>Benefits</div>
+            <div style={{ textAlign: 'right' }}>Sum Assured</div>
+            <div style={{ textAlign: 'right' }}>Premium/yr</div>
+            <div style={{ textAlign: 'right' }}>Status</div>
           </div>
 
-          {/* Policy rows */}
           {rows.map((p, i) => (
-            <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 110px 110px 90px 80px', padding: '12px 20px', alignItems: 'center', borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
+            <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 200px 110px 110px 80px', padding: '13px 20px', alignItems: 'center', borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
               onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
               onMouseOut={e => (e.currentTarget.style.background = '')}>
+              {/* Policy name */}
               <div>
                 <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                   {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
-                  {p.beneficiary && <span style={{ marginLeft: 6 }}>→ {p.beneficiary}</span>}
+                  {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                 </div>
+                {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>Beneficiary: {p.beneficiary}</div>}
               </div>
+
+              {/* Type */}
               <div><TypeBadge type={p.insuranceType} /></div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>{p.sumAssured > 0 ? Math.round(p.sumAssured).toLocaleString() : '—'}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>{p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—'}</div>
-              <div style={{ textAlign: 'right', fontSize: 11, color: p.maturityDate ? 'var(--gold)' : 'var(--text3)' }}>
-                {p.maturityDate ? new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }) : '—'}
+
+              {/* Benefits */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {p.benefits.length > 0
+                  ? p.benefits.map(b => <BenefitPill key={b} benefit={b} />)
+                  : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
               </div>
+
+              {/* Sum Assured */}
+              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
+                {p.sumAssured > 0 ? Math.round(p.sumAssured).toLocaleString() : '—'}
+              </div>
+
+              {/* Premium */}
+              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
+                {p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—'}
+              </div>
+
+              {/* Status */}
               <div style={{ textAlign: 'right' }}>
-                <span style={{ padding: '3px 9px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 600, background: p.status?.includes('Active') ? 'var(--green-dim)' : 'var(--surface2)', color: p.status?.includes('Active') ? 'var(--green)' : 'var(--text3)' }}>{p.status}</span>
+                <span style={{ padding: '3px 9px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 600, background: p.status?.includes('Active') ? 'var(--green-dim)' : 'var(--surface2)', color: p.status?.includes('Active') ? 'var(--green)' : 'var(--text3)' }}>
+                  {p.status}
+                </span>
               </div>
             </div>
           ))}
 
           {/* Subtotal */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 110px 110px 90px 80px', padding: '10px 20px', background: 'var(--bg2)', borderTop: '2px solid var(--border)', fontSize: 12, fontWeight: 700, paddingBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 200px 110px 110px 80px', padding: '10px 20px', background: 'var(--bg2)', borderTop: '2px solid var(--border)', fontSize: 12, fontWeight: 700, paddingBottom: 20 }}>
             <div style={{ color: 'var(--text3)', fontSize: 11 }}>Subtotal (active)</div>
-            <div /><div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0)).toLocaleString()}</div>
-            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.annualPremium, 0)).toLocaleString()}</div>
             <div /><div />
+            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0)).toLocaleString()}</div>
+            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.annualPremium, 0)).toLocaleString()}</div>
+            <div />
           </div>
         </div>
       ))}
 
-      {/* ── Coverage gap view ── */}
-      {!loading && activeView === 'gaps' && grouped.map(({ client, policies: rows, clientData }) => {
-        if (!clientData) return null;
-        return <CoverageGapCard key={client} client={{ id: clientData.id, name: client, income: clientData.income, aum: clientData.aum }} policies={rows} />;
-      })}
+      {/* ── Coverage Gaps view ── */}
+      {!loading && activeView === 'gaps' && grouped.map(({ clientName, policies: rows, clientData }) => (
+        <CoverageGapCard key={clientName} clientName={clientName} clientData={clientData} policies={rows} />
+      ))}
     </>
   );
 }

@@ -143,19 +143,20 @@ export async function GET(req: NextRequest) {
         const clientInfo   = clientRelIds.map((id: string) => clientMap[id]).filter(Boolean)[0];
         return {
           id:               page.id,
-          policyName:       p['Policy Name']?.type === 'title'      ? p['Policy Name'].title[0]?.plain_text ?? ''              : '',
+          policyName:       p['Policy Name']?.type === 'title'         ? p['Policy Name'].title[0]?.plain_text ?? ''           : '',
           clientName:       clientInfo?.name ?? '',
           clientIncome:     clientInfo?.income ?? 0,
-          insuranceType:    p['Insurance Type']?.type === 'select'   ? p['Insurance Type'].select?.name ?? ''                   : '',
-          status:           p['Status']?.type === 'select'           ? p['Status'].select?.name ?? ''                          : '',
-          insurer:          p['Insurer']?.type === 'rich_text'       ? p['Insurer'].rich_text[0]?.plain_text ?? ''              : '',
-          policyNumber:     p['Policy Number']?.type === 'rich_text' ? p['Policy Number'].rich_text[0]?.plain_text ?? ''        : '',
-          sumAssured:       p['Sum Assured (MYR)']?.type === 'number'    ? p['Sum Assured (MYR)'].number ?? 0                   : 0,
-          annualPremium:    p['Annual Premium (MYR)']?.type === 'number' ? p['Annual Premium (MYR)'].number ?? 0                : 0,
-          commencementDate: p['Commencement Date']?.type === 'date'  ? p['Commencement Date'].date?.start ?? ''                 : '',
-          maturityDate:     p['Maturity Date']?.type === 'date'      ? p['Maturity Date'].date?.start ?? ''                    : '',
-          beneficiary:      p['Beneficiary']?.type === 'rich_text'   ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''         : '',
-          notes:            p['Notes']?.type === 'rich_text'         ? p['Notes'].rich_text[0]?.plain_text ?? ''               : '',
+          insuranceType:    p['Insurance Type']?.type === 'select'      ? p['Insurance Type'].select?.name ?? ''               : '',
+          benefits:         p['Benefits']?.type === 'multi_select'      ? p['Benefits'].multi_select.map((b: { name: string }) => b.name) : [],
+          status:           p['Status']?.type === 'select'              ? p['Status'].select?.name ?? ''                       : '',
+          insurer:          p['Insurer']?.type === 'rich_text'          ? p['Insurer'].rich_text[0]?.plain_text ?? ''           : '',
+          policyNumber:     p['Policy Number']?.type === 'rich_text'    ? p['Policy Number'].rich_text[0]?.plain_text ?? ''    : '',
+          sumAssured:       p['Sum Assured (MYR)']?.type === 'number'   ? p['Sum Assured (MYR)'].number ?? 0                   : 0,
+          annualPremium:    p['Annual Premium (MYR)']?.type === 'number'? p['Annual Premium (MYR)'].number ?? 0                : 0,
+          commencementDate: p['Commencement Date']?.type === 'date'     ? p['Commencement Date'].date?.start ?? ''             : '',
+          maturityDate:     p['Maturity Date']?.type === 'date'         ? p['Maturity Date'].date?.start ?? ''                 : '',
+          beneficiary:      p['Beneficiary']?.type === 'rich_text'      ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''      : '',
+          notes:            p['Notes']?.type === 'rich_text'            ? p['Notes'].rich_text[0]?.plain_text ?? ''            : '',
         };
       });
       return NextResponse.json({ data });
