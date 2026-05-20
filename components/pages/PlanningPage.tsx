@@ -1,6 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+// ─── Client data ──────────────────────────────────────────────────────────────
+interface ClientData {
+  id: string; name: string; income: number; aum: number; dob: string;
+}
+
+function ageFromDob(dob: string): number {
+  if (!dob) return 0;
+  const today = new Date();
+  const birth = new Date(dob);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return Math.max(age, 0);
+}
 
 // ─── Financial helpers ────────────────────────────────────────────────────────
 function fvLumpSum(pv: number, annualRate: number, years: number) {
@@ -241,22 +256,31 @@ function DownloadButton({ onClick, loading }: { onClick: () => void; loading: bo
 }
 
 // ─── Retirement Calculator ────────────────────────────────────────────────────
-function RetirementCalculator() {
-  const [f, setF] = useState({
-    clientName: 'Ahmad Rizal',
-    currentAge: 41,
-    retirementAge: 60,
-    currentEPF: 115000,
-    currentInvestments: 85000,
-    monthlyEPF: 2640,
-    monthlyInvestment: 1000,
-    epfDividend: 5.5,
-    investmentReturn: 8.0,
-    inflationRate: 3.5,
-    targetMonthlyIncome: 8000,
-    retirementDuration: 20,
-  });
+const RETIREMENT_DEFAULTS = {
+  clientName: '', currentAge: 35, retirementAge: 60,
+  currentEPF: 0, currentInvestments: 0,
+  monthlyEPF: 0, monthlyInvestment: 0,
+  epfDividend: 5.5, investmentReturn: 8.0, inflationRate: 3.5,
+  targetMonthlyIncome: 5000, retirementDuration: 20,
+};
+
+function RetirementCalculator({ preloadClient }: { preloadClient?: ClientData | null }) {
+  const [f, setF] = useState({ ...RETIREMENT_DEFAULTS });
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  // Pre-fill when a client is selected
+  useEffect(() => {
+    if (!preloadClient) return;
+    const age = ageFromDob(preloadClient.dob);
+    setF(prev => ({
+      ...prev,
+      clientName:          preloadClient.name,
+      currentAge:          age || prev.currentAge,
+      currentInvestments:  preloadClient.aum  > 0 ? preloadClient.aum  : prev.currentInvestments,
+      targetMonthlyIncome: preloadClient.income > 0 ? Math.round(preloadClient.income * 0.7) : prev.targetMonthlyIncome,
+      monthlyEPF:          preloadClient.income > 0 ? Math.round(preloadClient.income * 0.23) : prev.monthlyEPF,
+    }));
+  }, [preloadClient]);
 
   const set = (k: keyof typeof f) => (v: number | string) => setF(prev => ({ ...prev, [k]: v }));
 
@@ -403,19 +427,18 @@ function RetirementCalculator() {
 }
 
 // ─── Education Calculator ─────────────────────────────────────────────────────
-function EducationCalculator() {
+function EducationCalculator({ preloadClient }: { preloadClient?: ClientData | null }) {
   const [f, setF] = useState({
-    clientName: '',
-    childName: '',
-    childAge: 5,
-    universityAge: 18,
-    currentEducationCost: 120000,
-    educationInflation: 5.0,
-    currentSavings: 0,
-    monthlySavings: 500,
-    savingsReturn: 5.0,
+    clientName: '', childName: '', childAge: 5, universityAge: 18,
+    currentEducationCost: 120000, educationInflation: 5.0,
+    currentSavings: 0, monthlySavings: 500, savingsReturn: 5.0,
   });
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  useEffect(() => {
+    if (!preloadClient) return;
+    setF(prev => ({ ...prev, clientName: preloadClient.name }));
+  }, [preloadClient]);
 
   const set = (k: keyof typeof f) => (v: number | string) => setF(prev => ({ ...prev, [k]: v }));
 
@@ -547,16 +570,21 @@ function EducationCalculator() {
 }
 
 // ─── Emergency Fund Calculator ────────────────────────────────────────────────
-function EmergencyFundCalculator() {
+function EmergencyFundCalculator({ preloadClient }: { preloadClient?: ClientData | null }) {
   const [f, setF] = useState({
-    clientName: '',
-    monthlyExpenses: 6000,
-    targetMonths: 6,
-    currentEmergencyFund: 0,
-    monthlyContribution: 500,
-    buildUpMonths: 24,
+    clientName: '', monthlyExpenses: 5000, targetMonths: 6,
+    currentEmergencyFund: 0, monthlyContribution: 500, buildUpMonths: 24,
   });
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  useEffect(() => {
+    if (!preloadClient) return;
+    setF(prev => ({
+      ...prev,
+      clientName:      preloadClient.name,
+      monthlyExpenses: preloadClient.income > 0 ? Math.round(preloadClient.income * 0.7) : prev.monthlyExpenses,
+    }));
+  }, [preloadClient]);
 
   const set = (k: keyof typeof f) => (v: number | string) => setF(prev => ({ ...prev, [k]: v }));
 
@@ -698,18 +726,106 @@ function EmergencyFundCalculator() {
 // ─── Main Planning Page ───────────────────────────────────────────────────────
 const TABS = [
   { id: 'retirement', label: '📊 Retirement Planning' },
-  { id: 'education', label: '🎓 Education Planning' },
-  { id: 'emergency', label: '🛡️ Emergency Fund' },
+  { id: 'education',  label: '🎓 Education Planning'  },
+  { id: 'emergency',  label: '🛡️ Emergency Fund'      },
 ];
 
 export default function PlanningPage() {
-  const [activeTab, setActiveTab] = useState('retirement');
+  const [activeTab,      setActiveTab]      = useState('retirement');
+  const [clients,        setClients]        = useState<ClientData[]>([]);
+  const [mode,           setMode]           = useState<'existing' | 'prospect'>('prospect');
+  const [selectedId,     setSelectedId]     = useState('');
+  const [preloadClient,  setPreloadClient]  = useState<ClientData | null>(null);
+
+  useEffect(() => {
+    fetch('/api/notion?type=clients', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(j => { if (j.data) setClients(j.data); });
+  }, []);
+
+  // When client selection changes, update preload
+  useEffect(() => {
+    if (mode === 'existing' && selectedId) {
+      const c = clients.find(c => c.id === selectedId) ?? null;
+      setPreloadClient(c);
+    } else {
+      setPreloadClient(null);
+    }
+  }, [mode, selectedId, clients]);
+
+  const accentColor = activeTab === 'retirement' ? 'var(--accent)' : activeTab === 'education' ? 'var(--blue)' : 'var(--gold)';
 
   return (
     <>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+      {/* ── Client selector bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '14px 18px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r)', flexWrap: 'wrap' }}>
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: 3, gap: 2 }}>
+          {([['existing', '👤 Existing Client'], ['prospect', '✏️ Fresh Prospect']] as const).map(([m, label]) => (
+            <button key={m} onClick={() => setMode(m)} style={{
+              padding: '6px 14px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
+              background: mode === m ? 'var(--text)' : 'transparent',
+              color: mode === m ? 'var(--bg)' : 'var(--text3)',
+              fontSize: 12, fontWeight: 600, transition: 'all 0.15s', whiteSpace: 'nowrap',
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {/* Client dropdown — shown in existing mode */}
+        {mode === 'existing' && (
+          <>
+            <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+              <select value={selectedId} onChange={e => setSelectedId(e.target.value)} style={{
+                width: '100%', padding: '8px 32px 8px 14px', borderRadius: 'var(--r-pill)',
+                border: `1px solid ${selectedId ? 'var(--accent2)' : 'var(--border)'}`,
+                background: 'var(--bg)', color: selectedId ? 'var(--text)' : 'var(--text3)',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none', appearance: 'none',
+                fontFamily: 'var(--font-sans)',
+              }}>
+                <option value=''>— select client —</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+            </div>
+
+            {/* Client summary chips */}
+            {preloadClient && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {preloadClient.dob && ageFromDob(preloadClient.dob) > 0 && (
+                  <span style={{ padding: '4px 10px', borderRadius: 'var(--r-pill)', background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>
+                    Age {ageFromDob(preloadClient.dob)}
+                  </span>
+                )}
+                {preloadClient.income > 0 && (
+                  <span style={{ padding: '4px 10px', borderRadius: 'var(--r-pill)', background: 'var(--blue-dim, #EFF6FF)', color: 'var(--blue)', fontSize: 11, fontWeight: 600 }}>
+                    RM {preloadClient.income.toLocaleString()}/mth
+                  </span>
+                )}
+                {preloadClient.aum > 0 && (
+                  <span style={{ padding: '4px 10px', borderRadius: 'var(--r-pill)', background: 'var(--gold-dim)', color: 'var(--gold)', fontSize: 11, fontWeight: 600 }}>
+                    AUM RM {(preloadClient.aum / 1000).toFixed(0)}K
+                  </span>
+                )}
+              </div>
+            )}
+
+            {selectedId && (
+              <button onClick={() => setSelectedId('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '4px 8px', borderRadius: 8 }}>✕ Clear</button>
+            )}
+          </>
+        )}
+
+        {mode === 'prospect' && (
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Enter details manually below — data is not saved to Notion</span>
+        )}
+      </div>
+
+      {/* ── Calculator tabs ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             style={{ padding: '8px 16px', borderRadius: 'var(--r-sm)', border: `1px solid ${activeTab === tab.id ? 'rgba(74,222,128,0.4)' : 'var(--border)'}`, background: activeTab === tab.id ? 'var(--accent-dim)' : 'var(--surface)', color: activeTab === tab.id ? 'var(--accent)' : 'var(--text2)', fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -721,15 +837,17 @@ export default function PlanningPage() {
       <div className="section" style={{ padding: 24 }}>
         <div className="section-header" style={{ marginBottom: 20 }}>
           <div className="section-title">
-            <span className="section-dot" style={{ background: activeTab === 'retirement' ? 'var(--accent)' : activeTab === 'education' ? 'var(--blue)' : 'var(--gold)' }} />
+            <span className="section-dot" style={{ background: accentColor }} />
             {TABS.find(t => t.id === activeTab)?.label}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Live calculation</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {preloadClient ? `Pre-filled from ${preloadClient.name} · edit any field freely` : 'Live calculation'}
+          </div>
         </div>
 
-        {activeTab === 'retirement' && <RetirementCalculator />}
-        {activeTab === 'education' && <EducationCalculator />}
-        {activeTab === 'emergency' && <EmergencyFundCalculator />}
+        {activeTab === 'retirement' && <RetirementCalculator preloadClient={preloadClient} />}
+        {activeTab === 'education'  && <EducationCalculator  preloadClient={preloadClient} />}
+        {activeTab === 'emergency'  && <EmergencyFundCalculator preloadClient={preloadClient} />}
       </div>
     </>
   );
