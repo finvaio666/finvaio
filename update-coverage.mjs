@@ -29,8 +29,9 @@ async function main() {
     if (!pageId || pageId.length < 30) return; // skip footer / blank
 
     const toNum = val => {
+      if (val === null || val === undefined || val === '') return null;
       const n = Number(val);
-      return isNaN(n) ? null : n;
+      return isNaN(n) ? null : (n === 0 ? null : n);   // treat 0 same as blank — skip, don't overwrite
     };
     const toStr = val => String(val ?? '').trim();
 
