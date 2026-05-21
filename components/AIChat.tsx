@@ -40,7 +40,7 @@ export default function AIChat({
     if (promptTrigger.seq === lastSeq.current) return;   // already processed
     lastSeq.current = promptTrigger.seq;
     const t = promptTrigger.text;
-    sendMessage(t, t.length > 60 ? t.slice(0, 60) + '…' : t);
+    sendMessage(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptTrigger?.seq]);
 
@@ -64,7 +64,21 @@ export default function AIChat({
         body: JSON.stringify({ messages: newHistory, clientName: clientName ?? null }),
       });
       const data = await res.json();
-      const reply = data.content || data.error || 'Unable to get a response.';
+      let reply = data.content;
+      if (!reply) {
+        // Show a clean error message — strip raw JSON/stack traces
+        const raw = data.error ?? 'Unable to get a response.';
+        if (raw.includes('503') || raw.includes('high demand') || raw.includes('overloaded')) {
+          reply = '⚠️ AI models are currently overloaded. Please try again in a moment.';
+        } else if (raw.includes('quota') || raw.includes('RESOURCE_EXHAUSTED')) {
+          reply = '⚠️ API quota exceeded. Please try again later or check your Gemini API limits.';
+        } else if (raw.includes('API_KEY') || raw.includes('API key')) {
+          reply = '⚠️ Gemini API key is missing or invalid. Check GEMINI_API_KEY in .env.local.';
+        } else {
+          // Truncate long technical errors to avoid dumping raw JSON in the chat
+          reply = raw.length > 200 ? '⚠️ ' + raw.slice(0, 200) + '…' : '⚠️ ' + raw;
+        }
+      }
       setHistory(prev => [...prev, { role: 'assistant', content: reply }]);
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch {
