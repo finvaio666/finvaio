@@ -224,13 +224,6 @@ export default function AIPage() {
 
       {/* ── AI Chat ─────────────────────────────────────────────────────────── */}
       <div className="section">
-        <div className="section-header">
-          <div className="section-title">
-            <span className="section-dot" style={{ background: 'var(--gold)' }} />
-            AI Assistant
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Gemini 2.5 Flash · Notion connected</div>
-        </div>
         <AIChat
           initialMessage="🤖 Select a client above, then click a prompt or type your question. I'll pull their live data from Notion automatically."
           height="460px"

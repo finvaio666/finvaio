@@ -102,7 +102,7 @@ export default function AIChat({
           <span className="section-dot" style={{ background: 'var(--gold)' }} />
           AI Assistant
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Claude-powered</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Gemini 2.5 Flash · Notion connected</div>
       </div>
 
       {quickPrompts.length > 0 && (
