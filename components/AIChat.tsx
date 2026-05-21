@@ -12,7 +12,8 @@ interface AIChatProps {
   height?: string;
   quickPrompts?: { label: string; prompt: string }[];
   placeholder?: string;
-  preloadPrompt?: string | null;
+  /** Pass { text, seq } — increment seq each time you want a new message sent (even same text) */
+  promptTrigger?: { text: string; seq: number } | null;
 }
 
 export default function AIChat({
@@ -20,7 +21,7 @@ export default function AIChat({
   height = "340px",
   quickPrompts = [],
   placeholder = "Ask about any client...",
-  preloadPrompt = null,
+  promptTrigger = null,
 }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: initialMessage },
@@ -29,14 +30,16 @@ export default function AIChat({
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<{ role: string; content: string }[]>([]);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const hasPreloaded = useRef(false);
+  const lastSeq = useRef<number>(-1);
 
   useEffect(() => {
-    if (preloadPrompt && !hasPreloaded.current) {
-      hasPreloaded.current = true;
-      sendMessage(preloadPrompt, preloadPrompt.length > 60 ? preloadPrompt.slice(0, 60) + '...' : preloadPrompt);
-    }
-  }, [preloadPrompt]);
+    if (!promptTrigger) return;
+    if (promptTrigger.seq === lastSeq.current) return;   // already processed
+    lastSeq.current = promptTrigger.seq;
+    const t = promptTrigger.text;
+    sendMessage(t, t.length > 60 ? t.slice(0, 60) + '…' : t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptTrigger?.seq]);
 
   useEffect(() => {
     if (messagesRef.current) {

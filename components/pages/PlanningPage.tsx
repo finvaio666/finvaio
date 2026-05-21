@@ -63,81 +63,121 @@ async function downloadPDF(report: PDFReport) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-  const W = 210;
-  const M = 18;
+  const W  = 210;
+  const M  = 18;
   const CW = W - M * 2;
-  let y = 0;
+  let y    = 0;
 
-  const DG  = [12, 26, 15] as const;   // dark green bg
-  const G2  = [22, 42, 24] as const;   // slightly lighter green
-  const WH  = [255, 255, 255] as const;
-  const AC  = [74, 222, 128] as const;  // accent green
-  const T1  = [18, 28, 18] as const;   // body text
-  const T2  = [80, 100, 82] as const;  // secondary text
-  const T3  = [156, 184, 160] as const; // muted text
-  const PGBG = [240, 253, 244] as const; // positive highlight bg
-  const PGT  = [21, 128, 61] as const;   // positive text
-  const RGBG = [254, 242, 242] as const; // negative bg
-  const RGT  = [185, 28, 28] as const;   // negative text
-  const WGBG = [255, 251, 235] as const; // warning bg
-  const WGT  = [180, 83, 9] as const;    // warning text
-  const ALT  = [247, 252, 248] as const; // alt row bg
+  // ── Mastercard-inspired palette ──
+  // Canvas surfaces
+  const CREAM  = [243, 240, 238] as const;   // #F3F0EE — canvas cream
+  const LIFTED = [252, 251, 250] as const;   // #FCFBFA — lifted cream (card/row bg)
+  const WHITE  = [255, 255, 255] as const;   // #FFFFFF — pure white accents
+  const BONE   = [244, 244, 244] as const;   // #F4F4F4 — alt row
 
-  // ── Header ──
-  doc.setFillColor(...DG); doc.rect(0, 0, W, 44, 'F');
-  doc.setFillColor(...AC); doc.rect(0, 0, 5, 44, 'F');
+  // Text
+  const INK    = [20, 20, 19] as const;      // #141413 — ink black (headlines, CTAs)
+  const CHAR   = [38, 38, 39] as const;      // #262627 — charcoal body
+  const SLATE  = [105, 105, 105] as const;   // #696969 — muted / secondary
+  const DUST   = [209, 205, 199] as const;   // #D1CDC7 — disabled / eyebrow
 
-  doc.setTextColor(...T3); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.text('BILL MORRISONS FINANCIAL CONSULTING  ·  MALAYSIA', M + 4, 13);
+  // Accent
+  const ORANGE = [207, 69, 0] as const;      // #CF4500 — Signal Orange (eyebrow dot)
+  const ORANGE2= [243, 115, 56] as const;    // #F37338 — Light Signal Orange (bars, accents)
 
-  doc.setTextColor(232, 245, 234); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-  doc.text('Bill Morrisons', M + 4, 24);
+  // Status
+  const PGBG   = [240, 253, 244] as const;
+  const PGT    = [21, 128, 61] as const;
+  const RGBG   = [254, 242, 242] as const;
+  const RGT    = [185, 28, 28] as const;
+  const WGBG   = [255, 251, 235] as const;
+  const WGT    = [180, 83, 9] as const;
 
-  doc.setTextColor(...AC); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-  doc.text(report.reportType.toUpperCase(), W - M, 18, { align: 'right' });
-
-  doc.setTextColor(...T3); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   const dateStr = new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' });
-  doc.text(`Generated: ${dateStr}`, W - M, 26, { align: 'right' });
 
-  y = 52;
+  // ── HEADER — cream background, Ink Black typography ──
+  doc.setFillColor(...CREAM); doc.rect(0, 0, W, 52, 'F');
+  // Signal Orange left stripe
+  doc.setFillColor(...ORANGE); doc.rect(0, 0, 4, 52, 'F');
+  // bottom border line
+  doc.setDrawColor(...DUST); doc.setLineWidth(0.4);
+  doc.line(0, 52, W, 52);
+  doc.setLineWidth(0.2);
 
-  // ── Client bar ──
-  doc.setFillColor(...G2); doc.rect(M, y, CW, 16, 'F');
-  doc.setTextColor(...T3); doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-  doc.text('PREPARED FOR', M + 5, y + 6);
-  doc.setTextColor(232, 245, 234); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-  doc.text(report.clientName || 'Client', M + 5, y + 13);
-  doc.setTextColor(...T3); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.text(report.subtitle, W - M, y + 13, { align: 'right' });
+  // Eyebrow — "BILL MORRISONS FINANCIAL CONSULTING · MALAYSIA"
+  doc.setFillColor(...ORANGE); doc.circle(M + 5, 12, 1.2, 'F');
+  doc.setTextColor(...SLATE); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+  doc.setCharSpace(0.6);
+  doc.text('BILL MORRISONS FINANCIAL CONSULTING  ·  MALAYSIA', M + 9, 12.8);
+  doc.setCharSpace(0);
 
-  y += 24;
+  // Brand name
+  doc.setTextColor(...INK); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+  doc.text('Bill Morrisons', M + 4, 28);
 
-  // ── Sections ──
+  // Report type pill — ink black bg, cream text (right side)
+  const rLabel = report.reportType.toUpperCase();
+  const rLabelW = doc.getTextWidth(rLabel) + 14;
+  const rX = W - M - rLabelW;
+  doc.setFillColor(...INK);
+  doc.roundedRect(rX, 18, rLabelW, 9, 2, 2, 'F');
+  doc.setTextColor(...CREAM); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+  doc.setCharSpace(0.3);
+  doc.text(rLabel, rX + rLabelW / 2, 24, { align: 'center' });
+  doc.setCharSpace(0);
+
+  // Date
+  doc.setTextColor(...SLATE); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${dateStr}`, W - M, 32, { align: 'right' });
+
+  y = 60;
+
+  // ── CLIENT BAR — lifted cream ──
+  doc.setFillColor(...LIFTED); doc.rect(M, y, CW, 18, 'F');
+  doc.setDrawColor(...DUST); doc.setLineWidth(0.3);
+  doc.rect(M, y, CW, 18, 'S');
+  doc.setLineWidth(0.2);
+  // left accent dot
+  doc.setFillColor(...ORANGE2); doc.rect(M, y, 3, 18, 'F');
+
+  doc.setTextColor(...SLATE); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+  doc.setCharSpace(0.5);
+  doc.text('PREPARED FOR', M + 8, y + 7);
+  doc.setCharSpace(0);
+  doc.setTextColor(...INK); doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+  doc.text(report.clientName || 'Client', M + 8, y + 14.5);
+  doc.setTextColor(...SLATE); doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+  doc.text(report.subtitle, W - M - 4, y + 14.5, { align: 'right' });
+
+  y += 26;
+
+  // ── SECTIONS ──
   const addSection = (section: PDFSection) => {
-    // section header
-    doc.setFillColor(228, 245, 230); doc.rect(M, y, CW, 9, 'F');
-    doc.setFillColor(...AC); doc.rect(M, y, 3, 9, 'F');
-    doc.setTextColor(...T2); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
-    doc.text(section.title.toUpperCase(), M + 7, y + 6.3);
-    y += 9;
+    if (y > 250) { doc.addPage(); y = 20; }
 
-    // rows
+    // Section header — cream bg, orange accent bar, INK text
+    doc.setFillColor(...CREAM); doc.rect(M, y, CW, 10, 'F');
+    doc.setFillColor(...ORANGE2); doc.rect(M, y, 3, 10, 'F');
+    doc.setTextColor(...CHAR); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.setCharSpace(0.5);
+    doc.text(section.title.toUpperCase(), M + 8, y + 7);
+    doc.setCharSpace(0);
+    y += 10;
+
     section.rows.forEach((row, i) => {
-      const rowH = 8;
+      const rowH = 8.5;
       if (row.highlight === 'positive') {
         doc.setFillColor(...PGBG);
       } else if (row.highlight === 'negative') {
         doc.setFillColor(...RGBG);
-      } else if (i % 2 === 1) {
-        doc.setFillColor(...ALT);
+      } else if (i % 2 === 0) {
+        doc.setFillColor(...LIFTED);
       } else {
-        doc.setFillColor(...WH);
+        doc.setFillColor(...BONE);
       }
       doc.rect(M, y, CW, rowH, 'F');
 
-      // border line
-      doc.setDrawColor(220, 235, 222);
+      doc.setDrawColor(...DUST); doc.setLineWidth(0.2);
       doc.line(M, y + rowH, M + CW, y + rowH);
 
       if (row.highlight === 'positive') {
@@ -145,64 +185,68 @@ async function downloadPDF(report: PDFReport) {
       } else if (row.highlight === 'negative') {
         doc.setTextColor(...RGT);
       } else {
-        doc.setTextColor(...T2);
+        doc.setTextColor(...CHAR);
       }
-      doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
-      doc.text(row.label, M + 5, y + 5.5);
-
-      if (row.highlight) {
-        doc.setFont('helvetica', 'bold');
-      }
-      doc.text(row.value, W - M - 5, y + 5.5, { align: 'right' });
+      doc.setFontSize(8.5); doc.setFont('helvetica', row.highlight ? 'bold' : 'normal');
+      doc.text(row.label, M + 6, y + 5.8);
+      doc.setFont('helvetica', row.highlight ? 'bold' : 'normal');
+      doc.text(row.value, W - M - 5, y + 5.8, { align: 'right' });
 
       y += rowH;
     });
 
-    y += 7;
+    y += 8;
   };
 
-  report.sections.forEach(s => {
-    if (y > 240) { doc.addPage(); y = 20; }
-    addSection(s);
-  });
+  report.sections.forEach(s => { addSection(s); });
 
-  // ── Summary box ──
-  if (y > 230) { doc.addPage(); y = 20; }
+  // ── SUMMARY BOX ──
+  if (y > 235) { doc.addPage(); y = 20; }
 
   const { status, headline, detail } = report.summary;
-  const sbg: [number, number, number] = status === 'positive' ? [240, 253, 244] : status === 'negative' ? [254, 242, 242] : [255, 251, 235];
-  const sfc: [number, number, number] = status === 'positive' ? [21, 128, 61]   : status === 'negative' ? [185, 28, 28]   : [180, 83, 9];
-  const sbd: [number, number, number] = status === 'positive' ? [134, 239, 172] : status === 'negative' ? [252, 165, 165] : [253, 211, 77];
+  const sbg: [number, number, number] = [...(status === 'positive' ? PGBG : status === 'negative' ? RGBG : WGBG)] as [number, number, number];
+  const sfc: [number, number, number] = [...(status === 'positive' ? PGT  : status === 'negative' ? RGT  : WGT )] as [number, number, number];
+  const sbl: [number, number, number] = status === 'positive' ? [134, 239, 172] : status === 'negative' ? [252, 165, 165] : [253, 211, 77];
 
-  doc.setFillColor(...sbg); doc.rect(M, y, CW, 22, 'F');
-  doc.setDrawColor(...sbd); doc.setLineWidth(0.5); doc.rect(M, y, CW, 22, 'S'); doc.setLineWidth(0.2);
-  doc.setFillColor(...sfc); doc.rect(M, y, 4, 22, 'F');
+  doc.setFillColor(...sbg); doc.rect(M, y, CW, 24, 'F');
+  doc.setDrawColor(...sbl); doc.setLineWidth(0.5); doc.rect(M, y, CW, 24, 'S'); doc.setLineWidth(0.2);
+  doc.setFillColor(...sfc); doc.rect(M, y, 4, 24, 'F');
 
-  doc.setTextColor(...sfc); doc.setFontSize(9.5); doc.setFont('helvetica', 'bold');
-  doc.text(headline, M + 9, y + 9);
+  doc.setTextColor(...sfc); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text(headline, M + 9, y + 9.5);
   doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
-  doc.text(detail, M + 9, y + 17);
+  doc.setTextColor(...CHAR);
+  doc.text(detail, M + 9, y + 18);
 
-  y += 30;
+  y += 32;
 
-  // ── Assumptions ──
+  // ── ASSUMPTIONS ──
   if (report.assumptions) {
-    doc.setFillColor(245, 250, 246); doc.rect(M, y, CW, 14, 'F');
-    doc.setTextColor(...T3); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
-    doc.text('ASSUMPTIONS', M + 5, y + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.text(report.assumptions, M + 5, y + 12);
-    y += 20;
+    if (y > 260) { doc.addPage(); y = 20; }
+    doc.setFillColor(...CREAM); doc.rect(M, y, CW, 15, 'F');
+    doc.setDrawColor(...DUST); doc.setLineWidth(0.3);
+    doc.rect(M, y, CW, 15, 'S');
+    doc.setLineWidth(0.2);
+    doc.setFillColor(...ORANGE); doc.rect(M, y, 3, 15, 'F');
+
+    doc.setTextColor(...SLATE); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+    doc.setCharSpace(0.5);
+    doc.text('ASSUMPTIONS', M + 8, y + 7);
+    doc.setCharSpace(0);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    doc.setTextColor(...CHAR);
+    doc.text(report.assumptions, M + 8, y + 12.5);
   }
 
-  // ── Footer ──
+  // ── FOOTER — Ink Black band ──
   const pageCount = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
   for (let p = 1; p <= pageCount; p++) {
     doc.setPage(p);
-    doc.setFillColor(245, 248, 245); doc.rect(0, 283, W, 14, 'F');
-    doc.setTextColor(...T3); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-    doc.text('This report is prepared by Bill Morrisons Financial Consulting for advisory purposes only. It is not financial advice.', M, 289);
-    doc.text(`Page ${p} of ${pageCount}`, W - M, 289, { align: 'right' });
+    doc.setFillColor(...INK); doc.rect(0, 282, W, 15, 'F');
+    doc.setTextColor(...DUST); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.text('This report is prepared by Bill Morrisons Financial Consulting for advisory purposes only. Not financial advice.', M, 288);
+    doc.setTextColor(...CREAM); doc.setFontSize(7);
+    doc.text(`Page ${p} of ${pageCount}`, W - M, 288, { align: 'right' });
   }
 
   const safeName = (report.clientName || 'client').replace(/\s+/g, '-').toLowerCase();
