@@ -27,6 +27,7 @@ export default function AIPage() {
   const [selectedClient, setSelectedClient] = useState<ClientData | null>(null);
   const [promptTrigger, setPromptTrigger] = useState<{ text: string; seq: number } | null>(null);
   const [seq, setSeq] = useState(0);
+  const [clientSearch, setClientSearch] = useState('');
 
   useEffect(() => {
     const stored = sessionStorage.getItem('aiPreloadPrompt');
@@ -83,40 +84,117 @@ export default function AIPage() {
               Client Quick Select
             </div>
             {selectedClient && (
-              <button onClick={() => setSelectedClient(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 11, cursor: 'pointer', padding: '2px 6px' }}>✕ clear</button>
+              <button
+                onClick={() => { setSelectedClient(null); setClientSearch(''); }}
+                style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 11, cursor: 'pointer', padding: '2px 6px' }}
+              >✕ clear</button>
             )}
           </div>
-          <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+
+          {/* Search input */}
+          <div style={{ padding: '8px 12px 4px' }}>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--text3)', pointerEvents: 'none' }}>🔍</span>
+              <input
+                type="text"
+                placeholder="Search client name…"
+                value={clientSearch}
+                onChange={e => setClientSearch(e.target.value)}
+                style={{
+                  width: '100%', padding: '7px 10px 7px 32px',
+                  borderRadius: 'var(--r-pill)',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg2)', color: 'var(--text)',
+                  fontSize: 12, fontFamily: 'var(--font-sans)', outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {clientSearch && (
+                <button
+                  onClick={() => setClientSearch('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, lineHeight: 1, padding: 2 }}
+                >✕</button>
+              )}
+            </div>
+
+            {/* Result count */}
+            {clients.length > 0 && (
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 5, paddingLeft: 2 }}>
+                {(() => {
+                  const q = clientSearch.toLowerCase();
+                  const matched = q ? clients.filter(c => c.name.toLowerCase().includes(q)) : clients;
+                  return selectedClient
+                    ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>✓ {selectedClient.name} selected</span>
+                    : <span>{matched.length} client{matched.length !== 1 ? 's' : ''}{q ? ` matching "${clientSearch}"` : ''}</span>;
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Client list */}
+          <div style={{ padding: '4px 12px 10px', display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 260, overflowY: 'auto' }}>
             {clients.length === 0 && (
               <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 4px' }}>Loading clients…</div>
             )}
-            {clients.map(c => {
-              const isSelected = selectedClient?.id === c.id;
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => {
-                    setSelectedClient(c);
-                    firePrompt(`Give me a full profile summary of ${c.name} — their portfolio, risk profile, goals, and top 3 action items for our next meeting.`);
-                  }}
-                  onMouseOver={e => !isSelected && (e.currentTarget.style.background = 'var(--accent-dim)')}
-                  onMouseOut={e => !isSelected && (e.currentTarget.style.background = 'var(--surface2)')}
-                  style={{
-                    padding: '9px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
-                    background: isSelected ? 'var(--accent-dim)' : 'var(--surface2)',
-                    border: isSelected ? '1px solid rgba(74,222,128,0.4)' : '1px solid transparent',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text)' }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {c.segment && <span>{c.segment}</span>}
-                    {c.risk && <span>· {c.risk}</span>}
-                    {c.aum > 0 && <span style={{ fontFamily: 'var(--font-mono)' }}>· RM {(c.aum / 1000).toFixed(0)}K AUM</span>}
+            {(() => {
+              const q = clientSearch.toLowerCase();
+              const filtered = q ? clients.filter(c => c.name.toLowerCase().includes(q)) : clients;
+
+              if (filtered.length === 0) {
+                return (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', padding: '12px 4px', textAlign: 'center' }}>
+                    No clients match &ldquo;{clientSearch}&rdquo;
                   </div>
-                </div>
-              );
-            })}
+                );
+              }
+
+              return filtered.map(c => {
+                const isSelected = selectedClient?.id === c.id;
+                // Highlight matched characters in name
+                const nameDisplay = (() => {
+                  if (!q) return <span>{c.name}</span>;
+                  const idx = c.name.toLowerCase().indexOf(q);
+                  if (idx === -1) return <span>{c.name}</span>;
+                  return (
+                    <span>
+                      {c.name.slice(0, idx)}
+                      <mark style={{ background: 'rgba(74,222,128,0.25)', color: 'var(--accent)', borderRadius: 2, padding: '0 1px' }}>
+                        {c.name.slice(idx, idx + q.length)}
+                      </mark>
+                      {c.name.slice(idx + q.length)}
+                    </span>
+                  );
+                })();
+
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => {
+                      setSelectedClient(c);
+                      setClientSearch('');
+                      firePrompt(`Give me a full profile summary of ${c.name} — their portfolio, risk profile, goals, and top 3 action items for our next meeting.`);
+                    }}
+                    onMouseOver={e => !isSelected && (e.currentTarget.style.background = 'var(--accent-dim)')}
+                    onMouseOut={e => !isSelected && (e.currentTarget.style.background = isSelected ? 'var(--accent-dim)' : 'var(--surface2)')}
+                    style={{
+                      padding: '9px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                      background: isSelected ? 'var(--accent-dim)' : 'var(--surface2)',
+                      border: isSelected ? '1px solid rgba(74,222,128,0.4)' : '1px solid transparent',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text)' }}>
+                      {nameDisplay}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {c.segment && <span>{c.segment}</span>}
+                      {c.risk    && <span>· {c.risk}</span>}
+                      {c.aum > 0 && <span style={{ fontFamily: 'var(--font-mono)' }}>· RM {(c.aum / 1000).toFixed(0)}K AUM</span>}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
 
