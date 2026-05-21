@@ -215,19 +215,26 @@ export default function InsurancePage() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [clients,  setClients]  = useState<ClientData[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [filterClient, setFilter] = useState('All');
   const [activeView, setView]   = useState<'policies' | 'gaps'>('policies');
   const [search, setSearch]     = useState('');
 
-  useEffect(() => {
+  const loadData = () => {
+    setLoading(true);
+    setLoadError('');
     Promise.all([
       fetch('/api/notion?type=insurance', { cache: 'no-store' }).then(r => r.json()),
       fetch('/api/notion?type=clients',   { cache: 'no-store' }).then(r => r.json()),
     ]).then(([ins, cli]) => {
       if (ins.data) setPolicies(ins.data);
+      else if (ins.error) setLoadError(ins.error);
       if (cli.data) setClients(cli.data);
-    }).finally(() => setLoading(false));
-  }, []);
+    }).catch(e => setLoadError(e.message ?? 'Failed to load'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadData(); }, []);
 
   const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
   const visible = filterClient === 'All' ? policies : policies.filter(p => p.clientName === filterClient);
@@ -344,8 +351,21 @@ export default function InsurancePage() {
         )}
       </div>
 
-      {/* ── Empty / loading ── */}
-      {loading && <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading from Notion…</div>}
+      {/* ── Empty / loading / error ── */}
+      {loading && (
+        <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>
+          <div style={{ fontSize: 13 }}>Loading from Notion…</div>
+          <div style={{ fontSize: 11, marginTop: 8, color: 'var(--text3)' }}>This may take a few seconds</div>
+        </div>
+      )}
+      {!loading && loadError && (
+        <div className="section" style={{ padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>⚠️ {loadError}</div>
+          <button onClick={loadData} style={{ padding: '8px 20px', borderRadius: 'var(--r-pill)', background: 'var(--accent2)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            🔄 Retry
+          </button>
+        </div>
+      )}
       {!loading && policies.length === 0 && (
         <div className="section" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🛡️</div>
