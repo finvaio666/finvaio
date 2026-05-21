@@ -66,7 +66,14 @@ export default function DashboardPage() {
                 Loading from Notion…
               </div>
             ) : clients.map(client => (
-              <div key={client.id} className="client-row">
+              <div
+                key={client.id}
+                className="client-row"
+                onClick={() => {
+                  sessionStorage.setItem('aiPreloadPrompt', `Give me a full profile summary of ${client.name} — their portfolio, risk profile, goals, and top 3 action items for our next meeting.`);
+                  router.push('/ai');
+                }}
+              >
                 <div className="client-name-cell">
                   <div className="client-avatar">{initials(client.name)}</div>
                   <div>
