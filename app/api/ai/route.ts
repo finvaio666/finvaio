@@ -68,10 +68,13 @@ async function buildClientContext(clientName: string): Promise<string> {
   const status  = cp['Status']?.type === 'select'                ? cp['Status'].select?.name ?? ''                     : '';
 
   // ── 2. Fetch portfolio for this client ─────────────────────────────────────
-  const portfolioRes = await notion.databases.query({
-    database_id: DB.portfolio,
-    filter: { property: '👥 Clients', relation: { contains: clientPage.id } },
-  });
+  let portfolioRes: Awaited<ReturnType<typeof notion.databases.query>> = { results: [], next_cursor: null, has_more: false, object: 'list', type: 'page_or_database', page_or_database: {} };
+  try {
+    portfolioRes = await notion.databases.query({
+      database_id: DB.portfolio,
+      filter: { property: '👥 Clients', relation: { contains: clientPage.id } },
+    });
+  } catch (e) { console.error('Portfolio fetch failed:', e); }
 
   const holdings = portfolioRes.results.filter(isFullPage)
     .filter(p => (p.properties['Status']?.type === 'select' ? p.properties['Status'].select?.name : '') === 'Active')
@@ -96,10 +99,13 @@ async function buildClientContext(clientName: string): Promise<string> {
   let policies: PolicyRow[] = [];
 
   if (DB.insurance) {
-    const insurRes = await notion.databases.query({
-      database_id: DB.insurance,
-      filter: { property: 'Clients', relation: { contains: clientPage.id } },
-    });
+    let insurRes: Awaited<ReturnType<typeof notion.databases.query>> = { results: [], next_cursor: null, has_more: false, object: 'list', type: 'page_or_database', page_or_database: {} };
+    try {
+      insurRes = await notion.databases.query({
+        database_id: DB.insurance,
+        filter: { property: 'Clients', relation: { contains: clientPage.id } },
+      });
+    } catch (e) { console.error('Insurance fetch failed:', e); }
     policies = insurRes.results.filter(isFullPage).map(p => {
       const pr = p.properties;
       return {
@@ -198,9 +204,14 @@ export async function POST(req: NextRequest) {
     // Build system prompt — inject live client context if a client is selected
     let systemPrompt = BASE_PROMPT;
     if (clientName && typeof clientName === 'string' && clientName.trim()) {
-      const clientContext = await buildClientContext(clientName.trim());
-      if (clientContext) {
-        systemPrompt = `${BASE_PROMPT}\n\n${clientContext}`;
+      try {
+        const clientContext = await buildClientContext(clientName.trim());
+        if (clientContext) {
+          systemPrompt = `${BASE_PROMPT}\n\n${clientContext}`;
+        }
+      } catch (notionErr) {
+        // Notion fetch failed — log but continue with generic prompt rather than killing the request
+        console.error('Notion context fetch failed:', notionErr);
       }
     }
 
@@ -222,7 +233,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ content });
   } catch (error) {
-    console.error('Gemini API error:', error);
-    return NextResponse.json({ error: 'AI service error. Check GEMINI_API_KEY.' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('AI route error:', msg);
+    return NextResponse.json({ error: `AI service error: ${msg}` }, { status: 500 });
   }
 }
