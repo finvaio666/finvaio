@@ -216,20 +216,35 @@ export async function POST(req: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      systemInstruction: systemPrompt,
-    });
 
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
-
     const lastMessage = messages[messages.length - 1];
-    const chat = model.startChat({ history });
-    const result = await chat.sendMessage(lastMessage.content);
-    const content = result.response.text();
+
+    // Try models in order — fall back automatically on 503 overload
+    const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    let content = '';
+    let lastErr: unknown;
+    for (const modelId of MODEL_FALLBACKS) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
+        const chat = model.startChat({ history });
+        const result = await chat.sendMessage(lastMessage.content);
+        content = result.response.text();
+        break; // success
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastErr = err;
+        if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
+          console.warn(`${modelId} overloaded, trying next model…`);
+          continue; // try next fallback
+        }
+        throw err; // non-503 error — re-throw immediately
+      }
+    }
+    if (!content) throw lastErr;
 
     return NextResponse.json({ content });
   } catch (error) {
