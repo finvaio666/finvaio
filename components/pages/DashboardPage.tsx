@@ -2,6 +2,7 @@
 
 import AIChat from '@/components/AIChat';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, statusClass } from '@/components/useClients';
 
 const QUICK_PROMPTS = [
@@ -13,52 +14,37 @@ const QUICK_PROMPTS = [
 
 export default function DashboardPage() {
   const { clients, loading, totalAum, activeCount, prospectCount, reviewsDue } = useClients();
+  const router = useRouter();
 
   return (
     <>
       <div className="stat-grid">
-        <Link href="/clients" style={{ textDecoration: 'none' }}>
-          <div className="stat-card green" style={{ cursor: 'pointer', transition: 'transform 0.12s, box-shadow 0.12s' }}
-            onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; }}
-            onMouseOut={e  => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}>
-            <div className="stat-icon green">👥</div>
-            <div className="stat-label">Total Clients</div>
-            <div className="stat-value">{loading ? '…' : clients.length}</div>
-            <div className="stat-sub">{activeCount} active · {prospectCount} prospects</div>
+        <div className="stat-card green" onClick={() => router.push('/clients')} style={{ cursor: 'pointer' }}>
+          <div className="stat-icon green">👥</div>
+          <div className="stat-label">Total Clients</div>
+          <div className="stat-value">{loading ? '…' : clients.length}</div>
+          <div className="stat-sub">{activeCount} active · {prospectCount} prospects</div>
+        </div>
+        <div className="stat-card gold" onClick={() => router.push('/portfolio')} style={{ cursor: 'pointer' }}>
+          <div className="stat-icon gold">💰</div>
+          <div className="stat-label">Total AUM</div>
+          <div className="stat-value">{loading ? '…' : formatAUM(totalAum)}</div>
+          <div className="stat-sub">Across all portfolios</div>
+        </div>
+        <div className="stat-card blue" onClick={() => router.push('/reviews')} style={{ cursor: 'pointer' }}>
+          <div className="stat-icon blue">📅</div>
+          <div className="stat-label">Reviews Due</div>
+          <div className="stat-value">{loading ? '…' : reviewsDue}</div>
+          <div className="stat-sub">
+            {clients[0]?.nextReview ? `Next: ${formatDate(clients[0].nextReview)}` : 'No upcoming reviews'}
           </div>
-        </Link>
-        <Link href="/portfolio" style={{ textDecoration: 'none' }}>
-          <div className="stat-card gold" style={{ cursor: 'pointer', transition: 'transform 0.12s, box-shadow 0.12s' }}
-            onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; }}
-            onMouseOut={e  => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}>
-            <div className="stat-icon gold">💰</div>
-            <div className="stat-label">Total AUM</div>
-            <div className="stat-value">{loading ? '…' : formatAUM(totalAum)}</div>
-            <div className="stat-sub">Across all portfolios</div>
-          </div>
-        </Link>
-        <Link href="/reviews" style={{ textDecoration: 'none' }}>
-          <div className="stat-card blue" style={{ cursor: 'pointer', transition: 'transform 0.12s, box-shadow 0.12s' }}
-            onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; }}
-            onMouseOut={e  => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}>
-            <div className="stat-icon blue">📅</div>
-            <div className="stat-label">Reviews Due</div>
-            <div className="stat-value">{loading ? '…' : reviewsDue}</div>
-            <div className="stat-sub">
-              {clients[0]?.nextReview ? `Next: ${formatDate(clients[0].nextReview)}` : 'No upcoming reviews'}
-            </div>
-          </div>
-        </Link>
-        <Link href="/reviews" style={{ textDecoration: 'none' }}>
-          <div className="stat-card red" style={{ cursor: 'pointer', transition: 'transform 0.12s, box-shadow 0.12s' }}
-            onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; }}
-            onMouseOut={e  => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}>
-            <div className="stat-icon red">⚠️</div>
-            <div className="stat-label">Action Items</div>
-            <div className="stat-value">3</div>
-            <div className="stat-sub">{clients[0] ? `Pending for ${clients[0].name.split(' ')[0]}` : 'No items'}</div>
-          </div>
-        </Link>
+        </div>
+        <div className="stat-card red" onClick={() => router.push('/reviews')} style={{ cursor: 'pointer' }}>
+          <div className="stat-icon red">⚠️</div>
+          <div className="stat-label">Action Items</div>
+          <div className="stat-value">3</div>
+          <div className="stat-sub">{clients[0] ? `Pending for ${clients[0].name.split(' ')[0]}` : 'No items'}</div>
+        </div>
       </div>
 
       <div className="two-col">
