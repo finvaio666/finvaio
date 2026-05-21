@@ -72,6 +72,7 @@ export default function AIPage() {
           quickPrompts={QUICK_PROMPTS}
           placeholder={selectedClient ? `Ask anything about ${selectedClient.name}…` : 'Ask anything about Bill Morrisons clients…'}
           promptTrigger={promptTrigger}
+          clientName={selectedClient?.name}
         />
       </div>
 

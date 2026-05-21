@@ -14,6 +14,8 @@ interface AIChatProps {
   placeholder?: string;
   /** Pass { text, seq } — increment seq each time you want a new message sent (even same text) */
   promptTrigger?: { text: string; seq: number } | null;
+  /** When set, the AI route fetches live Notion data for this client and injects it into the system prompt */
+  clientName?: string;
 }
 
 export default function AIChat({
@@ -22,6 +24,7 @@ export default function AIChat({
   quickPrompts = [],
   placeholder = "Ask about any client...",
   promptTrigger = null,
+  clientName,
 }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: initialMessage },
@@ -58,7 +61,7 @@ export default function AIChat({
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newHistory }),
+        body: JSON.stringify({ messages: newHistory, clientName: clientName ?? null }),
       });
       const data = await res.json();
       const reply = data.content || data.error || 'Unable to get a response.';
