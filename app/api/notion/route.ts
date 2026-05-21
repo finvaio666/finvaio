@@ -78,9 +78,12 @@ export async function GET(req: NextRequest) {
         const clientName   = clientRelIds.map(id => clientMap[id] ?? '').filter(Boolean).join(', ');
         const clientId     = clientRelIds[0] ?? '';
 
+        const units = p['Units']?.type === 'number' ? p['Units'].number ?? 0 : 0;
+
         return {
           id:          page.id,
           clientId,
+          units,
           name:        p['Holding Name']?.type === 'title'     ? p['Holding Name'].title[0]?.plain_text ?? ''        : '',
           clientName,
           assetClass:  p['Asset class']?.type === 'select'     ? p['Asset class'].select?.name ?? ''                 : '',

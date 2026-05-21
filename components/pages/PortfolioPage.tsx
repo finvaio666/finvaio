@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PortfolioSwitchPanel from '@/components/PortfolioSwitchPanel';
+import NavUpdatePanel from '@/components/NavUpdatePanel';
 
 interface Holding {
   id: string;
@@ -41,6 +42,7 @@ export default function PortfolioPage() {
   const [loading,      setLoading]     = useState(true);
   const [activeTab,    setTab]         = useState('All');
   const [showSwitch,   setShowSwitch]  = useState(false);
+  const [showNav,      setShowNav]     = useState(false);
 
   const loadHoldings = () => {
     setLoading(true);
@@ -126,6 +128,14 @@ export default function PortfolioPage() {
         />
       )}
 
+      {/* ── NAV update panel ── */}
+      {showNav && (
+        <NavUpdatePanel
+          onClose={() => setShowNav(false)}
+          onSuccess={() => { setShowNav(false); loadHoldings(); }}
+        />
+      )}
+
       {/* ── Client filter ── */}
       {!loading && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -186,19 +196,36 @@ export default function PortfolioPage() {
             }}>✕ Clear</button>
           )}
 
-          {/* Switch button */}
-          <button onClick={() => setShowSwitch(true)} style={{
-            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
-            padding: '9px 18px', borderRadius: 'var(--r-pill)',
-            background: 'var(--accent2)', border: 'none',
-            color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
-          }}
-            onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
-            onMouseOut={e => (e.currentTarget.style.opacity = '1')}
-          >
-            🔄 Switch / Redeem
-          </button>
+          {/* Action buttons — right-aligned */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            {/* Update NAV button */}
+            <button onClick={() => setShowNav(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '9px 18px', borderRadius: 'var(--r-pill)',
+              background: 'var(--surface)', border: '1.5px solid var(--accent2)',
+              color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)', transition: 'opacity 0.15s',
+            }}
+              onMouseOver={e => (e.currentTarget.style.opacity = '0.8')}
+              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
+            >
+              📊 Update NAV
+            </button>
+
+            {/* Switch / Redeem button */}
+            <button onClick={() => setShowSwitch(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '9px 18px', borderRadius: 'var(--r-pill)',
+              background: 'var(--accent2)', border: 'none',
+              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
+            }}
+              onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
+            >
+              🔄 Switch / Redeem
+            </button>
+          </div>
         </div>
       )}
 
