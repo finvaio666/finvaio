@@ -15,13 +15,13 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bill Morrisons — Consultant Dashboard",
-  description: "Financial consulting dashboard for Bill Morrisons",
+  title: "ARIA — Advisor Resource & Intelligence Assistant",
+  description: "ARIA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Bill Morrisons",
+    title: "ARIA",
   },
 };
 

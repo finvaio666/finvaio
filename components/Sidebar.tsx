@@ -44,8 +44,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <div className={`sidebar-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          <div className="logo-mark">Bill<br />Morrisons</div>
-          <div className="logo-sub">Financial Consulting</div>
+          <div className="logo-mark">ARIA</div>
+          <div className="logo-sub" style={{ lineHeight: 1.5 }}>
+            Advisor Resource &amp; Intelligence Assistant
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6, opacity: 0.7, letterSpacing: '0.04em' }}>
+            Bill Morrisons Financial Consulting
+          </div>
         </div>
 
         <nav className="nav">
