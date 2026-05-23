@@ -60,7 +60,7 @@ export default function LoginPage() {
             Advisor Resource &amp; Intelligence Assistant
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, opacity: 0.7 }}>
-            Sky Siew Financial Consulting
+            Bill Morrisons Financial Consulting
           </div>
 
           {/* Orange accent line */}
@@ -176,7 +176,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'var(--text3)' }}>
-          Protected by ARIA · Sky Siew Financial Consulting
+          Protected by ARIA · Bill Morrisons Financial Consulting
         </div>
       </div>
     </div>

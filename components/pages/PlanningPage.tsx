@@ -244,7 +244,7 @@ async function downloadPDF(report: PDFReport) {
     doc.setPage(p);
     doc.setFillColor(...INK); doc.rect(0, 282, W, 15, 'F');
     doc.setTextColor(...DUST); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-    doc.text('This report is prepared by Sky Siew Financial Consulting for advisory purposes only. Not financial advice.', M, 288);
+    doc.text('This report is prepared by Bill Morrisons Financial Consulting for advisory purposes only. Not financial advice.', M, 288);
     doc.setTextColor(...CREAM); doc.setFontSize(7);
     doc.text(`Page ${p} of ${pageCount}`, W - M, 288, { align: 'right' });
   }

@@ -56,7 +56,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             Advisor Resource &amp; Intelligence Assistant
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6, opacity: 0.7, letterSpacing: '0.04em' }}>
-            Sky Siew Financial Consulting
+            Bill Morrisons Financial Consulting
           </div>
         </div>
 

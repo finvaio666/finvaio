@@ -8,28 +8,28 @@ const TEMPLATES = [
     name: 'KYC Onboarding Form',
     desc: '7-section client intake form — personal details, income, goals, risk profile, assets, insurance, investment experience. PDPA-compliant.',
     action: 'Generate fresh form →',
-    prompt: 'Generate a fresh KYC onboarding form for a new Malaysian financial consulting client at Sky Siew. Include all 7 sections.',
+    prompt: 'Generate a fresh KYC onboarding form for a new Malaysian financial consulting client at Bill Morrisons. Include all 7 sections.',
   },
   {
     icon: '📝',
     name: 'Meeting Notes Template',
     desc: 'Structured agenda, discussion summary, key decisions, and action items for both client and consultant.',
     action: 'Generate for today →',
-    prompt: 'Generate a meeting notes template for a Sky Siew client meeting today. Include agenda, discussion summary, key decisions, action items for client and consultant, and next review date.',
+    prompt: 'Generate a meeting notes template for a Bill Morrisons client meeting today. Include agenda, discussion summary, key decisions, action items for client and consultant, and next review date.',
   },
   {
     icon: '📊',
     name: 'Financial Plan Template',
     desc: '7-section professional plan — gap analysis, EPF optimisation, unit trust allocation, tax planning, 30/60/90 day action plan.',
     action: 'Generate plan →',
-    prompt: 'Generate a complete financial plan template for a Sky Siew client. Include executive summary, client profile, current financial position, gap analysis, EPF and unit trust recommendations, 30/60/90 day action plan, and review schedule.',
+    prompt: 'Generate a complete financial plan template for a Bill Morrisons client. Include executive summary, client profile, current financial position, gap analysis, EPF and unit trust recommendations, 30/60/90 day action plan, and review schedule.',
   },
   {
     icon: '✉️',
     name: 'Post-Meeting Follow-Up',
     desc: 'Professional email + short WhatsApp version. Warm Malaysian tone with action items, decisions, and next meeting date.',
     action: 'Generate for Ahmad Rizal →',
-    prompt: 'Generate a professional post-meeting follow-up email and WhatsApp message for Ahmad Rizal bin Abdullah at Sky Siew. Meeting date today. Discussed portfolio review, FD maturity plan, insurance gap. Action items: client to send EPF statement, Sky Siew to prepare insurance recommendations. Next meeting August 16 2026.',
+    prompt: 'Generate a professional post-meeting follow-up email and WhatsApp message for Ahmad Rizal bin Abdullah at Bill Morrisons. Meeting date today. Discussed portfolio review, FD maturity plan, insurance gap. Action items: client to send EPF statement, Bill Morrisons to prepare insurance recommendations. Next meeting August 16 2026.',
   },
 ];
 
@@ -47,7 +47,7 @@ export default function TemplatesPage() {
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--gold)' }} />
-            Template Library — Sky Siew
+            Template Library — Bill Morrisons
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>4 templates ready</div>
         </div>
