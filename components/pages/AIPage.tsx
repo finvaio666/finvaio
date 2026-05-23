@@ -79,7 +79,7 @@ export default function AIPage() {
     { label: '📋 Client briefing',   prompt: clientPrompt('Generate a concise pre-meeting briefing for [CLIENT]. Cover: quick client snapshot, portfolio performance, top 3 things to discuss, key questions to ask, red flags or opportunities.', selectedClient?.name ?? '') },
     { label: '📊 Retirement check',  prompt: clientPrompt('Full retirement projection for [CLIENT] — pull their portfolio, EPF, income, and goals from Notion and calculate expected surplus or gap.', selectedClient?.name ?? '') },
     { label: '✉️ Follow-up email',   prompt: clientPrompt('Draft a professional post-meeting follow-up email for [CLIENT] — warm opening, portfolio review topics, agreed actions, and next review date.', selectedClient?.name ?? '') },
-    { label: '📰 Market digest',     prompt: "Generate this week's Malaysian financial market digest for Bill Morrisons team — BNM OPR, Bursa KLCI, MYR vs USD/SGD, EPF updates, one key investor insight." },
+    { label: '📰 Market digest',     prompt: "Generate this week's Malaysian financial market digest for Sky Siew team — BNM OPR, Bursa KLCI, MYR vs USD/SGD, EPF updates, one key investor insight." },
     { label: '💡 Strategy ideas',    prompt: clientPrompt('What are 5 ways [CLIENT] can improve their financial position based on their current portfolio and risk profile?', selectedClient?.name ?? '') },
     { label: '💬 WhatsApp draft',    prompt: clientPrompt('Draft a WhatsApp message to [CLIENT] reminding them of their upcoming portfolio review — warm and professional.', selectedClient?.name ?? '') },
   ];

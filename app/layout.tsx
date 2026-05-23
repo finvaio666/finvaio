@@ -16,7 +16,7 @@ const dmMono = DM_Mono({
 
 export const metadata: Metadata = {
   title: "ARIA — Advisor Resource & Intelligence Assistant",
-  description: "ARIA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
+  description: "ARIA — AI-powered financial advisory platform by Sky Siew Financial Consulting",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

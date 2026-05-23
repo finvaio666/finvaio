@@ -56,7 +56,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             Advisor Resource &amp; Intelligence Assistant
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6, opacity: 0.7, letterSpacing: '0.04em' }}>
-            Bill Morrisons Financial Consulting
+            Sky Siew Financial Consulting
           </div>
         </div>
 
@@ -81,9 +81,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <div className="sidebar-footer">
           <div className="consultant-badge">
-            <div className="avatar">BM</div>
+            <div className="avatar">SS</div>
             <div style={{ flex: 1 }}>
-              <div className="consultant-name">Bill Morrisons</div>
+              <div className="consultant-name">Sky Siew</div>
               <div className="consultant-role">Senior Consultant</div>
             </div>
           </div>

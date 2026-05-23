@@ -24,7 +24,7 @@ export default function KnowledgePage() {
       <div className="section-header">
         <div className="section-title">
           <span className="section-dot" style={{ background: 'var(--blue)' }} />
-          Knowledge Base — Bill Morrisons
+          Knowledge Base — Sky Siew
         </div>
         <button className="section-action" onClick={() => askAI("Generate this week's Malaysian financial market digest — BNM OPR, Bursa, MYR performance, EPF updates, and one key insight for retail investors")}>
           Generate Market Digest

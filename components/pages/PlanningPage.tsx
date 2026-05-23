@@ -113,7 +113,7 @@ async function downloadPDF(report: PDFReport) {
 
   // Brand name
   doc.setTextColor(...INK); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
-  doc.text('Bill Morrisons', M + 4, 28);
+  doc.text('Sky Siew', M + 4, 28);
 
   // Report type pill — ink black bg, cream text (right side)
   const rLabel = report.reportType.toUpperCase();
@@ -244,7 +244,7 @@ async function downloadPDF(report: PDFReport) {
     doc.setPage(p);
     doc.setFillColor(...INK); doc.rect(0, 282, W, 15, 'F');
     doc.setTextColor(...DUST); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-    doc.text('This report is prepared by Bill Morrisons Financial Consulting for advisory purposes only. Not financial advice.', M, 288);
+    doc.text('This report is prepared by Sky Siew Financial Consulting for advisory purposes only. Not financial advice.', M, 288);
     doc.setTextColor(...CREAM); doc.setFontSize(7);
     doc.text(`Page ${p} of ${pageCount}`, W - M, 288, { align: 'right' });
   }
