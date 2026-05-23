@@ -40,7 +40,7 @@ const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).m
 export default function PortfolioPage() {
   const [holdings,     setHoldings]    = useState<Holding[]>([]);
   const [loading,      setLoading]     = useState(true);
-  const [activeTab,    setTab]         = useState('All');
+  const [activeTab,    setTab]         = useState<string | null>(null);
   const [showSwitch,   setShowSwitch]  = useState(false);
   const [showNav,      setShowNav]     = useState(false);
 
@@ -55,25 +55,101 @@ export default function PortfolioPage() {
   useEffect(() => { loadHoldings(); }, []);
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
-  const tabs = ['All', ...clientNames];
 
-  const visible = activeTab === 'All' ? holdings : holdings.filter(h => h.clientName === activeTab);
+  const visible = activeTab === null ? [] : activeTab === 'All'
+    ? holdings
+    : holdings.filter(h => h.clientName === activeTab);
 
   const totalValue    = visible.reduce((s, h) => s + h.value, 0);
   const totalPurchase = visible.reduce((s, h) => s + h.purchase, 0);
   const totalGain     = totalValue - totalPurchase;
   const avgReturn     = totalPurchase > 0 ? ((totalGain / totalPurchase) * 100).toFixed(1) : '0.0';
-  const foreignCount  = holdings.filter(h => h.currency && h.currency !== 'MYR').length;
-  const currencies    = [...new Set(holdings.map(h => h.currency || 'MYR'))];
+  const foreignCount  = visible.filter(h => h.currency && h.currency !== 'MYR').length;
+  const currencies    = [...new Set(visible.map(h => h.currency || 'MYR'))];
 
-  // For "All" view — group rows by client for visual separation
+  // Group rows by client for visual separation
   const grouped: { client: string; rows: Holding[] }[] = activeTab === 'All'
     ? clientNames.map(c => ({ client: c, rows: holdings.filter(h => h.clientName === c) }))
-    : [{ client: activeTab, rows: visible }];
+    : activeTab ? [{ client: activeTab, rows: visible }] : [];
 
   return (
     <>
-      {/* ── Stat cards ── */}
+      {/* ── Client selector ── always visible at top ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <div style={{ position: 'relative' }}>
+          <select
+            value={activeTab ?? ''}
+            onChange={e => setTab(e.target.value || null)}
+            style={{
+              padding: '10px 36px 10px 18px', borderRadius: 'var(--r-pill)',
+              border: `1.5px solid ${activeTab ? 'var(--accent2)' : 'var(--border)'}`,
+              background: 'var(--surface)', color: activeTab ? 'var(--text)' : 'var(--text3)',
+              fontSize: 14, fontFamily: 'var(--font-sans)', fontWeight: 600,
+              cursor: 'pointer', outline: 'none', appearance: 'none',
+              boxShadow: 'var(--shadow-sm)', minWidth: 220,
+            }}
+          >
+            <option value=''>— Select a client —</option>
+            <option value='All'>All Clients</option>
+            {clientNames.map(name => (
+              <option key={name} value={name}>
+                {name} ({holdings.filter(h => h.clientName === name).length} holdings)
+              </option>
+            ))}
+          </select>
+          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+        </div>
+
+        {activeTab && (
+          <button onClick={() => setTab(null)} style={{
+            padding: '8px 16px', borderRadius: 'var(--r-pill)',
+            background: 'var(--surface2)', border: '1px solid var(--border)',
+            color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>✕ Clear</button>
+        )}
+
+        {/* Action buttons — right-aligned, shown only when client selected */}
+        {activeTab && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={() => setShowNav(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '9px 18px', borderRadius: 'var(--r-pill)',
+              background: 'var(--surface)', border: '1.5px solid var(--accent2)',
+              color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)', transition: 'opacity 0.15s',
+            }}
+              onMouseOver={e => (e.currentTarget.style.opacity = '0.8')}
+              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
+            >
+              📊 Update NAV
+            </button>
+            <button onClick={() => setShowSwitch(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '9px 18px', borderRadius: 'var(--r-pill)',
+              background: 'var(--accent2)', border: 'none',
+              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
+            }}
+              onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
+            >
+              🔄 Switch / Redeem
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Empty state — no client selected ── */}
+      {!activeTab && (
+        <div className="section" style={{ padding: '64px 32px', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>📈</div>
+          <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>Select a client to view their portfolio</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>Choose a client from the dropdown above to see their holdings, gains, and asset allocation.</div>
+        </div>
+      )}
+
+      {/* ── Stat cards — only when client selected ── */}
+      {activeTab && (
       <div className="stat-grid">
         <div className="stat-card green">
           <div className="stat-icon green">📈</div>
@@ -90,10 +166,10 @@ export default function PortfolioPage() {
           <div className="stat-sub">{Number(avgReturn) >= 0 ? '+' : ''}{avgReturn}% avg return</div>
         </div>
         <div className="stat-card blue">
-          <div className="stat-icon blue">👥</div>
-          <div className="stat-label">Clients</div>
-          <div className="stat-value">{loading ? '…' : clientNames.length}</div>
-          <div className="stat-sub">{holdings.length} holdings total</div>
+          <div className="stat-icon blue">📦</div>
+          <div className="stat-label">Holdings</div>
+          <div className="stat-value">{loading ? '…' : visible.length}</div>
+          <div className="stat-sub">{activeTab === 'All' ? `${clientNames.length} clients` : 'Active holdings'}</div>
         </div>
         <div className="stat-card red">
           <div className="stat-icon red">🌐</div>
@@ -102,9 +178,10 @@ export default function PortfolioPage() {
           <div className="stat-sub">{foreignCount > 0 ? `${currencies.filter(c => c !== 'MYR').join(', ')}` : 'All MYR'}</div>
         </div>
       </div>
+      )}
 
       {/* ── FX bar ── */}
-      {!loading && foreignCount > 0 && (
+      {activeTab && !loading && foreignCount > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {holdings.filter(h => h.currency && h.currency !== 'MYR' && h.fxRate > 0)
             .filter((h, i, arr) => arr.findIndex(x => x.currency === h.currency) === i)
@@ -119,7 +196,7 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* ── Switch panel ── */}
+      {/* ── Switch / NAV panels ── */}
       {showSwitch && (
         <PortfolioSwitchPanel
           holdings={holdings}
@@ -128,7 +205,6 @@ export default function PortfolioPage() {
         />
       )}
 
-      {/* ── NAV update panel ── */}
       {showNav && (
         <NavUpdatePanel
           onClose={() => setShowNav(false)}
@@ -136,101 +212,8 @@ export default function PortfolioPage() {
         />
       )}
 
-      {/* ── Client filter ── */}
-      {!loading && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          {/* Search input */}
-          <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
-            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--text3)', pointerEvents: 'none' }}>🔍</span>
-            <input
-              type="text"
-              placeholder="Search client name…"
-              value={activeTab === 'All' ? '' : activeTab}
-              onChange={e => {
-                const val = e.target.value;
-                if (!val) { setTab('All'); return; }
-                const match = clientNames.find(n => n.toLowerCase().includes(val.toLowerCase()));
-                if (match) setTab(match); else setTab('All');
-              }}
-              style={{
-                width: '100%', padding: '9px 14px 9px 38px',
-                borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
-                background: 'var(--surface)', color: 'var(--text)',
-                fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none',
-                boxShadow: 'var(--shadow-sm)',
-              }}
-            />
-          </div>
-
-          {/* Dropdown */}
-          <div style={{ position: 'relative' }}>
-            <select
-              value={activeTab}
-              onChange={e => setTab(e.target.value)}
-              style={{
-                padding: '9px 36px 9px 16px', borderRadius: 'var(--r-pill)',
-                border: '1px solid var(--border)', background: 'var(--surface)',
-                color: activeTab === 'All' ? 'var(--text3)' : 'var(--text)',
-                fontSize: 13, fontFamily: 'var(--font-sans)', fontWeight: 600,
-                cursor: 'pointer', outline: 'none', appearance: 'none',
-                boxShadow: 'var(--shadow-sm)', minWidth: 180,
-              }}
-            >
-              <option value="All">All Clients</option>
-              {clientNames.map(name => (
-                <option key={name} value={name}>
-                  {name} ({holdings.filter(h => h.clientName === name).length})
-                </option>
-              ))}
-            </select>
-            <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
-          </div>
-
-          {/* Clear button — shown only when filtered */}
-          {activeTab !== 'All' && (
-            <button onClick={() => setTab('All')} style={{
-              padding: '8px 16px', borderRadius: 'var(--r-pill)',
-              background: 'var(--surface2)', border: '1px solid var(--border)',
-              color: 'var(--text3)', fontSize: 12, fontWeight: 600,
-              cursor: 'pointer',
-            }}>✕ Clear</button>
-          )}
-
-          {/* Action buttons — right-aligned */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            {/* Update NAV button */}
-            <button onClick={() => setShowNav(true)} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '9px 18px', borderRadius: 'var(--r-pill)',
-              background: 'var(--surface)', border: '1.5px solid var(--accent2)',
-              color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)', transition: 'opacity 0.15s',
-            }}
-              onMouseOver={e => (e.currentTarget.style.opacity = '0.8')}
-              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
-            >
-              📊 Update NAV
-            </button>
-
-            {/* Switch / Redeem button */}
-            <button onClick={() => setShowSwitch(true)} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '9px 18px', borderRadius: 'var(--r-pill)',
-              background: 'var(--accent2)', border: 'none',
-              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
-            }}
-              onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
-              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
-            >
-              🔄 Switch / Redeem
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── Holdings table ── */}
-      <div className="section">
+      {activeTab && <div className="section">
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--blue)' }} />
@@ -389,10 +372,10 @@ export default function PortfolioPage() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── Asset allocation ── */}
-      {!loading && visible.length > 0 && (
+      {activeTab && !loading && visible.length > 0 && (
         <div className="section" style={{ marginBottom: 48 }}>
           <div className="section-header">
             <div className="section-title">

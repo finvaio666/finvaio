@@ -216,7 +216,7 @@ export default function InsurancePage() {
   const [clients,  setClients]  = useState<ClientData[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [filterClient, setFilter] = useState('All');
+  const [filterClient, setFilter] = useState<string | null>(null);
   const [activeView, setView]   = useState<'policies' | 'gaps'>('policies');
   const [search, setSearch]     = useState('');
 
@@ -237,14 +237,16 @@ export default function InsurancePage() {
   useEffect(() => { loadData(); }, []);
 
   const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
-  const visible = filterClient === 'All' ? policies : policies.filter(p => p.clientName === filterClient);
+  const visible = filterClient === null ? [] : filterClient === 'All'
+    ? policies
+    : policies.filter(p => p.clientName === filterClient);
   const activePolicies = visible.filter(p => p.status?.includes('Active'));
 
   const totalSumAssured    = activePolicies.reduce((s, p) => s + p.sumAssured, 0);
   const totalAnnualPremium = activePolicies.reduce((s, p) => s + p.annualPremium, 0);
   const clientsCovered     = new Set(visible.map(p => p.clientName)).size;
 
-  const grouped = (filterClient === 'All' ? clientNames : [filterClient]).map(name => ({
+  const grouped = (filterClient === 'All' ? clientNames : filterClient ? [filterClient] : []).map(name => ({
     clientName: name,
     policies:   visible.filter(p => p.clientName === name),
     clientData: clients.find(c => c.name === name),
@@ -275,8 +277,49 @@ export default function InsurancePage() {
 
   return (
     <>
-      {/* ── Stat cards ── */}
-      <div className="stat-grid">
+      {/* ── Client selector ── always visible at top ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative' }}>
+          <select
+            value={filterClient ?? ''}
+            onChange={e => { setFilter(e.target.value || null); setSearch(''); }}
+            style={{
+              padding: '10px 36px 10px 18px', borderRadius: 'var(--r-pill)',
+              border: `1.5px solid ${filterClient ? 'var(--accent2)' : 'var(--border)'}`,
+              background: 'var(--surface)', color: filterClient ? 'var(--text)' : 'var(--text3)',
+              fontSize: 14, fontFamily: 'var(--font-sans)', fontWeight: 600,
+              cursor: 'pointer', outline: 'none', appearance: 'none',
+              boxShadow: 'var(--shadow-sm)', minWidth: 220,
+            }}
+          >
+            <option value=''>— Select a client —</option>
+            <option value='All'>All Clients</option>
+            {clientNames.map(n => (
+              <option key={n} value={n}>{n} ({policies.filter(p => p.clientName === n).length} policies)</option>
+            ))}
+          </select>
+          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+        </div>
+
+        {filterClient && (
+          <button onClick={() => { setFilter(null); setSearch(''); }} style={{
+            padding: '8px 16px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
+            background: 'var(--surface2)', color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>✕ Clear</button>
+        )}
+      </div>
+
+      {/* ── Empty state — no client selected ── */}
+      {!filterClient && !loading && (
+        <div className="section" style={{ padding: '64px 32px', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🛡️</div>
+          <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>Select a client to view their insurance</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>Choose a client from the dropdown above to see their policies and coverage gap analysis.</div>
+        </div>
+      )}
+
+      {/* ── Stat cards — only when client selected ── */}
+      {filterClient && <div className="stat-grid">
         <div className="stat-card blue">
           <div className="stat-icon blue">🛡️</div>
           <div className="stat-label">Clients Covered</div>
@@ -301,11 +344,11 @@ export default function InsurancePage() {
           <div className="stat-value">{loading ? '…' : gapCount}</div>
           <div className="stat-sub">Clients with under-coverage</div>
         </div>
-      </div>
+      </div>}
 
-      {/* ── Controls ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        {/* View toggle */}
+      {/* ── View toggle — only when client selected ── */}
+      {filterClient && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: 3, gap: 2 }}>
           {(['policies', 'gaps'] as const).map(v => (
             <button key={v} onClick={() => setView(v)} style={{
@@ -318,47 +361,17 @@ export default function InsurancePage() {
             </button>
           ))}
         </div>
-
-        {/* Search */}
-        <div style={{ position: 'relative', flex: 1, maxWidth: 280 }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 13 }}>🔍</span>
-          <input type="text" placeholder="Search client…" value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              const match = clientNames.find(n => n.toLowerCase().includes(e.target.value.toLowerCase()));
-              setFilter(e.target.value ? (match ?? 'All') : 'All');
-            }}
-            style={{ width: '100%', padding: '8px 12px 8px 34px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', color: 'var(--text)' }}
-          />
-        </div>
-
-        {/* Dropdown */}
-        <div style={{ position: 'relative' }}>
-          <select value={filterClient} onChange={e => { setFilter(e.target.value); setSearch(''); }} style={{
-            padding: '8px 32px 8px 14px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
-            background: 'var(--surface)', color: filterClient === 'All' ? 'var(--text3)' : 'var(--text)',
-            fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none', appearance: 'none',
-            fontFamily: 'var(--font-sans)', minWidth: 180,
-          }}>
-            <option value="All">All Clients</option>
-            {clientNames.map(n => <option key={n} value={n}>{n} ({policies.filter(p => p.clientName === n).length})</option>)}
-          </select>
-          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text3)', fontSize: 10 }}>▼</span>
-        </div>
-
-        {filterClient !== 'All' && (
-          <button onClick={() => { setFilter('All'); setSearch(''); }} style={{ padding: '8px 14px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✕ Clear</button>
-        )}
       </div>
+      )}
 
-      {/* ── Empty / loading / error ── */}
-      {loading && (
+      {/* ── Loading / error / no policies ── */}
+      {filterClient && loading && (
         <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>
           <div style={{ fontSize: 13 }}>Loading from Notion…</div>
           <div style={{ fontSize: 11, marginTop: 8, color: 'var(--text3)' }}>This may take a few seconds</div>
         </div>
       )}
-      {!loading && loadError && (
+      {filterClient && !loading && loadError && (
         <div className="section" style={{ padding: 32, textAlign: 'center' }}>
           <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>⚠️ {loadError}</div>
           <button onClick={loadData} style={{ padding: '8px 20px', borderRadius: 'var(--r-pill)', background: 'var(--accent2)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -366,7 +379,7 @@ export default function InsurancePage() {
           </button>
         </div>
       )}
-      {!loading && policies.length === 0 && (
+      {filterClient && !loading && policies.length === 0 && (
         <div className="section" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🛡️</div>
           <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No insurance policies yet</div>
@@ -375,7 +388,7 @@ export default function InsurancePage() {
       )}
 
       {/* ── Policies view ── */}
-      {!loading && activeView === 'policies' && policies.length > 0 && grouped.map(({ clientName, policies: rows }) => (
+      {filterClient && !loading && activeView === 'policies' && policies.length > 0 && grouped.map(({ clientName, policies: rows }) => (
         <div key={clientName} className="section" style={{ marginBottom: 12 }}>
           {/* Client header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
@@ -464,7 +477,7 @@ export default function InsurancePage() {
       ))}
 
       {/* ── Coverage Gaps view ── */}
-      {!loading && activeView === 'gaps' && grouped.map(({ clientName, policies: rows, clientData }) => (
+      {filterClient && !loading && activeView === 'gaps' && grouped.map(({ clientName, policies: rows, clientData }) => (
         <CoverageGapCard key={clientName} clientName={clientName} clientData={clientData} policies={rows} />
       ))}
     </>
