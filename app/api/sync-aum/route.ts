@@ -1,21 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 
 export const dynamic = 'force-dynamic';
 
-const DB = {
-  clients:   '362de6dd-1dfe-80e5-9275-e4ce2fc046b2',
-  portfolio: '363de6dd-1dfe-8058-b73e-c7fa8bb431fb',
-};
-
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-export async function POST() {
-  if (!process.env.NOTION_API_KEY) {
-    return NextResponse.json({ error: 'NOTION_API_KEY not set' }, { status: 500 });
+export async function POST(req: NextRequest) {
+  const advisorId = req.headers.get('x-advisor-id') ?? '';
+  const config    = advisorId ? await getAdvisorConfig(advisorId) : null;
+
+  if (!config?.notionApiKey || !config.clientsDbId || !config.portfolioDbId) {
+    return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 401 });
   }
 
-  const notion = new Client({ auth: process.env.NOTION_API_KEY });
+  const notion = new Client({ auth: config.notionApiKey });
+  const DB = { clients: config.clientsDbId, portfolio: config.portfolioDbId };
 
   try {
     // Step 1: Sum Value (MYR) per client from Portfolio

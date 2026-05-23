@@ -22,9 +22,20 @@ export async function middleware(req: NextRequest) {
     if (!authSecret) {
       return NextResponse.redirect(new URL('/login', req.url));
     }
+
     const secret = new TextEncoder().encode(authSecret);
-    await jwtVerify(token, secret);
-    return NextResponse.next();
+    const { payload } = await jwtVerify(token, secret);
+
+    // Forward advisor identity to all API routes via request header
+    const advisorId = (payload.advisorId as string) ?? '';
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set('x-advisor-id', advisorId);
+    requestHeaders.set('x-advisor-role', (payload.role as string) ?? 'Advisor');
+    requestHeaders.set('x-advisor-name', (payload.username as string) ?? '');
+
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   } catch {
     // Token invalid or expired — redirect to login
     const res = NextResponse.redirect(new URL('/login', req.url));

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import type { UpdatePageParameters, CreatePageParameters } from '@notionhq/client/build/src/api-endpoints';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 
 export const dynamic = 'force-dynamic';
-
-const PORTFOLIO_DB = '363de6dd-1dfe-8058-b73e-c7fa8bb431fb';
 
 interface RedeemedItem {
   id: string;
@@ -27,11 +26,15 @@ interface NewFund {
 }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.NOTION_API_KEY) {
-    return NextResponse.json({ error: 'NOTION_API_KEY not set' }, { status: 500 });
+  const advisorId = req.headers.get('x-advisor-id') ?? '';
+  const config    = advisorId ? await getAdvisorConfig(advisorId) : null;
+
+  if (!config?.notionApiKey || !config.portfolioDbId) {
+    return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 401 });
   }
 
-  const notion = new Client({ auth: process.env.NOTION_API_KEY });
+  const notion = new Client({ auth: config.notionApiKey });
+  const PORTFOLIO_DB = config.portfolioDbId;
 
   let body: { redeemed: RedeemedItem[]; newFunds: NewFund[] };
   try {
@@ -49,13 +52,10 @@ export async function POST(req: NextRequest) {
       if (item.action === 'full') {
         await notion.pages.update({
           page_id: item.id,
-          properties: {
-            'Status': { select: { name: 'Redeemed' } },
-          },
+          properties: { 'Status': { select: { name: 'Redeemed' } } },
         });
         results.push({ action: 'redeem', id: item.id, ok: true });
       } else {
-        // Partial: update remaining value
         const props: UpdatePageParameters['properties'] = {
           'Value (Original Currency)': { number: item.newValueOrig ?? 0 },
           'Value (MYR)':               { number: item.newValueMyr  ?? 0 },
@@ -83,12 +83,8 @@ export async function POST(req: NextRequest) {
         'Value (MYR)':                        { number: fund.valueMyr  || fund.valueOrig  * fxRate },
         'Purchase price (MYR)':               { number: fund.purchaseMyr || fund.purchaseOrig * fxRate },
       };
-      if (fund.assetClass) {
-        props['Asset class'] = { select: { name: fund.assetClass } };
-      }
-      if (fund.institution) {
-        props['Institution'] = { rich_text: [{ text: { content: fund.institution } }] };
-      }
+      if (fund.assetClass) props['Asset class']  = { select:    { name: fund.assetClass } };
+      if (fund.institution) props['Institution'] = { rich_text: [{ text: { content: fund.institution } }] };
 
       const page = await notion.pages.create({
         parent: { database_id: PORTFOLIO_DB },

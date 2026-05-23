@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
+import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
 
-const DB = {
-  clients:   '362de6dd-1dfe-80e5-9275-e4ce2fc046b2',
-  portfolio: '363de6dd-1dfe-8058-b73e-c7fa8bb431fb',
-  insurance: process.env.NOTION_INSURANCE_DB_ID ?? '',
-};
-
-// Simple in-process cache (cleared on cold start; good enough for dev + low-traffic prod)
+// Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
 const cache = new Map<string, { context: string; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -28,22 +23,26 @@ function fmtRM(n: number): string {
   return `RM ${n.toFixed(0)}`;
 }
 
-async function buildClientContext(clientName: string): Promise<string> {
-  // Check cache
-  const cached = cache.get(clientName.toLowerCase());
+async function buildClientContext(
+  clientName: string,
+  config: AdvisorConfig,
+  advisorId: string,
+): Promise<string> {
+  const cacheKey = `${advisorId}:${clientName.toLowerCase()}`;
+  const cached   = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.context;
 
-  if (!process.env.NOTION_API_KEY) return '';
-  const notion = new Client({ auth: process.env.NOTION_API_KEY });
+  if (!config.notionApiKey || !config.clientsDbId) return '';
+  const notion = new Client({ auth: config.notionApiKey });
 
   // ── 1. Find client by name ──────────────────────────────────────────────────
   const clientRes = await notion.databases.query({
-    database_id: DB.clients,
+    database_id: config.clientsDbId,
     filter: { property: 'Client Name', title: { contains: clientName.split(' ')[0] } },
   });
 
   const clientPages = clientRes.results.filter(isFullPage);
-  const clientPage = clientPages.find(p => {
+  const clientPage  = clientPages.find(p => {
     const n = p.properties['Client Name']?.type === 'title'
       ? p.properties['Client Name'].title[0]?.plain_text ?? '' : '';
     return n.toLowerCase().includes(clientName.toLowerCase()) ||
@@ -54,7 +53,7 @@ async function buildClientContext(clientName: string): Promise<string> {
     return `Client "${clientName}" not found in Notion. Please verify the name.`;
   }
 
-  const cp = clientPage.properties;
+  const cp      = clientPage.properties;
   const name    = cp['Client Name']?.type === 'title'            ? cp['Client Name'].title[0]?.plain_text ?? clientName : clientName;
   const dob     = cp['Date of Birth']?.type === 'date'           ? cp['Date of Birth'].date?.start ?? ''                : '';
   const age     = calcAge(dob);
@@ -68,18 +67,23 @@ async function buildClientContext(clientName: string): Promise<string> {
   const status  = cp['Status']?.type === 'select'                ? cp['Status'].select?.name ?? ''                     : '';
 
   // ── 2. Fetch portfolio for this client ─────────────────────────────────────
-  let portfolioRes: Awaited<ReturnType<typeof notion.databases.query>> = { results: [], next_cursor: null, has_more: false, object: 'list', type: 'page_or_database', page_or_database: {} };
-  try {
-    portfolioRes = await notion.databases.query({
-      database_id: DB.portfolio,
-      filter: { property: '👥 Clients', relation: { contains: clientPage.id } },
-    });
-  } catch (e) { console.error('Portfolio fetch failed:', e); }
+  type QueryResult = Awaited<ReturnType<typeof notion.databases.query>>;
+  const emptyQuery: QueryResult = { results: [], next_cursor: null, has_more: false, object: 'list', type: 'page_or_database', page_or_database: {} };
+
+  let portfolioRes: QueryResult = emptyQuery;
+  if (config.portfolioDbId) {
+    try {
+      portfolioRes = await notion.databases.query({
+        database_id: config.portfolioDbId,
+        filter: { property: '👥 Clients', relation: { contains: clientPage.id } },
+      });
+    } catch (e) { console.error('Portfolio fetch failed:', e); }
+  }
 
   const holdings = portfolioRes.results.filter(isFullPage)
     .filter(p => (p.properties['Status']?.type === 'select' ? p.properties['Status'].select?.name : '') === 'Active')
     .map(p => {
-      const pr = p.properties;
+      const pr          = p.properties;
       const holdName    = pr['Holding Name']?.type === 'title'      ? pr['Holding Name'].title[0]?.plain_text ?? ''         : '';
       const assetClass  = pr['Asset class']?.type === 'select'      ? pr['Asset class'].select?.name ?? ''                  : '';
       const currency    = pr['Currency']?.type === 'select'         ? pr['Currency'].select?.name ?? 'MYR'                  : 'MYR';
@@ -98,11 +102,11 @@ async function buildClientContext(clientName: string): Promise<string> {
   type PolicyRow = { policyName: string; insurer: string; benefits: string[]; status: string; annualPremium: number; lifeCover: number; ciCover: number; paCover: number; tpdCover: number; medicalClass: string };
   let policies: PolicyRow[] = [];
 
-  if (DB.insurance) {
-    let insurRes: Awaited<ReturnType<typeof notion.databases.query>> = { results: [], next_cursor: null, has_more: false, object: 'list', type: 'page_or_database', page_or_database: {} };
+  if (config.insuranceDbId) {
+    let insurRes: QueryResult = emptyQuery;
     try {
       insurRes = await notion.databases.query({
-        database_id: DB.insurance,
+        database_id: config.insuranceDbId,
         filter: { property: 'Clients', relation: { contains: clientPage.id } },
       });
     } catch (e) { console.error('Insurance fetch failed:', e); }
@@ -166,10 +170,10 @@ async function buildClientContext(clientName: string): Promise<string> {
       if (pol.insurer) line += ` (${pol.insurer})`;
       if (pol.benefits.length) line += ` · ${pol.benefits.join(', ')}`;
       if (pol.lifeCover > 0) line += ` · Life: ${fmtRM(pol.lifeCover)}`;
-      if (pol.ciCover > 0) line += ` · CI: ${fmtRM(pol.ciCover)}`;
-      if (pol.tpdCover > 0) line += ` · TPD: ${fmtRM(pol.tpdCover)}`;
-      if (pol.paCover > 0) line += ` · PA: ${fmtRM(pol.paCover)}`;
-      if (pol.medicalClass) line += ` · Medical Class ${pol.medicalClass}`;
+      if (pol.ciCover > 0)   line += ` · CI: ${fmtRM(pol.ciCover)}`;
+      if (pol.tpdCover > 0)  line += ` · TPD: ${fmtRM(pol.tpdCover)}`;
+      if (pol.paCover > 0)   line += ` · PA: ${fmtRM(pol.paCover)}`;
+      if (pol.medicalClass)  line += ` · Medical Class ${pol.medicalClass}`;
       if (pol.annualPremium > 0) line += ` · ${fmtRM(pol.annualPremium)}/yr premium`;
       lines.push(line);
     }
@@ -179,11 +183,11 @@ async function buildClientContext(clientName: string): Promise<string> {
   }
 
   const context = lines.join('\n');
-  cache.set(clientName.toLowerCase(), { context, ts: Date.now() });
+  cache.set(cacheKey, { context, ts: Date.now() });
   return context;
 }
 
-const BASE_PROMPT = `You are an AI assistant embedded in the Bill Morrisons Financial Consulting dashboard in Malaysia. You assist the consultant (Bill Morrisons) with client analysis, financial planning, and document generation.
+const BASE_PROMPT = `You are ARIA — an AI assistant embedded in a financial consulting dashboard in Malaysia. You assist the financial advisor with client analysis, financial planning, and document generation.
 
 Give concise, practical, Malaysia-specific advice. Use RM for currency. Be direct and professional. Default to max 300 words unless asked for detail. Use local terms where appropriate (KWSP/EPF, OPR, PDPA, unit trust, Bursa).
 
@@ -197,53 +201,52 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    // Use env var if set, otherwise fall back to embedded key
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
     if (!GEMINI_KEY) {
       return NextResponse.json({ error: 'AI service is not configured.' }, { status: 503 });
     }
 
-    // Build system prompt — inject live client context if a client is selected
+    // ── Resolve advisor config from middleware header ────────────────────────
+    const advisorId = req.headers.get('x-advisor-id') ?? '';
+    const config    = advisorId ? await getAdvisorConfig(advisorId) : null;
+
+    // ── Build system prompt — inject live client context if selected ─────────
     let systemPrompt = BASE_PROMPT;
-    if (clientName && typeof clientName === 'string' && clientName.trim()) {
+    if (clientName && typeof clientName === 'string' && clientName.trim() && config) {
       try {
-        const clientContext = await buildClientContext(clientName.trim());
-        if (clientContext) {
-          systemPrompt = `${BASE_PROMPT}\n\n${clientContext}`;
-        }
+        const clientContext = await buildClientContext(clientName.trim(), config, advisorId);
+        if (clientContext) systemPrompt = `${BASE_PROMPT}\n\n${clientContext}`;
       } catch (notionErr) {
-        // Notion fetch failed — log but continue with generic prompt rather than killing the request
         console.error('Notion context fetch failed:', notionErr);
       }
     }
 
-    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-
+    const genAI   = new GoogleGenerativeAI(GEMINI_KEY);
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
+      role:  m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
     const lastMessage = messages[messages.length - 1];
 
-    // Try models in order — fall back automatically on 503 overload
+    // Try models in order — fall back on 503 overload
     const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     let content = '';
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
-        const chat = model.startChat({ history });
+        const model  = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
+        const chat   = model.startChat({ history });
         const result = await chat.sendMessage(lastMessage.content);
         content = result.response.text();
-        break; // success
+        break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         lastErr = err;
         if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
           console.warn(`${modelId} overloaded, trying next model…`);
-          continue; // try next fallback
+          continue;
         }
-        throw err; // non-503 error — re-throw immediately
+        throw err;
       }
     }
     if (!content) throw lastErr;

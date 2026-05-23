@@ -1,27 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 
 export const dynamic = 'force-dynamic';
-
-const DB = {
-  clients:   '362de6dd-1dfe-80e5-9275-e4ce2fc046b2',
-  portfolio: '363de6dd-1dfe-8058-b73e-c7fa8bb431fb',
-  cashflow:  '363de6dd-1dfe-8008-a6d7-f12c1c59d4cd',
-  insurance: process.env.NOTION_INSURANCE_DB_ID ?? '', // fill in .env.local after creating DB
-};
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get('type') || 'clients';
 
-  if (!process.env.NOTION_API_KEY) {
-    return NextResponse.json({ error: 'NOTION_API_KEY not set.', data: null }, { status: 200 });
+  // ── Resolve advisor's own Notion credentials ─────────────────────────────
+  const advisorId = req.headers.get('x-advisor-id') ?? '';
+  const config    = advisorId ? await getAdvisorConfig(advisorId) : null;
+
+  if (!config?.notionApiKey) {
+    return NextResponse.json({ error: 'Advisor configuration not found.', data: null }, { status: 401 });
   }
 
-  const notion = new Client({ auth: process.env.NOTION_API_KEY });
+  const notion = new Client({ auth: config.notionApiKey });
+  const DB = {
+    clients:   config.clientsDbId,
+    portfolio: config.portfolioDbId,
+    cashflow:  config.cashflowDbId,
+    insurance: config.insuranceDbId,
+  };
 
   try {
     if (type === 'clients') {
+      if (!DB.clients) return NextResponse.json({ data: [] });
       const res = await notion.databases.query({
         database_id: DB.clients,
         sorts: [{ property: 'Client Name', direction: 'ascending' }],
@@ -30,25 +35,27 @@ export async function GET(req: NextRequest) {
         const p = page.properties;
         return {
           id: page.id,
-          name:        p['Client Name']?.type === 'title'        ? p['Client Name'].title[0]?.plain_text ?? ''        : '',
-          status:      p['Status']?.type === 'select'            ? p['Status'].select?.name ?? ''                    : '',
-          segment:     p['Client Segment']?.type === 'select'    ? p['Client Segment'].select?.name ?? ''            : '',
-          aum:         p['AUM (MYR)']?.type === 'number'         ? p['AUM (MYR)'].number ?? 0                        : 0,
-          income:      p['Monthly income (MYR)']?.type === 'number' ? p['Monthly income (MYR)'].number ?? 0          : 0,
-          risk:        p['Risk Profile']?.type === 'select'      ? p['Risk Profile'].select?.name ?? ''              : '',
-          nextReview:  p['Next review date']?.type === 'date'    ? p['Next review date'].date?.start ?? ''           : '',
-          lastReview:  p['Last review date']?.type === 'date'    ? p['Last review date'].date?.start ?? ''           : '',
-          onboarding:  p['Onboarding date']?.type === 'date'     ? p['Onboarding date'].date?.start ?? ''            : '',
-          goals:       p['Financial goals']?.type === 'multi_select' ? p['Financial goals'].multi_select.map(g => g.name) : [],
-          phone:       p['Phone']?.type === 'phone_number'       ? p['Phone'].phone_number ?? ''                     : '',
-          email:       p['Email']?.type === 'email'              ? p['Email'].email ?? ''                            : '',
-          dob:         p['Date of Birth']?.type === 'date'       ? p['Date of Birth'].date?.start ?? ''              : '',
+          name:        p['Client Name']?.type === 'title'           ? p['Client Name'].title[0]?.plain_text ?? ''            : '',
+          status:      p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                         : '',
+          segment:     p['Client Segment']?.type === 'select'       ? p['Client Segment'].select?.name ?? ''                 : '',
+          aum:         p['AUM (MYR)']?.type === 'number'            ? p['AUM (MYR)'].number ?? 0                             : 0,
+          income:      p['Monthly income (MYR)']?.type === 'number' ? p['Monthly income (MYR)'].number ?? 0                  : 0,
+          risk:        p['Risk Profile']?.type === 'select'         ? p['Risk Profile'].select?.name ?? ''                   : '',
+          nextReview:  p['Next review date']?.type === 'date'       ? p['Next review date'].date?.start ?? ''                : '',
+          lastReview:  p['Last review date']?.type === 'date'       ? p['Last review date'].date?.start ?? ''                : '',
+          onboarding:  p['Onboarding date']?.type === 'date'        ? p['Onboarding date'].date?.start ?? ''                 : '',
+          goals:       p['Financial goals']?.type === 'multi_select'? p['Financial goals'].multi_select.map(g => g.name)    : [],
+          phone:       p['Phone']?.type === 'phone_number'          ? p['Phone'].phone_number ?? ''                          : '',
+          email:       p['Email']?.type === 'email'                 ? p['Email'].email ?? ''                                 : '',
+          dob:         p['Date of Birth']?.type === 'date'          ? p['Date of Birth'].date?.start ?? ''                   : '',
         };
       });
       return NextResponse.json({ data });
     }
 
     if (type === 'portfolio') {
+      if (!DB.portfolio) return NextResponse.json({ data: [] });
+
       // Build client ID → name map first
       const clientRes = await notion.databases.query({ database_id: DB.clients });
       const clientMap: Record<string, string> = {};
@@ -73,15 +80,13 @@ export async function GET(req: NextRequest) {
         const gain     = value - purchase;
         const ret      = purchase > 0 ? Math.round((gain / purchase) * 100) : 0;
 
-        // Resolve client name from relation
         const clientRelIds = p['👥 Clients']?.type === 'relation' ? p['👥 Clients'].relation.map(r => r.id) : [];
         const clientName   = clientRelIds.map(id => clientMap[id] ?? '').filter(Boolean).join(', ');
         const clientId     = clientRelIds[0] ?? '';
-
-        const units = p['Units']?.type === 'number' ? p['Units'].number ?? 0 : 0;
+        const units        = p['Units']?.type === 'number' ? p['Units'].number ?? 0 : 0;
 
         return {
-          id:          page.id,
+          id: page.id,
           clientId,
           units,
           name:        p['Holding Name']?.type === 'title'     ? p['Holding Name'].title[0]?.plain_text ?? ''        : '',
@@ -104,6 +109,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === 'cashflow') {
+      if (!DB.cashflow) return NextResponse.json({ data: [] });
       const res = await notion.databases.query({
         database_id: DB.cashflow,
         sorts: [{ property: 'Month', direction: 'descending' }],
@@ -127,9 +133,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === 'insurance') {
-      if (!DB.insurance) return NextResponse.json({ data: [] }); // DB not configured yet
+      if (!DB.insurance) return NextResponse.json({ data: [] });
 
-      // Build client ID → {name, income} map
       const clientRes = await notion.databases.query({ database_id: DB.clients });
       const clientMap: Record<string, { name: string; income: number }> = {};
       clientRes.results.filter(isFullPage).forEach(page => {
@@ -148,25 +153,25 @@ export async function GET(req: NextRequest) {
         const clientInfo   = clientRelIds.map((id: string) => clientMap[id]).filter(Boolean)[0];
         return {
           id:               page.id,
-          policyName:       p['Policy Name']?.type === 'title'         ? p['Policy Name'].title[0]?.plain_text ?? ''           : '',
+          policyName:       p['Policy Name']?.type === 'title'          ? p['Policy Name'].title[0]?.plain_text ?? ''          : '',
           clientName:       clientInfo?.name ?? '',
           clientIncome:     clientInfo?.income ?? 0,
-          insuranceType:    p['Insurance Type']?.type === 'select'      ? p['Insurance Type'].select?.name ?? ''               : '',
-          benefits:         p['Benefits']?.type === 'multi_select'      ? p['Benefits'].multi_select.map((b: { name: string }) => b.name) : [],
-          status:           p['Status']?.type === 'select'              ? p['Status'].select?.name ?? ''                       : '',
-          insurer:          p['Insurer']?.type === 'rich_text'          ? p['Insurer'].rich_text[0]?.plain_text ?? ''           : '',
-          policyNumber:     p['Policy Number']?.type === 'rich_text'    ? p['Policy Number'].rich_text[0]?.plain_text ?? ''    : '',
-          sumAssured:       p['Sum Assured (MYR)']?.type === 'number'   ? p['Sum Assured (MYR)'].number ?? 0                   : 0,
-          annualPremium:    p['Annual Premium (MYR)']?.type === 'number'? p['Annual Premium (MYR)'].number ?? 0                : 0,
-          commencementDate: p['Commencement Date']?.type === 'date'     ? p['Commencement Date'].date?.start ?? ''             : '',
-          maturityDate:     p['Maturity Date']?.type === 'date'         ? p['Maturity Date'].date?.start ?? ''                 : '',
-          beneficiary:      p['Beneficiary']?.type === 'rich_text'      ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''      : '',
-          notes:            p['Notes']?.type === 'rich_text'            ? p['Notes'].rich_text[0]?.plain_text ?? ''            : '',
-          lifeCover:        p['Life Cover (MYR)']?.type === 'number'     ? p['Life Cover (MYR)'].number ?? 0                  : 0,
-          ciCover:          p['CI Cover (MYR)']?.type === 'number'       ? p['CI Cover (MYR)'].number ?? 0                    : 0,
-          paCover:          p['PA Cover (MYR)']?.type === 'number'       ? p['PA Cover (MYR)'].number ?? 0                    : 0,
-          tpdCover:         p['TPD Cover (MYR)']?.type === 'number'      ? p['TPD Cover (MYR)'].number ?? 0                   : 0,
-          medicalClass:     p['Medical Class']?.type === 'rich_text'     ? p['Medical Class'].rich_text[0]?.plain_text ?? ''  : '',
+          insuranceType:    p['Insurance Type']?.type === 'select'       ? p['Insurance Type'].select?.name ?? ''               : '',
+          benefits:         p['Benefits']?.type === 'multi_select'       ? p['Benefits'].multi_select.map((b: { name: string }) => b.name) : [],
+          status:           p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                       : '',
+          insurer:          p['Insurer']?.type === 'rich_text'           ? p['Insurer'].rich_text[0]?.plain_text ?? ''           : '',
+          policyNumber:     p['Policy Number']?.type === 'rich_text'     ? p['Policy Number'].rich_text[0]?.plain_text ?? ''    : '',
+          sumAssured:       p['Sum Assured (MYR)']?.type === 'number'    ? p['Sum Assured (MYR)'].number ?? 0                   : 0,
+          annualPremium:    p['Annual Premium (MYR)']?.type === 'number' ? p['Annual Premium (MYR)'].number ?? 0                : 0,
+          commencementDate: p['Commencement Date']?.type === 'date'      ? p['Commencement Date'].date?.start ?? ''             : '',
+          maturityDate:     p['Maturity Date']?.type === 'date'          ? p['Maturity Date'].date?.start ?? ''                 : '',
+          beneficiary:      p['Beneficiary']?.type === 'rich_text'       ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''      : '',
+          notes:            p['Notes']?.type === 'rich_text'             ? p['Notes'].rich_text[0]?.plain_text ?? ''            : '',
+          lifeCover:        p['Life Cover (MYR)']?.type === 'number'     ? p['Life Cover (MYR)'].number ?? 0                    : 0,
+          ciCover:          p['CI Cover (MYR)']?.type === 'number'       ? p['CI Cover (MYR)'].number ?? 0                      : 0,
+          paCover:          p['PA Cover (MYR)']?.type === 'number'       ? p['PA Cover (MYR)'].number ?? 0                      : 0,
+          tpdCover:         p['TPD Cover (MYR)']?.type === 'number'      ? p['TPD Cover (MYR)'].number ?? 0                     : 0,
+          medicalClass:     p['Medical Class']?.type === 'rich_text'     ? p['Medical Class'].rich_text[0]?.plain_text ?? ''    : '',
         };
       });
       return NextResponse.json({ data });
