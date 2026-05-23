@@ -198,7 +198,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Use env var if set, otherwise fall back to embedded key
-    const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyC_auEsRWUaIs1fWmH4Kz_bX5JrEbPMMlQ';
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    if (!GEMINI_KEY) {
+      return NextResponse.json({ error: 'AI service is not configured.' }, { status: 503 });
+    }
 
     // Build system prompt — inject live client context if a client is selected
     let systemPrompt = BASE_PROMPT;

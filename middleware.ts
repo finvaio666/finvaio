@@ -18,9 +18,11 @@ export async function middleware(req: NextRequest) {
   }
 
   try {
-    const secret = new TextEncoder().encode(
-      process.env.AUTH_SECRET ?? 'aria-fallback-secret-key-2026'
-    );
+    const authSecret = process.env.AUTH_SECRET;
+    if (!authSecret) {
+      return NextResponse.redirect(new URL('/login', req.url));
+    }
+    const secret = new TextEncoder().encode(authSecret);
     await jwtVerify(token, secret);
     return NextResponse.next();
   } catch {
