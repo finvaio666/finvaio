@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const navItems = [
   {
@@ -33,6 +33,13 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  }
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -75,11 +82,42 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="sidebar-footer">
           <div className="consultant-badge">
             <div className="avatar">BM</div>
-            <div>
-              <div className="consultant-name">BillMorrisons</div>
+            <div style={{ flex: 1 }}>
+              <div className="consultant-name">Bill Morrisons</div>
               <div className="consultant-role">Senior Consultant</div>
             </div>
           </div>
+          <button
+            onClick={handleLogout}
+            style={{
+              marginTop: 12, width: '100%',
+              padding: '8px 12px',
+              background: 'none',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--r-pill)',
+              color: 'var(--text3)',
+              fontSize: 12, fontFamily: 'var(--font-sans)',
+              cursor: 'pointer', transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+            onMouseOver={e => {
+              e.currentTarget.style.background = 'var(--red-dim)';
+              e.currentTarget.style.color = 'var(--red)';
+              e.currentTarget.style.borderColor = 'rgba(235,0,27,0.3)';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.background = 'none';
+              e.currentTarget.style.color = 'var(--text3)';
+              e.currentTarget.style.borderColor = 'var(--border)';
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16,17 21,12 16,7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Sign out
+          </button>
         </div>
       </aside>
     </>
