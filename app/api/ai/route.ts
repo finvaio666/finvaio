@@ -197,9 +197,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not set in environment variables.' }, { status: 500 });
-    }
+    // Use env var if set, otherwise fall back to embedded key
+    const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyC_auEsRWUaIs1fWmH4Kz_bX5JrEbPMMlQ';
 
     // Build system prompt — inject live client context if a client is selected
     let systemPrompt = BASE_PROMPT;
@@ -215,7 +214,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
