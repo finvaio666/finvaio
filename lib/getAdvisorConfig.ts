@@ -1,13 +1,14 @@
 import { Client, isFullPage } from '@notionhq/client';
 
 export interface AdvisorConfig {
-  notionApiKey:  string;
-  clientsDbId:   string;
-  portfolioDbId: string;
-  insuranceDbId: string;
-  cashflowDbId:  string;
-  role:          string;
-  name:          string;
+  notionApiKey:    string;
+  clientsDbId:     string;
+  portfolioDbId:   string;
+  insuranceDbId:   string;
+  cashflowDbId:    string;
+  meetingNotesDbId: string;
+  role:            string;
+  name:            string;
 }
 
 // In-process cache — survives warm function re-use, cleared on cold start
@@ -35,11 +36,12 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
 
     const p = page.properties as Record<string, unknown>;
     const config: AdvisorConfig = {
-      notionApiKey:  rt(p, 'Notion API Key'),
-      clientsDbId:   rt(p, 'Clients DB ID'),
-      portfolioDbId: rt(p, 'Portfolio DB ID'),
-      insuranceDbId: rt(p, 'Insurance DB ID'),
-      cashflowDbId:  rt(p, 'Cashflow DB ID'),
+      notionApiKey:     rt(p, 'Notion API Key'),
+      clientsDbId:      rt(p, 'Clients DB ID'),
+      portfolioDbId:    rt(p, 'Portfolio DB ID'),
+      insuranceDbId:    rt(p, 'Insurance DB ID'),
+      cashflowDbId:     rt(p, 'Cashflow DB ID'),
+      meetingNotesDbId: rt(p, 'Meeting Notes DB ID'),
       role: (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor',
       name: (p['Name']  as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '',
     };
