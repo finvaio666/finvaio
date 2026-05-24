@@ -180,6 +180,7 @@ export default function ReviewsPage() {
   const [preselected,  setPreselected]  = useState<Client | null>(null);
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
   const [filterClient, setFilterClient] = useState(''); // '' = All
+  const [logDays,      setLogDays]      = useState(90); // 0 = All time
 
   function loadAll() {
     setLoading(true);
@@ -196,7 +197,7 @@ export default function ReviewsPage() {
 
   // ── Date windows ──────────────────────────────────────────────────────────
   const now            = Date.now();
-  const oneMonthAgo    = now - 30  * 86_400_000;   // last 30 days
+  const logWindowStart = logDays === 0 ? 0 : now - logDays * 86_400_000;
   const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
 
   // ── Client names for dropdown ─────────────────────────────────────────────
@@ -204,10 +205,10 @@ export default function ReviewsPage() {
     new Set([...clients.map(c => c.name), ...meetings.map(m => m.clientName)].filter(Boolean))
   ).sort();
 
-  // ── Filtered meetings — last 30 days + optional client ───────────────────
+  // ── Filtered meetings — chosen window + optional client ──────────────────
   const visibleMeetings = meetings.filter(m => {
     const t = new Date(m.meetingDate).getTime();
-    const inWindow = t >= oneMonthAgo && t <= now;
+    const inWindow = t >= logWindowStart && t <= now;
     const matchesClient = filterClient === '' || m.clientName === filterClient;
     return inWindow && matchesClient;
   });
@@ -273,9 +274,25 @@ export default function ReviewsPage() {
           }}>✕ Clear</button>
         )}
 
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span>📅</span>
-          <span>Meetings: last 30 days · Reviews: next 90 days</span>
+        {/* Duration chips for Meeting History window */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text3)', marginRight: 4 }}>📋 Meeting logs:</span>
+          {([
+            { label: '1M', days: 30 },
+            { label: '3M', days: 90 },
+            { label: '6M', days: 180 },
+            { label: '1Y', days: 365 },
+            { label: 'All', days: 0 },
+          ] as { label: string; days: number }[]).map(opt => (
+            <button key={opt.label} onClick={() => setLogDays(opt.days)} style={{
+              padding: '5px 12px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+              fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
+              border: `1px solid ${logDays === opt.days ? 'var(--accent2)' : 'var(--border)'}`,
+              background: logDays === opt.days ? 'var(--accent2)' : 'var(--surface)',
+              color: logDays === opt.days ? '#fff' : 'var(--text3)',
+              transition: 'all 0.15s',
+            }}>{opt.label}</button>
+          ))}
         </div>
       </div>
 
@@ -364,7 +381,7 @@ export default function ReviewsPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)' }}>
-              Last 30 days · {visibleMeetings.length} meeting{visibleMeetings.length !== 1 ? 's' : ''}
+              {logDays === 0 ? 'All time' : logDays === 30 ? 'Last 1 month' : logDays === 90 ? 'Last 3 months' : logDays === 180 ? 'Last 6 months' : 'Last 1 year'} · {visibleMeetings.length} meeting{visibleMeetings.length !== 1 ? 's' : ''}
             </span>
           </div>
         </div>
@@ -374,8 +391,8 @@ export default function ReviewsPage() {
             <div style={{ fontSize: 32, marginBottom: 10 }}>📝</div>
             <div style={{ fontSize: 15 }}>
               {filterClient
-                ? `No meetings logged for ${filterClient} in the last 30 days`
-                : 'No meetings logged in the last 30 days'}
+                ? `No meetings logged for ${filterClient} in this period`
+                : 'No meetings logged in this period'}
             </div>
           </div>
         ) : (
