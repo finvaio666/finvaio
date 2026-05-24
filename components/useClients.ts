@@ -77,8 +77,10 @@ export function riskClass(risk: string) {
 
 export function segmentClass(seg: string) {
   const s = seg?.toLowerCase();
-  if (s?.includes('affluent')) return 'affluent';
-  if (s?.includes('prospect')) return 'prospect';
+  if (s?.includes('high net worth') || s?.includes('hnw')) return 'hnw';
+  if (s?.includes('affluent'))  return 'affluent';
+  if (s?.includes('prospect'))  return 'prospect';
+  if (s?.includes('mass'))      return 'mass';
   return 'active';
 }
 

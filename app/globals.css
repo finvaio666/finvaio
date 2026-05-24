@@ -258,6 +258,8 @@ body {
 .badge.affluent    { background: var(--accent-dim); color: var(--accent2); }
 .badge.prospect    { background: var(--purple-dim); color: var(--purple); }
 .badge.inactive    { background: var(--surface2);   color: var(--text3); }
+.badge.hnw         { background: #EDE9FE;            color: #5B21B6; border: 1px solid #DDD6FE; }
+.badge.mass        { background: var(--surface2);    color: var(--text3); }
 
 /* ── CLIENT TABLE ─────────────────────────────────────────────────────────── */
 .client-table { width: 100%; }
