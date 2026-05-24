@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
+import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE } from '@/lib/demoData';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
 const cache = new Map<string, { context: string; ts: number }>();
@@ -23,11 +24,66 @@ function fmtRM(n: number): string {
   return `RM ${n.toFixed(0)}`;
 }
 
+function buildDemoClientContext(clientName: string): string {
+  const client = DEMO_CLIENTS.find(c =>
+    c.name.toLowerCase().includes(clientName.toLowerCase()) ||
+    clientName.toLowerCase().includes(c.name.split(' ')[0].toLowerCase())
+  );
+  if (!client) return `Demo client "${clientName}" not found.`;
+
+  const today = new Date();
+  const birth = new Date(client.dob);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+
+  const holdings = DEMO_PORTFOLIO.filter(p => p.clientId === client.id);
+  const policies = DEMO_INSURANCE.filter(i => i.clientId === client.id && i.status === 'Active');
+  const totalAUM = holdings.reduce((s, h) => s + h.value, 0);
+
+  const lines: string[] = [];
+  lines.push(`Current client context: ${client.name} [DEMO DATA]`);
+  lines.push(`- Status: ${client.status}, Segment: ${client.segment}, Risk profile: ${client.risk}`);
+  lines.push(`- Age: ${age} (DOB: ${client.dob}) · Target retirement: 60 · ${Math.max(60 - age, 0)} years remaining`);
+  lines.push(`- AUM: ${fmtRM(client.aum)}`);
+  lines.push(`- Monthly income: ${fmtRM(client.income)}`);
+  if (client.goals.length) lines.push(`- Financial goals: ${client.goals.join(', ')}`);
+  if (client.nextReview) lines.push(`- Next review: ${client.nextReview}`);
+
+  if (holdings.length) {
+    lines.push(''); lines.push('Portfolio holdings (Active):');
+    for (const h of holdings) {
+      let line = `- ${h.name} [${h.assetClass}] · ${h.institution}: ${fmtRM(h.value)}`;
+      if (h.returnPct !== 0) line += ` · ${h.returnPct > 0 ? '+' : ''}${h.returnPct}% return`;
+      if (h.maturity) line += ` · matures ${h.maturity}`;
+      lines.push(line);
+    }
+    lines.push(`Total portfolio: ${fmtRM(totalAUM)}`);
+  }
+
+  if (policies.length) {
+    lines.push(''); lines.push('Insurance policies (Active):');
+    for (const pol of policies) {
+      let line = `- ${pol.policyName} (${pol.insurer})`;
+      if (pol.benefits.length) line += ` · ${pol.benefits.join(', ')}`;
+      if (pol.lifeCover > 0) line += ` · Life: ${fmtRM(pol.lifeCover)}`;
+      if (pol.ciCover  > 0) line += ` · CI: ${fmtRM(pol.ciCover)}`;
+      if (pol.tpdCover > 0) line += ` · TPD: ${fmtRM(pol.tpdCover)}`;
+      if (pol.annualPremium > 0) line += ` · ${fmtRM(pol.annualPremium)}/yr`;
+      lines.push(line);
+    }
+  }
+  return lines.join('\n');
+}
+
 async function buildClientContext(
   clientName: string,
   config: AdvisorConfig,
   advisorId: string,
 ): Promise<string> {
+  // Demo mode — skip Notion entirely
+  if (config.notionApiKey === 'DEMO_MODE') return buildDemoClientContext(clientName);
+
   const cacheKey = `${advisorId}:${clientName.toLowerCase()}`;
   const cached   = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.context;

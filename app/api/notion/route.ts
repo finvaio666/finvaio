@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,15 @@ export async function GET(req: NextRequest) {
 
   if (!config?.notionApiKey) {
     return NextResponse.json({ error: 'Advisor configuration not found.', data: null }, { status: 401 });
+  }
+
+  // ── Demo mode — return hardcoded data, skip Notion ───────────────────────
+  if (config.notionApiKey === 'DEMO_MODE') {
+    if (type === 'clients')   return NextResponse.json({ data: DEMO_CLIENTS });
+    if (type === 'portfolio') return NextResponse.json({ data: DEMO_PORTFOLIO });
+    if (type === 'insurance') return NextResponse.json({ data: DEMO_INSURANCE });
+    if (type === 'cashflow')  return NextResponse.json({ data: DEMO_CASHFLOW });
+    return NextResponse.json({ data: [] });
   }
 
   const notion = new Client({ auth: config.notionApiKey });
