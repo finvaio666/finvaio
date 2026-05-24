@@ -1,5 +1,7 @@
 'use client';
 
+import React from 'react';
+
 // ── Concept A — "The Compass" ─────────────────────────────────────────────────
 // Circle with a diamond needle pointing north (orange = growth direction)
 // Represents: guidance, direction, trusted advisor
@@ -100,34 +102,117 @@ export function LogoCFull({ iconSize = 36 }: { iconSize?: number }) {
   );
 }
 
-// ── Concept D — "The Node" ────────────────────────────────────────────────────
-// Three connected circles forming a triangle network
-// Represents: advisor–AI–client connection, data relationships
-export function LogoDIcon({ size = 32 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-label="ARIA Node logo">
-      {/* Connection lines */}
-      <line x1="16" y1="7"  x2="5"  y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
-      <line x1="16" y1="7"  x2="27" y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
-      <line x1="5"  y1="25" x2="27" y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.25"/>
-      {/* Outer nodes */}
-      <circle cx="5"  cy="25" r="3.5" fill="currentColor" opacity="0.5"/>
-      <circle cx="27" cy="25" r="3.5" fill="currentColor" opacity="0.5"/>
-      {/* Top node — accent, the "intelligence" hub */}
-      <circle cx="16" cy="7"  r="5"   fill="var(--accent2)"/>
-      <circle cx="16" cy="7"  r="2.5" fill="currentColor" opacity="0.3"/>
-    </svg>
-  );
-}
-
-export function LogoDFull({ iconSize = 32 }: { iconSize?: number }) {
+// ── Node family helper ────────────────────────────────────────────────────────
+function NodeFull({ Icon, iconSize = 32 }: { Icon: (p: { size: number }) => React.ReactNode; iconSize?: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <LogoDIcon size={iconSize} />
+      <Icon size={iconSize} />
       <div>
         <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>ARIA</div>
         {iconSize >= 28 && <div style={{ fontSize: iconSize * 0.21, color: 'var(--text3)', letterSpacing: '0.05em', marginTop: 2, fontWeight: 500 }}>ADVISOR INTELLIGENCE</div>}
       </div>
     </div>
   );
+}
+
+// ── D1 — "Triangle" (original) ────────────────────────────────────────────────
+// Orange hub at top, two client nodes below — classic stable triangle
+export function LogoD1Icon({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <line x1="16" y1="7"  x2="5"  y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
+      <line x1="16" y1="7"  x2="27" y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
+      <line x1="5"  y1="25" x2="27" y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.25"/>
+      <circle cx="5"  cy="25" r="3.5" fill="currentColor" opacity="0.5"/>
+      <circle cx="27" cy="25" r="3.5" fill="currentColor" opacity="0.5"/>
+      <circle cx="16" cy="7"  r="5"   fill="var(--accent2)"/>
+      <circle cx="16" cy="7"  r="2.2" fill="currentColor" opacity="0.25"/>
+    </svg>
+  );
+}
+export function LogoD1Full({ iconSize = 32 }: { iconSize?: number }) {
+  return <NodeFull Icon={LogoD1Icon} iconSize={iconSize} />;
+}
+
+// ── D2 — "Orbital" ────────────────────────────────────────────────────────────
+// Central orange core with a dashed orbit ring + satellite dot
+// Feels: AI at the centre, client data orbiting around it
+export function LogoD2Icon({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      {/* Orbit ring */}
+      <circle cx="16" cy="16" r="11" stroke="currentColor" strokeWidth="1.2"
+        strokeDasharray="2.8 2.2" fill="none" opacity="0.35"/>
+      {/* Spoke to satellite */}
+      <line x1="16" y1="16" x2="24" y2="7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3"/>
+      {/* Satellite node */}
+      <circle cx="24" cy="7" r="3" fill="currentColor" opacity="0.55"/>
+      {/* Central core */}
+      <circle cx="16" cy="16" r="6"   fill="var(--accent2)"/>
+      <circle cx="16" cy="16" r="2.8" fill="currentColor" opacity="0.25"/>
+    </svg>
+  );
+}
+export function LogoD2Full({ iconSize = 32 }: { iconSize?: number }) {
+  return <NodeFull Icon={LogoD2Icon} iconSize={iconSize} />;
+}
+
+// ── D3 — "Diamond Network" ────────────────────────────────────────────────────
+// 4 nodes in a diamond (N/E/S/W), orange at top, all connected
+// Feels: premium, structured, 4-directional intelligence
+export function LogoD3Icon({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      {/* Diamond outline lines */}
+      <line x1="16" y1="3"  x2="29" y2="16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.4"/>
+      <line x1="29" y1="16" x2="16" y2="29" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.4"/>
+      <line x1="16" y1="29" x2="3"  y2="16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.4"/>
+      <line x1="3"  y1="16" x2="16" y2="3"  stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.4"/>
+      {/* Cross diagonals (subtle) */}
+      <line x1="16" y1="3"  x2="16" y2="29" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" opacity="0.15"/>
+      <line x1="3"  y1="16" x2="29" y2="16" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" opacity="0.15"/>
+      {/* Side nodes */}
+      <circle cx="29" cy="16" r="3"   fill="currentColor" opacity="0.45"/>
+      <circle cx="16" cy="29" r="3"   fill="currentColor" opacity="0.45"/>
+      <circle cx="3"  cy="16" r="3"   fill="currentColor" opacity="0.45"/>
+      {/* Top node — accent */}
+      <circle cx="16" cy="3"  r="4.5" fill="var(--accent2)"/>
+      <circle cx="16" cy="3"  r="2"   fill="currentColor" opacity="0.25"/>
+    </svg>
+  );
+}
+export function LogoD3Full({ iconSize = 32 }: { iconSize?: number }) {
+  return <NodeFull Icon={LogoD3Icon} iconSize={iconSize} />;
+}
+
+// ── D4 — "Hub & Spokes" ───────────────────────────────────────────────────────
+// Central orange hub with 4 spokes + peripheral nodes (45° rotated cross)
+// Feels: advisor as central intelligence, 4 client relationships radiating out
+export function LogoD4Icon({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      {/* Spokes */}
+      <line x1="16" y1="16" x2="25" y2="7"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
+      <line x1="16" y1="16" x2="25" y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
+      <line x1="16" y1="16" x2="7"  y2="25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
+      <line x1="16" y1="16" x2="7"  y2="7"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45"/>
+      {/* Peripheral nodes */}
+      <circle cx="25" cy="7"  r="3" fill="currentColor" opacity="0.5"/>
+      <circle cx="25" cy="25" r="3" fill="currentColor" opacity="0.5"/>
+      <circle cx="7"  cy="25" r="3" fill="currentColor" opacity="0.5"/>
+      <circle cx="7"  cy="7"  r="3" fill="currentColor" opacity="0.5"/>
+      {/* Central hub */}
+      <circle cx="16" cy="16" r="6"   fill="var(--accent2)"/>
+      <circle cx="16" cy="16" r="2.8" fill="currentColor" opacity="0.25"/>
+    </svg>
+  );
+}
+export function LogoD4Full({ iconSize = 32 }: { iconSize?: number }) {
+  return <NodeFull Icon={LogoD4Icon} iconSize={iconSize} />;
+}
+
+// ── Legacy exports (keep for compatibility) ───────────────────────────────────
+export const LogoDIcon = LogoD1Icon;
+export function LogoDFull({ iconSize = 32 }: { iconSize?: number }) {
+  return <NodeFull Icon={LogoD1Icon} iconSize={iconSize} />;
 }
