@@ -99,7 +99,7 @@ async function buildClientContext(
     });
 
   // ── 3. Fetch insurance for this client ─────────────────────────────────────
-  type PolicyRow = { policyName: string; insurer: string; benefits: string[]; status: string; annualPremium: number; lifeCover: number; ciCover: number; paCover: number; tpdCover: number; medicalClass: string };
+  type PolicyRow = { policyName: string; insurer: string; benefits: string[]; status: string; annualPremium: number; lifeCover: number; ciCover: number; paCover: number; tpdCover: number; medicalClass: string; policyOwner: string; lifeAssured: string };
   let policies: PolicyRow[] = [];
 
   if (config.insuranceDbId) {
@@ -123,6 +123,8 @@ async function buildClientContext(
         paCover:       pr['PA Cover (MYR)']?.type === 'number'        ? pr['PA Cover (MYR)'].number ?? 0                   : 0,
         tpdCover:      pr['TPD Cover (MYR)']?.type === 'number'       ? pr['TPD Cover (MYR)'].number ?? 0                  : 0,
         medicalClass:  pr['Medical Class']?.type === 'rich_text'      ? pr['Medical Class'].rich_text[0]?.plain_text ?? '' : '',
+        policyOwner:   pr['Policy Owner']?.type === 'rich_text'       ? pr['Policy Owner'].rich_text[0]?.plain_text ?? ''  : '',
+        lifeAssured:   pr['Life Assured']?.type === 'rich_text'       ? pr['Life Assured'].rich_text[0]?.plain_text ?? ''  : '',
       };
     });
   }
@@ -168,6 +170,9 @@ async function buildClientContext(
     for (const pol of activePolicies) {
       let line = `- ${pol.policyName}`;
       if (pol.insurer) line += ` (${pol.insurer})`;
+      if (pol.policyOwner && pol.lifeAssured && pol.policyOwner !== pol.lifeAssured)
+        line += ` · Owner: ${pol.policyOwner}, Assured: ${pol.lifeAssured}`;
+      else if (pol.lifeAssured) line += ` · Life Assured: ${pol.lifeAssured}`;
       if (pol.benefits.length) line += ` · ${pol.benefits.join(', ')}`;
       if (pol.lifeCover > 0) line += ` · Life: ${fmtRM(pol.lifeCover)}`;
       if (pol.ciCover > 0)   line += ` · CI: ${fmtRM(pol.ciCover)}`;

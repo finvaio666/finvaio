@@ -167,6 +167,8 @@ export async function GET(req: NextRequest) {
           maturityDate:     p['Maturity Date']?.type === 'date'          ? p['Maturity Date'].date?.start ?? ''                 : '',
           beneficiary:      p['Beneficiary']?.type === 'rich_text'       ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''      : '',
           notes:            p['Notes']?.type === 'rich_text'             ? p['Notes'].rich_text[0]?.plain_text ?? ''            : '',
+          policyOwner:      p['Policy Owner']?.type === 'rich_text'      ? p['Policy Owner'].rich_text[0]?.plain_text ?? ''     : '',
+          lifeAssured:      p['Life Assured']?.type === 'rich_text'      ? p['Life Assured'].rich_text[0]?.plain_text ?? ''     : '',
           lifeCover:        p['Life Cover (MYR)']?.type === 'number'     ? p['Life Cover (MYR)'].number ?? 0                    : 0,
           ciCover:          p['CI Cover (MYR)']?.type === 'number'       ? p['CI Cover (MYR)'].number ?? 0                      : 0,
           paCover:          p['PA Cover (MYR)']?.type === 'number'       ? p['PA Cover (MYR)'].number ?? 0                      : 0,

@@ -23,6 +23,8 @@ interface Policy {
   paCover:      number;
   tpdCover:     number;
   medicalClass: string;
+  policyOwner:  string;
+  lifeAssured:  string;
 }
 
 interface ClientData {
@@ -416,12 +418,33 @@ export default function InsurancePage() {
               onMouseOut={e => (e.currentTarget.style.background = '')}>
               {/* Policy name */}
               <div>
-                <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</span>
+                  {/* Flag when Policy Owner ≠ Life Assured */}
+                  {p.lifeAssured && p.policyOwner && p.lifeAssured !== p.policyOwner && (
+                    <span style={{ padding: '1px 7px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: 'var(--gold, #F59E0B)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                      Owner ≠ Assured
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                   {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
                   {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                 </div>
-                {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>Beneficiary: {p.beneficiary}</div>}
+                {/* Life Assured & Policy Owner */}
+                <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
+                  {p.lifeAssured && (
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                      🧑 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Life Assured:</span> {p.lifeAssured}
+                    </div>
+                  )}
+                  {p.policyOwner && (
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                      👤 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Policy Owner:</span> {p.policyOwner}
+                    </div>
+                  )}
+                </div>
+                {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 Beneficiary: {p.beneficiary}</div>}
               </div>
 
               {/* Type */}
