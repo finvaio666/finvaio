@@ -307,9 +307,12 @@ body {
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--text2);
-  align-self: flex-start; max-width: 100%; white-space: pre-wrap;
+  align-self: flex-start; max-width: 100%;
   border-radius: 4px 24px 24px 24px;
 }
+.ai-msg.assistant p:last-child,
+.ai-msg.assistant ul:last-child,
+.ai-msg.assistant ol:last-child { margin-bottom: 0; }
 .ai-msg.loading {
   background: var(--surface2);
   border: 1px solid var(--border);

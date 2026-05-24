@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -123,7 +124,26 @@ export default function AIChat({
       <div className="ai-messages" ref={messagesRef} style={{ maxHeight: height }}>
         {messages.map((msg, i) => (
           <div key={i} className={`ai-msg ${msg.role}`}>
-            {msg.content}
+            {msg.role === 'assistant' ? (
+              <ReactMarkdown
+                components={{
+                  p:      ({ children }) => <p style={{ margin: '0 0 8px 0' }}>{children}</p>,
+                  ul:     ({ children }) => <ul style={{ paddingLeft: 18, margin: '4px 0 8px 0' }}>{children}</ul>,
+                  ol:     ({ children }) => <ol style={{ paddingLeft: 18, margin: '4px 0 8px 0' }}>{children}</ol>,
+                  li:     ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
+                  strong: ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--text)' }}>{children}</strong>,
+                  h1:     ({ children }) => <p style={{ fontWeight: 700, fontSize: '1.05em', margin: '8px 0 4px 0', color: 'var(--text)' }}>{children}</p>,
+                  h2:     ({ children }) => <p style={{ fontWeight: 700, fontSize: '1.02em', margin: '8px 0 4px 0', color: 'var(--text)' }}>{children}</p>,
+                  h3:     ({ children }) => <p style={{ fontWeight: 600, margin: '6px 0 2px 0', color: 'var(--text)' }}>{children}</p>,
+                  code:   ({ children }) => <code style={{ background: 'rgba(0,0,0,0.06)', borderRadius: 4, padding: '1px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.9em' }}>{children}</code>,
+                  hr:     () => <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0' }} />,
+                }}
+              >
+                {msg.content}
+              </ReactMarkdown>
+            ) : (
+              msg.content
+            )}
           </div>
         ))}
         {loading && (
