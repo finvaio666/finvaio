@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 const navItems = [
   {
@@ -34,6 +35,20 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [advisor, setAdvisor] = useState({ name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' });
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        if (d.name) setAdvisor({
+          name:     d.name,
+          role:     d.role === 'Admin' ? 'Senior Consultant' : 'Financial Advisor',
+          initials: d.initials || d.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -81,10 +96,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <div className="sidebar-footer">
           <div className="consultant-badge">
-            <div className="avatar">SS</div>
+            <div className="avatar">{advisor.initials}</div>
             <div style={{ flex: 1 }}>
-              <div className="consultant-name">Sky Siew</div>
-              <div className="consultant-role">Senior Consultant</div>
+              <div className="consultant-name">{advisor.name}</div>
+              <div className="consultant-role">{advisor.role}</div>
             </div>
           </div>
           <button

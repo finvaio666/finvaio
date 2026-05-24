@@ -20,7 +20,7 @@ interface AIChatProps {
 }
 
 export default function AIChat({
-  initialMessage = "👋 Hi Bill! I have live access to your Notion workspace. Click a quick prompt or ask me anything about your clients.",
+  initialMessage = "👋 Hi! I have live access to your Notion workspace. Click a quick prompt or ask me anything about your clients.",
   height = "340px",
   quickPrompts = [],
   placeholder = "Ask about any client...",
