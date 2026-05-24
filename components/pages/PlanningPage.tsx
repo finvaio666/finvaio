@@ -767,11 +767,262 @@ function EmergencyFundCalculator({ preloadClient }: { preloadClient?: ClientData
   );
 }
 
+// ─── Insurance Planning Calculator ───────────────────────────────────────────
+function InsurancePlanningCalculator({ preloadClient }: { preloadClient?: ClientData | null }) {
+  const [f, setF] = useState({
+    clientName:          '',
+    currentAge:          35,
+    monthlyIncome:       8000,
+    dependents:          2,
+    yearsToSupport:      20,
+    outstandingDebt:     300000,
+    finalExpenses:       30000,
+    existingLife:        0,
+    existingCI:          0,
+    existingTPD:         0,
+    existingPA:          0,
+    annualPremiumBudget: 0,
+  });
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  useEffect(() => {
+    if (!preloadClient) return;
+    const age = ageFromDob(preloadClient.dob);
+    setF(prev => ({
+      ...prev,
+      clientName:          preloadClient.name,
+      currentAge:          age || prev.currentAge,
+      monthlyIncome:       preloadClient.income > 0 ? preloadClient.income : prev.monthlyIncome,
+      annualPremiumBudget: preloadClient.income > 0 ? Math.round(preloadClient.income * 0.10 * 12) : prev.annualPremiumBudget,
+    }));
+  }, [preloadClient]);
+
+  const set = (k: keyof typeof f) => (v: number | string) => setF(prev => ({ ...prev, [k]: v }));
+
+  const annualIncome      = f.monthlyIncome * 12;
+  const incomeReplacement = annualIncome * f.yearsToSupport;
+  const recommendedLife   = incomeReplacement + f.outstandingDebt + f.finalExpenses;
+  const recommendedCI     = Math.max(annualIncome * 5, 200000);
+  const recommendedTPD    = recommendedLife;
+  const recommendedPA     = annualIncome * 2;
+  const lifeGap  = Math.max(recommendedLife - f.existingLife, 0);
+  const ciGap    = Math.max(recommendedCI   - f.existingCI,   0);
+  const tpdGap   = Math.max(recommendedTPD  - f.existingTPD,  0);
+  const paGap    = Math.max(recommendedPA   - f.existingPA,   0);
+
+  const suggestedBudget = Math.round(annualIncome * 0.10);
+  const scores = [
+    Math.min(f.existingLife / recommendedLife, 1),
+    Math.min(f.existingCI   / recommendedCI,   1),
+    Math.min(f.existingTPD  / recommendedTPD,  1),
+  ];
+  const overallScore = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100);
+  const scoreColor   = overallScore >= 80 ? 'var(--green)' : overallScore >= 50 ? 'var(--gold)' : 'var(--red)';
+  const scoreBg      = overallScore >= 80 ? 'var(--green-dim)' : overallScore >= 50 ? 'var(--gold-dim)' : 'var(--red-dim)';
+  const scoreLabel   = overallScore >= 80 ? '✅ Well Protected' : overallScore >= 50 ? '🟡 Partially Protected' : '⚠️ Underprotected';
+  const summaryStatus: 'positive' | 'warning' | 'negative' = overallScore >= 80 ? 'positive' : overallScore >= 50 ? 'warning' : 'negative';
+
+  const coverageRow = (label: string, existing: number, recommended: number, gap: number) => {
+    const pct    = Math.min(Math.round((existing / recommended) * 100), 100);
+    const isMet  = gap === 0;
+    return (
+      <div key={label}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>{label}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-mono)', color: isMet ? 'var(--green)' : 'var(--red)' }}>
+            {isMet ? '✅ Met' : `Gap: ${fmtK(gap)}`}
+          </span>
+        </div>
+        <div style={{ padding: '0 16px 10px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+            <div className="bar-track" style={{ flex: 1 }}>
+              <div className="bar-fill" style={{ width: `${pct}%`, background: pct >= 100 ? '#4ADE80' : pct >= 50 ? '#F59E0B' : '#F87171' }} />
+            </div>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text3)', width: 36, textAlign: 'right' }}>{pct}%</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>
+            <span>Have: {fmtK(existing)}</span>
+            <span>Need: {fmtK(recommended)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const handleDownload = async () => {
+    setPdfLoading(true);
+    try {
+      await downloadPDF({
+        reportType: 'Insurance Planning Report',
+        clientName: f.clientName || 'Client',
+        subtitle:   `Age ${f.currentAge}  ·  ${f.dependents} dependent(s)  ·  Protection Score: ${overallScore}%`,
+        sections: [
+          {
+            title: 'Client Profile',
+            rows: [
+              { label: 'Current age',           value: `${f.currentAge} years old` },
+              { label: 'Monthly income',         value: fmt(f.monthlyIncome) },
+              { label: 'Annual income',          value: fmt(annualIncome) },
+              { label: 'Dependents',             value: `${f.dependents} person(s)` },
+              { label: 'Years to support dependents', value: `${f.yearsToSupport} years` },
+              { label: 'Outstanding debts',      value: fmt(f.outstandingDebt) },
+              { label: 'Final expense estimate', value: fmt(f.finalExpenses) },
+            ],
+          },
+          {
+            title: 'Life / Death Benefit Analysis',
+            rows: [
+              { label: 'Income replacement need',   value: fmtK(incomeReplacement) },
+              { label: 'Outstanding debts',         value: fmtK(f.outstandingDebt) },
+              { label: 'Final expenses',            value: fmtK(f.finalExpenses) },
+              { label: 'Total life cover needed',   value: fmtK(recommendedLife) },
+              { label: 'Existing life cover',       value: fmtK(f.existingLife) },
+              { label: lifeGap === 0 ? 'Status' : 'Life cover gap', value: lifeGap === 0 ? 'Fully covered ✅' : fmtK(lifeGap), highlight: lifeGap === 0 ? 'positive' : 'negative' },
+            ],
+          },
+          {
+            title: 'Critical Illness & TPD Analysis',
+            rows: [
+              { label: 'CI cover needed (5× annual income, min RM 200K)', value: fmtK(recommendedCI) },
+              { label: 'Existing CI cover',  value: fmtK(f.existingCI) },
+              { label: ciGap === 0 ? 'CI status' : 'CI cover gap', value: ciGap === 0 ? 'Fully covered ✅' : fmtK(ciGap), highlight: ciGap === 0 ? 'positive' : 'negative' },
+              { label: 'TPD cover needed',   value: fmtK(recommendedTPD) },
+              { label: 'Existing TPD cover', value: fmtK(f.existingTPD) },
+              { label: tpdGap === 0 ? 'TPD status' : 'TPD cover gap', value: tpdGap === 0 ? 'Fully covered ✅' : fmtK(tpdGap), highlight: tpdGap === 0 ? 'positive' : 'negative' },
+            ],
+          },
+          {
+            title: 'Personal Accident & Budget',
+            rows: [
+              { label: 'PA cover needed (2× annual income)', value: fmtK(recommendedPA) },
+              { label: 'Existing PA cover',  value: fmtK(f.existingPA) },
+              { label: paGap === 0 ? 'PA status' : 'PA cover gap', value: paGap === 0 ? 'Fully covered ✅' : fmtK(paGap), highlight: paGap === 0 ? 'positive' : 'negative' },
+              { label: 'Suggested annual premium budget (10% income)', value: fmtK(suggestedBudget) },
+              { label: 'Current annual premium budget', value: f.annualPremiumBudget > 0 ? fmtK(f.annualPremiumBudget) : 'Not specified' },
+            ],
+          },
+        ],
+        summary: {
+          status:   summaryStatus,
+          headline: `${scoreLabel} — Overall Protection Score: ${overallScore}%`,
+          detail:   lifeGap > 0
+            ? `Priority: Close life cover gap of ${fmtK(lifeGap)}. ${ciGap > 0 ? `CI gap: ${fmtK(ciGap)}.` : ''} Review existing policies and top up accordingly.`
+            : `Life and TPD adequately covered. ${ciGap > 0 ? `Consider topping up CI cover by ${fmtK(ciGap)}.` : 'CI coverage is sufficient.'} Review annually.`,
+        },
+        assumptions: `Life need = income replacement (${f.yearsToSupport} yrs) + debts + final expenses  ·  CI = max(5× annual income, RM 200K)  ·  TPD = same as Life  ·  PA = 2× annual income  ·  Premium budget = 10% annual income`,
+      });
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      {/* ── Left: Inputs ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Client Details</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Client Name</label>
+          <input value={f.clientName} onChange={e => setF(p => ({ ...p, clientName: e.target.value }))}
+            style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '8px 12px', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 13, outline: 'none' }} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Current Age"   value={f.currentAge}  onChange={set('currentAge')}  prefix="" suffix="yrs" step={1} min={18} />
+          <Field label="Dependents"    value={f.dependents}  onChange={set('dependents')}  prefix="" suffix="pax" step={1} min={0} />
+        </div>
+        <Field label="Monthly Income" value={f.monthlyIncome} onChange={set('monthlyIncome')} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Years to Support Dependents" value={f.yearsToSupport}  onChange={set('yearsToSupport')}  prefix="" suffix="yrs" step={1} min={1} />
+          <Field label="Final Expenses"              value={f.finalExpenses}   onChange={set('finalExpenses')}   step={5000} />
+        </div>
+        <Field label="Outstanding Debts (Mortgage + Loans)" value={f.outstandingDebt} onChange={set('outstandingDebt')} step={10000} />
+
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 8, marginBottom: 4 }}>Existing Coverage</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Life Cover"  value={f.existingLife} onChange={set('existingLife')} step={50000} />
+          <Field label="CI Cover"    value={f.existingCI}   onChange={set('existingCI')}   step={50000} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="TPD Cover"   value={f.existingTPD}  onChange={set('existingTPD')}  step={50000} />
+          <Field label="PA Cover"    value={f.existingPA}   onChange={set('existingPA')}   step={10000} />
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 8, marginBottom: 4 }}>Premium Budget</div>
+        <Field label="Annual Premium Budget" value={f.annualPremiumBudget} onChange={set('annualPremiumBudget')} step={500} />
+        <div style={{ padding: 12, background: 'var(--surface2)', borderRadius: 'var(--r-sm)', fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
+          💡 Suggested budget: <strong style={{ color: 'var(--text2)' }}>{fmtK(suggestedBudget)}/yr</strong> (10% of annual income) · Life need = income replacement + debts + final expenses
+        </div>
+      </div>
+
+      {/* ── Right: Results ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Overall score card */}
+        <div style={{ background: scoreBg, border: `1px solid ${scoreColor}40`, borderRadius: 'var(--r)', padding: '16px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: scoreColor, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+            {scoreLabel}
+          </div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 48, color: scoreColor, lineHeight: 1, fontWeight: 500 }}>
+            {overallScore}%
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>Overall protection score</div>
+        </div>
+
+        {/* Coverage breakdown */}
+        <div className="section" style={{ margin: 0 }}>
+          <div className="section-header">
+            <div className="section-title">
+              <span className="section-dot" style={{ background: 'var(--purple)' }} />
+              Coverage Gap Analysis
+            </div>
+            <DownloadButton onClick={handleDownload} loading={pdfLoading} />
+          </div>
+          {coverageRow('💀 Life / Death Benefit', f.existingLife, recommendedLife, lifeGap)}
+          {coverageRow('🏥 Critical Illness (CI)', f.existingCI, recommendedCI, ciGap)}
+          {coverageRow('♿ Total Permanent Disability (TPD)', f.existingTPD, recommendedTPD, tpdGap)}
+          {coverageRow('🚑 Personal Accident (PA)', f.existingPA, recommendedPA, paGap)}
+
+          {/* Budget check */}
+          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: 'var(--text2)' }}>💰 Premium Budget (10% rule)</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: f.annualPremiumBudget >= suggestedBudget ? 'var(--green)' : f.annualPremiumBudget > 0 ? 'var(--gold)' : 'var(--text3)', fontFamily: 'var(--font-mono)' }}>
+              {f.annualPremiumBudget > 0
+                ? f.annualPremiumBudget >= suggestedBudget ? `✅ ${fmtK(f.annualPremiumBudget)}/yr` : `🟡 ${fmtK(f.annualPremiumBudget)} vs ${fmtK(suggestedBudget)}`
+                : `Suggested: ${fmtK(suggestedBudget)}/yr`}
+            </span>
+          </div>
+        </div>
+
+        {/* Recommended coverage summary */}
+        <div className="section" style={{ margin: 0 }}>
+          <div className="section-header">
+            <div className="section-title">
+              <span className="section-dot" style={{ background: 'var(--blue)' }} />
+              Recommended Coverage
+            </div>
+          </div>
+          {[
+            { label: 'Life / Death Benefit', val: recommendedLife, color: 'var(--red)' },
+            { label: 'Critical Illness',     val: recommendedCI,   color: 'var(--purple)' },
+            { label: 'TPD',                  val: recommendedTPD,  color: 'var(--blue)' },
+            { label: 'Personal Accident',    val: recommendedPA,   color: 'var(--gold)' },
+          ].map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 13, color: 'var(--text2)' }}>{r.label}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-mono)', color: r.color }}>{fmtK(r.val)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Planning Page ───────────────────────────────────────────────────────
 const TABS = [
   { id: 'retirement', label: '📊 Retirement Planning' },
   { id: 'education',  label: '🎓 Education Planning'  },
   { id: 'emergency',  label: '🛡️ Emergency Fund'      },
+  { id: 'insurance',  label: '🔒 Insurance Planning'  },
 ];
 
 export default function PlanningPage() {
@@ -797,7 +1048,7 @@ export default function PlanningPage() {
     }
   }, [mode, selectedId, clients]);
 
-  const accentColor = activeTab === 'retirement' ? 'var(--accent)' : activeTab === 'education' ? 'var(--blue)' : 'var(--gold)';
+  const accentColor = activeTab === 'retirement' ? 'var(--accent)' : activeTab === 'education' ? 'var(--blue)' : activeTab === 'insurance' ? 'var(--purple)' : 'var(--gold)';
 
   return (
     <>
@@ -889,9 +1140,10 @@ export default function PlanningPage() {
           </div>
         </div>
 
-        {activeTab === 'retirement' && <RetirementCalculator preloadClient={preloadClient} />}
-        {activeTab === 'education'  && <EducationCalculator  preloadClient={preloadClient} />}
-        {activeTab === 'emergency'  && <EmergencyFundCalculator preloadClient={preloadClient} />}
+        {activeTab === 'retirement' && <RetirementCalculator      preloadClient={preloadClient} />}
+        {activeTab === 'education'  && <EducationCalculator       preloadClient={preloadClient} />}
+        {activeTab === 'emergency'  && <EmergencyFundCalculator   preloadClient={preloadClient} />}
+        {activeTab === 'insurance'  && <InsurancePlanningCalculator preloadClient={preloadClient} />}
       </div>
     </>
   );
