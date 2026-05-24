@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, statusClass } from '@/components/useClients';
+import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, segmentLabel, statusClass } from '@/components/useClients';
 
 export default function DashboardPage() {
   const { clients, loading, totalAum, activeCount, prospectCount, reviewsDue } = useClients();
@@ -73,7 +73,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div><span className={`badge ${statusClass(client.status)}`}>{client.status}</span></div>
-              <div><span className={`badge ${segmentClass(client.segment)}`}>{client.segment}</span></div>
+              <div><span className={`badge ${segmentClass(client.segment)}`}>{segmentLabel(client.segment)}</span></div>
               <div><span className="aum-val">{formatAUM(client.aum)}</span></div>
               <div><span className="review-date">{formatDate(client.nextReview)}</span></div>
               <div><span className={`badge ${riskClass(client.risk)}`}>{client.risk}</span></div>

@@ -84,6 +84,12 @@ export function segmentClass(seg: string) {
   return 'active';
 }
 
+export function segmentLabel(seg: string) {
+  const s = seg?.toLowerCase();
+  if (s?.includes('high net worth') || s?.includes('hnw')) return 'HNW';
+  return seg; // all other segments display as-is
+}
+
 export function statusClass(status: string) {
   if (status?.includes('Active')) return 'active';
   if (status?.includes('Prospect')) return 'prospect';
