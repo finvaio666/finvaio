@@ -255,19 +255,38 @@ async function downloadPDF(report: PDFReport) {
 }
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
-function Field({ label, value, onChange, prefix = 'RM', suffix = '', step = 1000, min = 0 }: {
+function Field({ label, value, onChange, prefix = 'RM', suffix = '', min = 0 }: {
   label: string; value: number; onChange: (v: number) => void;
   prefix?: string; suffix?: string; step?: number; min?: number;
 }) {
+  // Use a local string so the field can be fully cleared while typing
+  const [raw, setRaw] = useState(value === 0 ? '' : String(value));
+
+  // Sync when parent resets value (e.g. preloadClient)
+  useEffect(() => {
+    setRaw(value === 0 ? '' : String(value));
+  }, [value]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</label>
       <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', overflow: 'hidden' }}>
         {prefix && <span style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text3)', borderRight: '1px solid var(--border)', fontFamily: 'var(--font-mono)' }}>{prefix}</span>}
         <input
-          type="number" value={value} min={min} step={step}
-          onChange={e => onChange(Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={raw}
+          min={min}
           onFocus={e => e.target.select()}
+          onChange={e => {
+            const val = e.target.value.replace(/[^0-9]/g, '');
+            setRaw(val);
+            onChange(val === '' ? 0 : Number(val));
+          }}
+          onBlur={() => {
+            if (raw === '') { setRaw(''); onChange(0); }
+          }}
           style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '8px 10px', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 13 }}
         />
         {suffix && <span style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text3)', borderLeft: '1px solid var(--border)' }}>{suffix}</span>}
