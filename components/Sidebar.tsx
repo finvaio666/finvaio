@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { LogoD1Icon } from '@/components/LogoVariants';
 
 const navItems = [
   {
@@ -66,7 +67,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <div className={`sidebar-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          <div className="logo-mark">ARIA</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <LogoD1Icon size={30} />
+            <div className="logo-mark">ARIA</div>
+          </div>
           <div className="logo-sub" style={{ lineHeight: 1.5 }}>
             Advisor Resource &amp; Intelligence Assistant
           </div>

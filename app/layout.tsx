@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   title: "ARIA — Advisor Resource & Intelligence Assistant",
   description: "ARIA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
   manifest: "/manifest.json",
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

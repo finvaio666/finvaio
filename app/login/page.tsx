@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { LogoD1Icon } from '@/components/LogoVariants';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -50,8 +51,12 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          {/* D1 icon */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+            <LogoD1Icon size={64} />
+          </div>
           <div style={{
-            fontSize: 48, fontWeight: 700, letterSpacing: '-0.04em',
+            fontSize: 42, fontWeight: 800, letterSpacing: '-0.04em',
             color: 'var(--text)', lineHeight: 1,
           }}>
             ARIA
@@ -62,12 +67,6 @@ export default function LoginPage() {
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, opacity: 0.7 }}>
             Bill Morrisons Financial Consulting
           </div>
-
-          {/* Orange accent line */}
-          <div style={{
-            width: 40, height: 3, background: 'var(--accent2)',
-            borderRadius: 2, margin: '16px auto 0',
-          }} />
         </div>
 
         {/* Card */}
