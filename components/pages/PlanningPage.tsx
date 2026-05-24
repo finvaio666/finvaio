@@ -267,6 +267,7 @@ function Field({ label, value, onChange, prefix = 'RM', suffix = '', step = 1000
         <input
           type="number" value={value} min={min} step={step}
           onChange={e => onChange(Number(e.target.value))}
+          onFocus={e => e.target.select()}
           style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '8px 10px', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 13 }}
         />
         {suffix && <span style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text3)', borderLeft: '1px solid var(--border)' }}>{suffix}</span>}
