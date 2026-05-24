@@ -225,7 +225,8 @@ export default function PortfolioPage() {
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading from Notion…</div>
         ) : (
-          <div>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ minWidth: 680 }}>
             {/* Column headers */}
             <div style={{
               display: 'grid',
@@ -370,6 +371,7 @@ export default function PortfolioPage() {
               <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalGain >= 0 ? '+' : ''}{Math.round(totalGain).toLocaleString()}</div>
               <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: Number(avgReturn) >= 0 ? 'var(--green)' : 'var(--red)' }}>{Number(avgReturn) >= 0 ? '+' : ''}{avgReturn}%</div>
             </div>
+          </div>
           </div>
         )}
       </div>}

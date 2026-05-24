@@ -405,9 +405,11 @@ export default function InsurancePage() {
           {/* Column header — same grid as data rows and subtotal */}
           {(() => {
             const COLS = '2fr 150px 1.5fr 120px 110px 80px';
+            const MIN_W = 780;
             const activeRows = rows.filter(p => p.status?.includes('Active'));
             return (
-              <>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <div style={{ minWidth: MIN_W }}>
                 <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '8px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div>Policy / Insurer</div>
                   <div>Type</div>
@@ -497,7 +499,8 @@ export default function InsurancePage() {
                   </div>
                   <div />
                 </div>
-              </>
+              </div>
+              </div>
             );
           })()}
         </div>
