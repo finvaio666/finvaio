@@ -402,100 +402,104 @@ export default function InsurancePage() {
             </span>
           </div>
 
-          {/* Column header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 200px 110px 110px 80px', padding: '8px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            <div>Policy / Insurer</div>
-            <div>Type</div>
-            <div>Benefits</div>
-            <div style={{ textAlign: 'right' }}>Sum Assured</div>
-            <div style={{ textAlign: 'right' }}>Premium/yr</div>
-            <div style={{ textAlign: 'right' }}>Status</div>
-          </div>
+          {/* Column header — same grid as data rows and subtotal */}
+          {(() => {
+            const COLS = '2fr 150px 1.5fr 120px 110px 80px';
+            const activeRows = rows.filter(p => p.status?.includes('Active'));
+            return (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '8px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <div>Policy / Insurer</div>
+                  <div>Type</div>
+                  <div>Benefits</div>
+                  <div style={{ textAlign: 'right' }}>Sum Assured</div>
+                  <div style={{ textAlign: 'right' }}>Premium/yr</div>
+                  <div style={{ textAlign: 'right' }}>Status</div>
+                </div>
 
-          {rows.map((p, i) => (
-            <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 200px 110px 110px 80px', padding: '13px 20px', alignItems: 'center', borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
-              onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
-              onMouseOut={e => (e.currentTarget.style.background = '')}>
-              {/* Policy name */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</span>
-                  {/* Flag when Policy Owner ≠ Life Assured */}
-                  {p.lifeAssured && p.policyOwner && p.lifeAssured !== p.policyOwner && (
-                    <span style={{ padding: '1px 7px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: 'var(--gold, #F59E0B)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                      Owner ≠ Assured
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                  {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
-                  {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
-                </div>
-                {/* Life Assured & Policy Owner */}
-                <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-                  {p.lifeAssured && (
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-                      🧑 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Life Assured:</span> {p.lifeAssured}
+                {rows.map((p, i) => (
+                  <div key={p.id} style={{ display: 'grid', gridTemplateColumns: COLS, padding: '13px 20px', alignItems: 'start', borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                    onMouseOut={e => (e.currentTarget.style.background = '')}>
+
+                    {/* Policy name */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</span>
+                        {p.lifeAssured && p.policyOwner && p.lifeAssured !== p.policyOwner && (
+                          <span style={{ padding: '1px 7px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: 'var(--gold, #F59E0B)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                            Owner ≠ Assured
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                        {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
+                        {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
+                        {p.lifeAssured && <div style={{ fontSize: 10, color: 'var(--text3)' }}>🧑 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Life Assured:</span> {p.lifeAssured}</div>}
+                        {p.policyOwner && <div style={{ fontSize: 10, color: 'var(--text3)' }}>👤 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Policy Owner:</span> {p.policyOwner}</div>}
+                      </div>
+                      {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 Beneficiary: {p.beneficiary}</div>}
                     </div>
-                  )}
-                  {p.policyOwner && (
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-                      👤 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Policy Owner:</span> {p.policyOwner}
+
+                    {/* Type — overflow hidden so badge never bleeds into next column */}
+                    <div style={{ overflow: 'hidden', paddingTop: 2 }}>
+                      <TypeBadge type={p.insuranceType} />
                     </div>
-                  )}
-                </div>
-                {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 Beneficiary: {p.beneficiary}</div>}
-              </div>
 
-              {/* Type */}
-              <div><TypeBadge type={p.insuranceType} /></div>
+                    {/* Benefits */}
+                    <div style={{ paddingTop: 2 }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {p.benefits.length > 0
+                          ? p.benefits.map(b => <BenefitPill key={b} benefit={b} />)
+                          : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
+                      </div>
+                      {(p.lifeCover > 0 || p.ciCover > 0 || p.paCover > 0 || p.tpdCover > 0) && (
+                        <div style={{ marginTop: 4, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-mono)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {p.lifeCover > 0 && <span>🛡️ {fmtK(p.lifeCover)}</span>}
+                          {p.ciCover   > 0 && <span>❤️ {fmtK(p.ciCover)}</span>}
+                          {p.paCover   > 0 && <span>🦺 {fmtK(p.paCover)}</span>}
+                          {p.tpdCover  > 0 && <span>♿ {fmtK(p.tpdCover)}</span>}
+                          {p.medicalClass  && <span>🏥 {p.medicalClass}</span>}
+                        </div>
+                      )}
+                    </div>
 
-              {/* Benefits */}
-              <div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {p.benefits.length > 0
-                    ? p.benefits.map(b => <BenefitPill key={b} benefit={b} />)
-                    : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
-                </div>
-                {/* Per-benefit coverage amounts (shown when filled) */}
-                {(p.lifeCover > 0 || p.ciCover > 0 || p.paCover > 0 || p.tpdCover > 0) && (
-                  <div style={{ marginTop: 4, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-mono)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {p.lifeCover > 0 && <span>🛡️ {fmtK(p.lifeCover)}</span>}
-                    {p.ciCover   > 0 && <span>❤️ {fmtK(p.ciCover)}</span>}
-                    {p.paCover   > 0 && <span>🦺 {fmtK(p.paCover)}</span>}
-                    {p.tpdCover  > 0 && <span>♿ {fmtK(p.tpdCover)}</span>}
-                    {p.medicalClass  && <span>🏥 {p.medicalClass}</span>}
+                    {/* Sum Assured */}
+                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13, paddingTop: 2 }}>
+                      {p.sumAssured > 0 ? Math.round(p.sumAssured).toLocaleString() : '—'}
+                    </div>
+
+                    {/* Premium/yr */}
+                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12, paddingTop: 2 }}>
+                      {p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—'}
+                    </div>
+
+                    {/* Status */}
+                    <div style={{ textAlign: 'right', paddingTop: 2 }}>
+                      <span style={{ padding: '3px 9px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 600, background: p.status?.includes('Active') ? 'var(--green-dim)' : 'var(--surface2)', color: p.status?.includes('Active') ? 'var(--green)' : 'var(--text3)' }}>
+                        {p.status}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
+                ))}
 
-              {/* Sum Assured */}
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
-                {p.sumAssured > 0 ? Math.round(p.sumAssured).toLocaleString() : '—'}
-              </div>
-
-              {/* Premium */}
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
-                {p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—'}
-              </div>
-
-              {/* Status */}
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ padding: '3px 9px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 600, background: p.status?.includes('Active') ? 'var(--green-dim)' : 'var(--surface2)', color: p.status?.includes('Active') ? 'var(--green)' : 'var(--text3)' }}>
-                  {p.status}
-                </span>
-              </div>
-            </div>
-          ))}
-
-          {/* Subtotal */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 200px 110px 110px 80px', padding: '10px 20px', background: 'var(--bg2)', borderTop: '2px solid var(--border)', fontSize: 12, fontWeight: 700, paddingBottom: 20 }}>
-            <div style={{ color: 'var(--text3)', fontSize: 11 }}>Subtotal (active)</div>
-            <div /><div />
-            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0)).toLocaleString()}</div>
-            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.annualPremium, 0)).toLocaleString()}</div>
-            <div />
-          </div>
+                {/* Subtotal — exact same COLS, numbers align perfectly with header */}
+                <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '10px 20px 18px', background: 'var(--bg2)', borderTop: '2px solid var(--border)' }}>
+                  <div style={{ color: 'var(--text3)', fontSize: 11, fontWeight: 600 }}>Subtotal (active)</div>
+                  <div /><div />
+                  <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
+                    {Math.round(activeRows.reduce((s, p) => s + p.sumAssured, 0)).toLocaleString()}
+                  </div>
+                  <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: 'var(--text3)' }}>
+                    {Math.round(activeRows.reduce((s, p) => s + p.annualPremium, 0)).toLocaleString()}
+                  </div>
+                  <div />
+                </div>
+              </>
+            );
+          })()}
         </div>
       ))}
 
