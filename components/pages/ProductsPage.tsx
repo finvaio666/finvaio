@@ -213,6 +213,7 @@ export default function ProductsPage() {
   const [funds,  setFunds]  = useState<Fund[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]  = useState('');
+  const [authorized, setAuthorized] = useState<boolean | null>(null); // null = checking
 
   const [insFilter, setInsFilter] = useState('All');
   const [fundFilter, setFundFilter] = useState('All');
@@ -220,15 +221,41 @@ export default function ProductsPage() {
   const [epfOnly, setEpfOnly] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      fetch('/api/notion?type=insurance-products', { cache: 'no-store' }).then(r => r.json()),
-      fetch('/api/notion?type=funds',              { cache: 'no-store' }).then(r => r.json()),
-    ]).then(([ins, fnd]) => {
-      setPlans(ins.data ?? []);
-      setFunds(fnd.data ?? []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    // Check feature access before loading product data
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        const hasAccess = Array.isArray(d.features) && d.features.includes('products');
+        setAuthorized(hasAccess);
+        if (!hasAccess) { setLoading(false); return; }
+
+        return Promise.all([
+          fetch('/api/notion?type=insurance-products', { cache: 'no-store' }).then(r => r.json()),
+          fetch('/api/notion?type=funds',              { cache: 'no-store' }).then(r => r.json()),
+        ]).then(([ins, fnd]) => {
+          setPlans(ins.data ?? []);
+          setFunds(fnd.data ?? []);
+        });
+      })
+      .catch(() => { setAuthorized(false); })
+      .finally(() => setLoading(false));
   }, []);
+
+  // ── Not authorized ────────────────────────────────────────────────────────
+  if (authorized === false) {
+    return (
+      <div className="section" style={{ padding: '80px 40px', textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
+          Feature Not Available
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text3)', maxWidth: 340, margin: '0 auto', lineHeight: 1.7 }}>
+          The Product Catalogue is not enabled for your account.
+          Please contact your administrator to request access.
+        </div>
+      </div>
+    );
+  }
 
   // Derived filter lists
   const insTypes  = ['All', ...Array.from(new Set(plans.map(p => p.type))).sort()];

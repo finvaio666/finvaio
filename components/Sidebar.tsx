@@ -9,22 +9,22 @@ const navItems = [
   {
     group: 'Workspace',
     items: [
-      { id: 'dashboard', label: 'Dashboard', href: '/', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-      { id: 'clients', label: 'Clients', href: '/clients', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-      { id: 'portfolio', label: 'Portfolio', href: '/portfolio', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-      { id: 'reviews', label: 'Reviews', href: '/reviews', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
-      { id: 'cashflow', label: 'Cash Flow', href: '/cashflow', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
-      { id: 'insurance', label: 'Insurance', href: '/insurance', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> },
+      { id: 'dashboard', label: 'Dashboard', href: '/',          feature: undefined, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+      { id: 'clients',   label: 'Clients',   href: '/clients',   feature: undefined, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+      { id: 'portfolio', label: 'Portfolio', href: '/portfolio',  feature: undefined, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+      { id: 'reviews',   label: 'Reviews',   href: '/reviews',    feature: undefined, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
+      { id: 'cashflow',  label: 'Cash Flow', href: '/cashflow',   feature: undefined, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+      { id: 'insurance', label: 'Insurance', href: '/insurance',  feature: undefined, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> },
     ],
   },
   {
     group: 'Tools',
     items: [
-      { id: 'products', label: 'Products', href: '/products', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> },
-      { id: 'templates', label: 'Templates', href: '/templates', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg> },
-      { id: 'knowledge', label: 'Knowledge Base', href: '/knowledge', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> },
-      { id: 'planning', label: 'Planning', href: '/planning', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20h20M6 20V10l6-6 6 6v10"/><path d="M10 20v-5h4v5"/></svg> },
-      { id: 'ai', label: 'AI Assistant', href: '/ai', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+      { id: 'products',  label: 'Products',       href: '/products',  feature: 'products', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> },
+      { id: 'templates', label: 'Templates',      href: '/templates', feature: undefined,   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg> },
+      { id: 'knowledge', label: 'Knowledge Base', href: '/knowledge', feature: undefined,   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> },
+      { id: 'planning',  label: 'Planning',       href: '/planning',  feature: undefined,   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20h20M6 20V10l6-6 6 6v10"/><path d="M10 20v-5h4v5"/></svg> },
+      { id: 'ai',        label: 'AI Assistant',   href: '/ai',        feature: undefined,   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
     ],
   },
 ];
@@ -37,7 +37,8 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [advisor, setAdvisor] = useState({ name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' });
+  const [advisor, setAdvisor]   = useState({ name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' });
+  const [features, setFeatures] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -48,6 +49,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           role:     d.role === 'Admin' ? 'Senior Consultant' : 'Financial Advisor',
           initials: d.initials || d.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
         });
+        if (d.features) setFeatures(d.features);
       })
       .catch(() => {});
   }, []);
@@ -81,22 +83,29 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         <nav className="nav">
-          {navItems.map((group) => (
-            <div key={group.group}>
-              <div className="nav-label">{group.group}</div>
-              {group.items.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
-                  onClick={onClose}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          ))}
+          {navItems.map((group) => {
+            // Filter items that require a feature flag
+            const visibleItems = group.items.filter(item =>
+              !item.feature || features.includes(item.feature)
+            );
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={group.group}>
+                <div className="nav-label">{group.group}</div>
+                {visibleItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
+                    onClick={onClose}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">

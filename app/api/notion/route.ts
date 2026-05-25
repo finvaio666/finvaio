@@ -17,14 +17,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Advisor configuration not found.', data: null }, { status: 401 });
   }
 
+  // ── Feature-gated types — check before demo check so demo can't bypass ───
+  const PRODUCT_TYPES = ['insurance-products', 'funds'];
+  if (PRODUCT_TYPES.includes(type)) {
+    const hasFeature = config.notionApiKey !== 'DEMO_MODE' && config.features?.includes('products');
+    if (!hasFeature) return NextResponse.json({ error: 'Feature not available.', data: [] }, { status: 403 });
+  }
+
   // ── Demo mode — return hardcoded data, skip Notion ───────────────────────
   if (config.notionApiKey === 'DEMO_MODE') {
-    if (type === 'clients')           return NextResponse.json({ data: DEMO_CLIENTS });
-    if (type === 'portfolio')         return NextResponse.json({ data: DEMO_PORTFOLIO });
-    if (type === 'insurance')         return NextResponse.json({ data: DEMO_INSURANCE });
-    if (type === 'cashflow')          return NextResponse.json({ data: DEMO_CASHFLOW });
-    if (type === 'insurance-products') return NextResponse.json({ data: DEMO_INSURANCE_PLANS });
-    if (type === 'funds')             return NextResponse.json({ data: DEMO_FUNDS });
+    if (type === 'clients')   return NextResponse.json({ data: DEMO_CLIENTS });
+    if (type === 'portfolio') return NextResponse.json({ data: DEMO_PORTFOLIO });
+    if (type === 'insurance') return NextResponse.json({ data: DEMO_INSURANCE });
+    if (type === 'cashflow')  return NextResponse.json({ data: DEMO_CASHFLOW });
     return NextResponse.json({ data: [] });
   }
 

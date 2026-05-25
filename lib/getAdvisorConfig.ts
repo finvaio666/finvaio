@@ -9,6 +9,7 @@ export interface AdvisorConfig {
   meetingNotesDbId:   string;
   insurancePlansDbId: string;  // product catalogue — insurance plans FA can sell
   fundsDbId:          string;  // product catalogue — investment funds FA can sell
+  features:           string[]; // enabled feature flags, e.g. ['products', 'rules']
   role:               string;
   name:               string;
 }
@@ -46,6 +47,7 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       meetingNotesDbId:   rt(p, 'Meeting Notes DB ID'),
       insurancePlansDbId: rt(p, 'Insurance Plans DB ID'),
       fundsDbId:          rt(p, 'Funds DB ID'),
+      features:           rt(p, 'Features').split(',').map(f => f.trim().toLowerCase()).filter(Boolean),
       role: (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor',
       name: (p['Name']  as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '',
     };
