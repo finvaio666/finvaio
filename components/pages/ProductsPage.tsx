@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AddProductModal from '@/components/AddProductModal';
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 interface InsurancePlan {
@@ -218,7 +219,19 @@ export default function ProductsPage() {
   const [insFilter, setInsFilter] = useState('All');
   const [fundFilter, setFundFilter] = useState('All');
   const [riskFilter, setRiskFilter] = useState('All');
-  const [epfOnly, setEpfOnly] = useState(false);
+  const [epfOnly, setEpfOnly]       = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  function loadProducts() {
+    setLoading(true);
+    Promise.all([
+      fetch('/api/notion?type=insurance-products', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/notion?type=funds',              { cache: 'no-store' }).then(r => r.json()),
+    ]).then(([ins, fnd]) => {
+      setPlans(ins.data ?? []);
+      setFunds(fnd.data ?? []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }
 
   useEffect(() => {
     // Check feature access before loading product data
@@ -228,17 +241,10 @@ export default function ProductsPage() {
         const hasAccess = Array.isArray(d.features) && d.features.includes('products');
         setAuthorized(hasAccess);
         if (!hasAccess) { setLoading(false); return; }
-
-        return Promise.all([
-          fetch('/api/notion?type=insurance-products', { cache: 'no-store' }).then(r => r.json()),
-          fetch('/api/notion?type=funds',              { cache: 'no-store' }).then(r => r.json()),
-        ]).then(([ins, fnd]) => {
-          setPlans(ins.data ?? []);
-          setFunds(fnd.data ?? []);
-        });
+        loadProducts();
       })
-      .catch(() => { setAuthorized(false); })
-      .finally(() => setLoading(false));
+      .catch(() => { setAuthorized(false); setLoading(false); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Not authorized ────────────────────────────────────────────────────────
@@ -288,6 +294,13 @@ export default function ProductsPage() {
 
   return (
     <>
+      {showAddModal && (
+        <AddProductModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={() => { setShowAddModal(false); loadProducts(); }}
+        />
+      )}
+
       {/* ── Header ── */}
       <div className="section">
         <div className="section-header">
@@ -303,6 +316,21 @@ export default function ProductsPage() {
                 {plans.length} plans · {funds.length} funds
               </span>
             )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 'var(--r-pill)',
+                background: 'var(--text)', color: 'var(--bg)',
+                border: 'none', cursor: 'pointer',
+                fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                transition: 'opacity 0.15s',
+              }}
+              onMouseOver={e => (e.currentTarget.style.opacity = '0.85')}
+              onMouseOut={e  => (e.currentTarget.style.opacity = '1')}
+            >
+              + Add Product
+            </button>
           </div>
         </div>
 
