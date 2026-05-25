@@ -72,7 +72,7 @@ export default function CashflowPage() {
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--accent)' }} />
-            Cash Flow Planner — Notion Data
+            Cash Flow Planner
           </div>
         </div>
         <div>
@@ -81,7 +81,7 @@ export default function CashflowPage() {
             <div>Variable Exp</div><div>EPF</div><div>Surplus</div>
           </div>
           {loading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>Loading from Notion…</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>Loading…</div>
           ) : cashflow.map(row => (
             <div key={row.id} className="cf-row"
               onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}

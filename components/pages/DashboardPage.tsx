@@ -43,7 +43,7 @@ export default function DashboardPage() {
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--accent)' }} />
-            Client CRM — Live from Notion
+            Client CRM
           </div>
           <Link href="/clients" className="section-action">View all →</Link>
         </div>
@@ -54,7 +54,7 @@ export default function DashboardPage() {
           </div>
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-              Loading from Notion…
+              Loading…
             </div>
           ) : clients.map(client => (
             <div

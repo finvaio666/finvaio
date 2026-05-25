@@ -130,7 +130,7 @@ export default function NavUpdatePanel({ onClose, onSuccess }: Props) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px' }}>
           {loading && (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)', fontSize: 13 }}>
-              Loading funds from Notion…
+              Loading funds…
             </div>
           )}
 
@@ -148,7 +148,7 @@ export default function NavUpdatePanel({ onClose, onSuccess }: Props) {
               border: '1px solid var(--accent2)44',
               fontSize: 12, color: 'var(--text2)',
             }}>
-              💡 Tip — enter units in Notion first (run <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>node update-units.mjs</code> after filling the Excel template) before updating NAV, so values are calculated correctly.
+              💡 Tip — make sure unit holdings are up to date before updating NAV prices, so portfolio values are calculated correctly.
             </div>
           )}
 
@@ -289,7 +289,7 @@ export default function NavUpdatePanel({ onClose, onSuccess }: Props) {
               background: '#D1FAE5', borderRadius: 8, border: '1px solid #6EE7B7',
               fontSize: 12, color: '#065F46', fontWeight: 600,
             }}>
-              ✅ Updated {result.updated} holding{result.updated !== 1 ? 's' : ''} in Notion
+              ✅ Updated {result.updated} holding{result.updated !== 1 ? 's' : ''} in ARIA
               {result.errors > 0 && ` (${result.errors} error${result.errors !== 1 ? 's' : ''})`}
               . Refreshing…
             </div>
@@ -326,7 +326,7 @@ export default function NavUpdatePanel({ onClose, onSuccess }: Props) {
                 transition: 'background 0.15s',
               }}
             >
-              {saving ? 'Updating Notion…' : result ? 'Done ✓' : `Update ${changedFunds.length > 0 ? changedFunds.length : ''} Fund${changedFunds.length !== 1 ? 's' : ''}`}
+              {saving ? 'Saving…' : result ? 'Done ✓' : `Update ${changedFunds.length > 0 ? changedFunds.length : ''} Fund${changedFunds.length !== 1 ? 's' : ''}`}
             </button>
           </div>
         </div>

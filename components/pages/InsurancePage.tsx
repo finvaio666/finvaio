@@ -369,7 +369,7 @@ export default function InsurancePage() {
       {/* ── Loading / error / no policies ── */}
       {filterClient && loading && (
         <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>
-          <div style={{ fontSize: 13 }}>Loading from Notion…</div>
+          <div style={{ fontSize: 13 }}>Loading…</div>
           <div style={{ fontSize: 11, marginTop: 8, color: 'var(--text3)' }}>This may take a few seconds</div>
         </div>
       )}
@@ -385,7 +385,7 @@ export default function InsurancePage() {
         <div className="section" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🛡️</div>
           <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No insurance policies yet</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies directly in your Notion Insurance database</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies directly in ARIA to get started</div>
         </div>
       )}
 

@@ -41,7 +41,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         <div className="date-badge">{dateStr}</div>
         <div className="notion-badge">
           <div className="pulse" />
-          Notion Live
+          Live Data
         </div>
       </div>
     </div>

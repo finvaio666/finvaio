@@ -20,7 +20,7 @@ interface AIChatProps {
 }
 
 export default function AIChat({
-  initialMessage = "👋 Hi! I have live access to your Notion workspace. Click a quick prompt or ask me anything about your clients.",
+  initialMessage = "👋 Hi! I have live access to your client data. Click a quick prompt or ask me anything about your clients.",
   height = "340px",
   quickPrompts = [],
   placeholder = "Ask about any client...",
@@ -72,9 +72,9 @@ export default function AIChat({
         if (raw.includes('503') || raw.includes('high demand') || raw.includes('overloaded')) {
           reply = '⚠️ AI models are currently overloaded. Please try again in a moment.';
         } else if (raw.includes('quota') || raw.includes('RESOURCE_EXHAUSTED')) {
-          reply = '⚠️ API quota exceeded. Please try again later or check your Gemini API limits.';
+          reply = '⚠️ AI service is currently at capacity. Please try again in a moment.';
         } else if (raw.includes('API_KEY') || raw.includes('API key')) {
-          reply = '⚠️ Gemini API key is missing or invalid. Check GEMINI_API_KEY in .env.local.';
+          reply = '⚠️ AI service is unavailable. Please contact your administrator.';
         } else {
           // Truncate long technical errors to avoid dumping raw JSON in the chat
           reply = raw.length > 200 ? '⚠️ ' + raw.slice(0, 200) + '…' : '⚠️ ' + raw;
@@ -83,7 +83,7 @@ export default function AIChat({
       setHistory(prev => [...prev, { role: 'assistant', content: reply }]);
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Connection error. Please check your API key in .env.local.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Connection error. Please try again or contact your administrator.' }]);
     } finally {
       setLoading(false);
     }
@@ -103,7 +103,7 @@ export default function AIChat({
           <span className="section-dot" style={{ background: 'var(--gold)' }} />
           AI Assistant
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Gemini 2.5 Flash · Notion connected</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>ARIA Intelligence · Live data</div>
       </div>
 
       {quickPrompts.length > 0 && (

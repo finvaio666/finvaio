@@ -54,7 +54,7 @@ export default function ClientsPage() {
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--accent)' }} />
-            All Clients — Notion CRM
+            All Clients
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {syncMsg && (
@@ -93,7 +93,7 @@ export default function ClientsPage() {
           </div>
           {loading && (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-              Loading from Notion…
+              Loading…
             </div>
           )}
           {error && (
@@ -124,7 +124,7 @@ export default function ClientsPage() {
         <div style={{ fontSize: 24, marginBottom: 8 }}>➕</div>
         <div style={{ fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>Add your next client</div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
-          Add a new row in your Notion Clients database — it appears here instantly
+          Add a new client in ARIA — they'll appear here instantly
         </div>
         <Link href="/templates" className="section-action">Go to Templates →</Link>
       </div>

@@ -9,10 +9,10 @@ interface ClientData {
 
 const PROMPT_LIBRARY = [
   { label: '📋 Pre-meeting briefing',   prompt: 'Generate a concise pre-meeting briefing for [CLIENT]. Cover: quick client snapshot, portfolio performance, top 3 things to discuss, key questions to ask, red flags or opportunities.' },
-  { label: '📊 Retirement projection',  prompt: 'Run a full retirement projection for [CLIENT] based on their Notion profile — include current savings, EPF, investment portfolio, target income, and expected surplus or gap.' },
+  { label: '📊 Retirement projection',  prompt: 'Run a full retirement projection for [CLIENT] — include current savings, EPF, investment portfolio, target income, and expected surplus or gap.' },
   { label: '📂 EPF analysis',           prompt: 'EPF statement analysis for [CLIENT] — extract balances, projected retirement amount at 60 with 5.5% dividend, and flag any concerns.' },
   { label: '📰 Weekly market digest',   prompt: 'Malaysian market digest this week — BNM OPR, Bursa KLCI, MYR vs USD/SGD, EPF updates, one key investor insight — bullet points suitable for team WhatsApp.' },
-  { label: '⚖️ Portfolio rebalancing',  prompt: 'Portfolio rebalancing recommendation for [CLIENT] — review their current asset allocation in Notion and suggest adjustments based on their risk profile and goals.' },
+  { label: '⚖️ Portfolio rebalancing',  prompt: 'Portfolio rebalancing recommendation for [CLIENT] — review their current asset allocation and suggest adjustments based on their risk profile and goals.' },
   { label: '🛡️ Insurance gap analysis', prompt: 'Insurance gap analysis for [CLIENT] — compare their existing coverage to income replacement needs, highlight any critical gaps in life, CI, or medical cover.' },
   { label: '✉️ Follow-up email',        prompt: 'Draft a professional post-meeting follow-up email for [CLIENT] — include warm opening, topics discussed, agreed action items, and next review date.' },
   { label: '💬 WhatsApp check-in',      prompt: 'Draft a short, warm WhatsApp message to check in with [CLIENT] and remind them of their next portfolio review.' },
@@ -77,7 +77,7 @@ export default function AIPage() {
 
   const QUICK_PROMPTS = [
     { label: '📋 Client briefing',   prompt: clientPrompt('Generate a concise pre-meeting briefing for [CLIENT]. Cover: quick client snapshot, portfolio performance, top 3 things to discuss, key questions to ask, red flags or opportunities.', selectedClient?.name ?? '') },
-    { label: '📊 Retirement check',  prompt: clientPrompt('Full retirement projection for [CLIENT] — pull their portfolio, EPF, income, and goals from Notion and calculate expected surplus or gap.', selectedClient?.name ?? '') },
+    { label: '📊 Retirement check',  prompt: clientPrompt('Full retirement projection for [CLIENT] — pull their portfolio, EPF, income, and goals and calculate expected surplus or gap.', selectedClient?.name ?? '') },
     { label: '✉️ Follow-up email',   prompt: clientPrompt('Draft a professional post-meeting follow-up email for [CLIENT] — warm opening, portfolio review topics, agreed actions, and next review date.', selectedClient?.name ?? '') },
     { label: '📰 Market digest',     prompt: "Generate this week's Malaysian financial market digest for Bill Morrisons team — BNM OPR, Bursa KLCI, MYR vs USD/SGD, EPF updates, one key investor insight." },
     { label: '💡 Strategy ideas',    prompt: clientPrompt('What are 5 ways [CLIENT] can improve their financial position based on their current portfolio and risk profile?', selectedClient?.name ?? '') },
@@ -225,7 +225,7 @@ export default function AIPage() {
       {/* ── AI Chat ─────────────────────────────────────────────────────────── */}
       <div className="section">
         <AIChat
-          initialMessage="🤖 Select a client above, then click a prompt or type your question. I'll pull their live data from Notion automatically."
+          initialMessage="🤖 Select a client above, then click a prompt or type your question. I'll pull their live data automatically."
           height="460px"
           quickPrompts={QUICK_PROMPTS}
           placeholder={selectedClient ? `Ask anything about ${selectedClient.name}…` : 'Select a client above, or ask a general question…'}

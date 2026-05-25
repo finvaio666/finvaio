@@ -192,7 +192,7 @@ export default function PortfolioPage() {
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>RM {h.fxRate.toFixed(4)}</span>
               </div>
             ))}
-          <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>ℹ️ Update FX in Notion to refresh</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>ℹ️ Update FX rates to refresh</div>
         </div>
       )}
 
@@ -223,7 +223,7 @@ export default function PortfolioPage() {
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading from Notion…</div>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
         ) : (
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ minWidth: 680 }}>
