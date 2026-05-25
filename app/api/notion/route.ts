@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW } from '@/lib/demoData';
+import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,19 +19,23 @@ export async function GET(req: NextRequest) {
 
   // ── Demo mode — return hardcoded data, skip Notion ───────────────────────
   if (config.notionApiKey === 'DEMO_MODE') {
-    if (type === 'clients')   return NextResponse.json({ data: DEMO_CLIENTS });
-    if (type === 'portfolio') return NextResponse.json({ data: DEMO_PORTFOLIO });
-    if (type === 'insurance') return NextResponse.json({ data: DEMO_INSURANCE });
-    if (type === 'cashflow')  return NextResponse.json({ data: DEMO_CASHFLOW });
+    if (type === 'clients')           return NextResponse.json({ data: DEMO_CLIENTS });
+    if (type === 'portfolio')         return NextResponse.json({ data: DEMO_PORTFOLIO });
+    if (type === 'insurance')         return NextResponse.json({ data: DEMO_INSURANCE });
+    if (type === 'cashflow')          return NextResponse.json({ data: DEMO_CASHFLOW });
+    if (type === 'insurance-products') return NextResponse.json({ data: DEMO_INSURANCE_PLANS });
+    if (type === 'funds')             return NextResponse.json({ data: DEMO_FUNDS });
     return NextResponse.json({ data: [] });
   }
 
   const notion = new Client({ auth: config.notionApiKey });
   const DB = {
-    clients:   config.clientsDbId,
-    portfolio: config.portfolioDbId,
-    cashflow:  config.cashflowDbId,
-    insurance: config.insuranceDbId,
+    clients:          config.clientsDbId,
+    portfolio:        config.portfolioDbId,
+    cashflow:         config.cashflowDbId,
+    insurance:        config.insuranceDbId,
+    insurancePlans:   config.insurancePlansDbId,
+    funds:            config.fundsDbId,
   };
 
   try {
@@ -189,9 +193,65 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data });
     }
 
+    // ── Insurance product catalogue ───────────────────────────────────────────
+    if (type === 'insurance-products') {
+      if (!DB.insurancePlans) return NextResponse.json({ data: [] });
+      const res = await notion.databases.query({
+        database_id: DB.insurancePlans,
+        filter: { property: 'Status', select: { equals: 'Active' } },
+        sorts: [{ property: 'Insurer', direction: 'ascending' }],
+      });
+      const data = res.results.filter(isFullPage).map((page) => {
+        const p = page.properties as Record<string, any>;
+        return {
+          id:               page.id,
+          name:             p['Name']?.title?.[0]?.plain_text ?? '',
+          insurer:          p['Insurer']?.select?.name ?? p['Insurer']?.rich_text?.[0]?.plain_text ?? '',
+          type:             p['Type']?.select?.name ?? '',
+          minAge:           p['Min Age']?.number ?? 0,
+          maxAge:           p['Max Age']?.number ?? 99,
+          minSumAssured:    p['Min Sum Assured']?.number ?? 0,
+          maxSumAssured:    p['Max Sum Assured']?.number ?? 0,
+          estMonthlyPremium: p['Est Monthly Premium']?.rich_text?.[0]?.plain_text ?? '',
+          keyFeatures:      p['Key Features']?.rich_text?.[0]?.plain_text ?? '',
+          epfApproved:      p['EPF Approved']?.checkbox ?? false,
+          status:           p['Status']?.select?.name ?? 'Active',
+        };
+      });
+      return NextResponse.json({ data });
+    }
+
+    // ── Investment fund catalogue ─────────────────────────────────────────────
+    if (type === 'funds') {
+      if (!DB.funds) return NextResponse.json({ data: [] });
+      const res = await notion.databases.query({
+        database_id: DB.funds,
+        filter: { property: 'Status', select: { equals: 'Active' } },
+        sorts: [{ property: 'Fund House', direction: 'ascending' }],
+      });
+      const data = res.results.filter(isFullPage).map((page) => {
+        const p = page.properties as Record<string, any>;
+        return {
+          id:            page.id,
+          name:          p['Name']?.title?.[0]?.plain_text ?? '',
+          fundHouse:     p['Fund House']?.select?.name ?? p['Fund House']?.rich_text?.[0]?.plain_text ?? '',
+          assetClass:    p['Asset Class']?.select?.name ?? '',
+          region:        p['Region']?.select?.name ?? '',
+          riskLevel:     p['Risk Level']?.select?.name ?? '',
+          return3Y:      p['3Y Return %']?.number ?? 0,
+          minInvestment: p['Min Investment']?.number ?? 1000,
+          salesCharge:   p['Sales Charge %']?.number ?? 0,
+          epfApproved:   p['EPF Approved']?.checkbox ?? false,
+          status:        p['Status']?.select?.name ?? 'Active',
+          description:   p['Description']?.rich_text?.[0]?.plain_text ?? '',
+        };
+      });
+      return NextResponse.json({ data });
+    }
+
     return NextResponse.json({ error: 'Unknown type', data: null }, { status: 400 });
   } catch (error) {
     console.error('Notion API error:', error);
-    return NextResponse.json({ error: 'Notion fetch failed', data: null }, { status: 500 });
+    return NextResponse.json({ error: 'Data fetch failed', data: null }, { status: 500 });
   }
 }
