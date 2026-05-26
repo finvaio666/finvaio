@@ -265,7 +265,7 @@ body {
 .client-table { width: 100%; }
 .client-row {
   display: grid;
-  grid-template-columns: 1fr 100px 110px 110px 120px 90px;
+  grid-template-columns: 1fr 100px 110px 110px 120px 90px 110px;
   align-items: center; padding: 14px 24px;
   border-bottom: 1px solid var(--border);
   transition: background 0.15s; cursor: pointer;
@@ -466,8 +466,8 @@ body {
   .stat-grid-3 { grid-template-columns: repeat(2,1fr); }
   .two-col { grid-template-columns: 1fr; }
   .three-col { grid-template-columns: 1fr 1fr; }
-  .client-row { grid-template-columns: 1fr 90px 80px; }
-  .client-row > *:nth-child(n+4) { display: none; }
+  .client-row { grid-template-columns: 1fr 90px 110px; }
+  .client-row > *:nth-child(n+4):not(:last-child) { display: none; }
   .client-row.header > *:nth-child(n+4) { display: none; }
   .cf-row { grid-template-columns: 1fr 90px 90px; }
   .cf-row > *:nth-child(n+4) { display: none; }
