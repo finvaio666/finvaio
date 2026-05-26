@@ -1,43 +1,52 @@
 /**
  * Client Wealth Summary PDF — Bill Morrisons Financial Consulting
- * Uses jsPDF + jspdf-autotable (client-side, no server needed).
+ * Premium redesign: clean, minimal, private-banking style.
+ * Red · Black · White brand theme.
  *
- * Theme: Red · Black · White  (matches brand logo)
- *
- * IMPORTANT: jsPDF built-in Helvetica ONLY supports Latin-1 (0x00–0xFF).
- * Never pass emoji or Unicode > 0xFF to doc.text(). Use safeText() on all
- * user-data strings.
+ * jsPDF Helvetica = Latin-1 only. Use safeText() on all user strings.
  */
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// ── Brand colours (Red · Black · White) ──────────────────────────────────────
-const C = {
-  black:   [12,  12,  12]  as [number,number,number],   // cover bg / page headers
-  dark:    [28,  28,  28]  as [number,number,number],   // section header bars
-  red:     [196, 28,  44]  as [number,number,number],   // primary accent
-  crimson: [150, 18,  30]  as [number,number,number],   // darker red (total bar)
+// ─────────────────────────────────────────────────────────────────────────────
+// DESIGN TOKENS
+// ─────────────────────────────────────────────────────────────────────────────
+const T = {
+  // Brand
+  red:     [185,  18,  34] as [number,number,number],
+  redDark: [140,  12,  24] as [number,number,number],
+  black:   [ 15,  15,  15] as [number,number,number],
+  // Text
+  text1:   [ 15,  15,  15] as [number,number,number],   // headings
+  text2:   [ 55,  65,  81] as [number,number,number],   // body
+  text3:   [107, 114, 128] as [number,number,number],   // labels / muted
+  text4:   [156, 163, 175] as [number,number,number],   // placeholders
+  // Surfaces
   white:   [255, 255, 255] as [number,number,number],
-  offwhite:[248, 248, 248] as [number,number,number],   // table alt rows / pill bg
-  grey:    [140, 140, 140] as [number,number,number],   // muted text on dark bg
-  border:  [220, 220, 220] as [number,number,number],
-  text:    [20,  20,  20]  as [number,number,number],   // near-black body text
-  text2:   [90,  90,  90]  as [number,number,number],   // medium grey
-  green:   [22,  163, 74]  as [number,number,number],   // gains / active
-  gold:    [180, 100,  6]  as [number,number,number],   // premiums / warnings
-  redloss: [220, 38,  38]  as [number,number,number],   // losses
-  lightbg: [248, 248, 248] as [number,number,number],
+  bg:      [249, 250, 251] as [number,number,number],   // alt table rows
+  border:  [229, 231, 235] as [number,number,number],   // dividers
+  // Status
+  green:   [ 22, 163,  74] as [number,number,number],
+  amber:   [180, 100,   6] as [number,number,number],
+  loss:    [220,  38,  38] as [number,number,number],
 };
 
-// ── Strip non-Latin-1 (emoji, CJK…) from any string before doc.text() ────────
-function safeText(s: string): string {
-  return s.replace(/[^\x00-\xFF]/g, '').replace(/\s+/g, ' ').trim();
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// LAYOUT CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const W = 210;
+const MARGIN = 16;           // left & right margin
+const CW = W - MARGIN * 2;  // content width = 178 mm
 
-function safeBenefits(benefits: string[]): string {
-  return benefits.map(b => safeText(b)).filter(Boolean).join(', ') || '—';
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const safeText = (s: string) =>
+  s.replace(/[^\x00-\xFF]/g, '').replace(/\s+/g, ' ').trim();
+
+const safeBenefits = (b: string[]) =>
+  b.map(safeText).filter(Boolean).join(', ') || '—';
 
 const FMT = {
   myr: (n: number) =>
@@ -49,6 +58,186 @@ const FMT = {
     s ? new Date(s).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : '—',
 };
 
+async function loadLogo(): Promise<string | null> {
+  try {
+    const res = await fetch('/logo.png');
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise(resolve => {
+      const r = new FileReader();
+      r.onload  = () => resolve(r.result as string);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+function effectiveMYR(h: { valueMYR: number; valueOrig: number; currency: string; fxRate: number }) {
+  if (h.valueMYR > 0) return h.valueMYR;
+  if (h.currency === 'MYR' && h.valueOrig > 0) return h.valueOrig;
+  if (h.fxRate > 0 && h.valueOrig > 0) return h.valueOrig * h.fxRate;
+  const FX: Record<string, number> = { MYR:1, USD:4.47, SGD:3.32, GBP:5.65, EUR:4.85, AUD:2.90, HKD:0.57 };
+  return h.valueOrig * (FX[h.currency] ?? 1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAWING PRIMITIVES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Thin horizontal rule */
+function rule(doc: jsPDF, y: number, color = T.border, lw = 0.3) {
+  doc.setDrawColor(...color);
+  doc.setLineWidth(lw);
+  doc.line(MARGIN, y, W - MARGIN, y);
+}
+
+/** Full-bleed horizontal rule (edge to edge) */
+function ruleBleed(doc: jsPDF, y: number, color = T.border, lw = 0.4) {
+  doc.setDrawColor(...color);
+  doc.setLineWidth(lw);
+  doc.line(0, y, W, y);
+}
+
+/** Section heading: left red bar + uppercase label + thin underline */
+function sectionTitle(doc: jsPDF, y: number, label: string): number {
+  doc.setFillColor(...T.red);
+  doc.rect(MARGIN, y, 2.5, 5.5, 'F');
+  doc.setTextColor(...T.red);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(label.toUpperCase(), MARGIN + 5, y + 4.5, { charSpace: 0.8 });
+  rule(doc, y + 7, T.border, 0.25);
+  return y + 12;
+}
+
+/** KPI tile: clean card with top red accent */
+function kpiTile(
+  doc: jsPDF, x: number, y: number, w: number, h: number,
+  label: string, value: string, sub: string = '',
+  accentColor: [number,number,number] = T.red
+) {
+  // Card background
+  doc.setFillColor(...T.white);
+  doc.roundedRect(x, y, w, h, 1.5, 1.5, 'F');
+  doc.setDrawColor(...T.border);
+  doc.setLineWidth(0.2);
+  doc.roundedRect(x, y, w, h, 1.5, 1.5, 'D');
+  // Top accent bar
+  doc.setFillColor(...accentColor);
+  doc.rect(x, y, w, 2, 'F');
+  // Round the top corners of accent bar manually
+  doc.setFillColor(...accentColor);
+  doc.roundedRect(x, y, w, 3, 1.5, 1.5, 'F');
+  doc.rect(x, y + 1.5, w, 1.5, 'F'); // fill lower half to hide bottom rounding
+  // Label
+  doc.setTextColor(...T.text3);
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(label.toUpperCase(), x + 5, y + 9, { charSpace: 0.3 });
+  // Value
+  doc.setTextColor(...T.text1);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(safeText(value), x + 5, y + 18);
+  // Sub-label
+  if (sub) {
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(safeText(sub), x + 5, y + 23);
+  }
+}
+
+/** Donut chart — triangle-strip approximation */
+function donut(
+  doc: jsPDF, cx: number, cy: number, R: number, r: number,
+  slices: Array<{ value: number; color: [number,number,number] }>
+) {
+  const total = slices.reduce((s, e) => s + e.value, 0);
+  if (!total) return;
+  const STEPS = 48;
+  let a0 = -Math.PI / 2;
+  slices.forEach(sl => {
+    const sweep = (sl.value / total) * 2 * Math.PI;
+    doc.setFillColor(...sl.color);
+    for (let i = 0; i < STEPS; i++) {
+      const a1 = a0 + sweep * (i / STEPS);
+      const a2 = a0 + sweep * ((i + 1) / STEPS);
+      const ix1 = cx + r * Math.cos(a1), iy1 = cy + r * Math.sin(a1);
+      const ix2 = cx + r * Math.cos(a2), iy2 = cy + r * Math.sin(a2);
+      const ox1 = cx + R * Math.cos(a1), oy1 = cy + R * Math.sin(a1);
+      const ox2 = cx + R * Math.cos(a2), oy2 = cy + R * Math.sin(a2);
+      doc.triangle(ix1, iy1, ix2, iy2, ox1, oy1, 'F');
+      doc.triangle(ix2, iy2, ox2, oy2, ox1, oy1, 'F');
+    }
+    a0 += sweep;
+  });
+  // Hole
+  doc.setFillColor(...T.white);
+  doc.circle(cx, cy, r - 0.5, 'F');
+}
+
+/** Standard page header (pages 2+) */
+function pageHeader(doc: jsPDF, logo: string | null, pageTitle: string, clientName: string) {
+  // White bg (default) — just draw elements
+  // Thin top red strip
+  doc.setFillColor(...T.red);
+  doc.rect(0, 0, W, 1.5, 'F');
+  // Logo left
+  if (logo) {
+    doc.setFillColor(...T.white);
+    doc.rect(MARGIN, 4, 44, 12, 'F');
+    doc.addImage(logo, 'PNG', MARGIN, 5, 42, 11);
+  }
+  // Page title right
+  doc.setTextColor(...T.text3);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text(safeText(clientName), W - MARGIN, 9.5, { align: 'right', charSpace: 0.2 });
+  doc.setTextColor(...T.text1);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text(pageTitle, W - MARGIN, 16, { align: 'right' });
+  // Bottom rule
+  ruleBleed(doc, 21, T.border, 0.3);
+  // Red dot accent left of title
+  doc.setFillColor(...T.red);
+  doc.circle(W - MARGIN - doc.getTextWidth(pageTitle) - 4, 15, 1.2, 'F');
+}
+
+/** Standard page footer */
+function pageFooter(doc: jsPDF, pageNum: number, total: number, today: string) {
+  const H = 297;
+  ruleBleed(doc, H - 12, T.border, 0.25);
+  doc.setTextColor(...T.text4);
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Bill Morrisons Financial Consulting  |  CONFIDENTIAL — For client use only', MARGIN, H - 7);
+  doc.text(`${today}  |  Page ${pageNum} of ${total}`, W - MARGIN, H - 7, { align: 'right' });
+  // Red pip left
+  doc.setFillColor(...T.red);
+  doc.circle(MARGIN - 4, H - 7.5, 1, 'F');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSET CLASS PALETTE  (red / dark family, readable on white)
+// ─────────────────────────────────────────────────────────────────────────────
+const CLASS_COLORS: Record<string, [number,number,number]> = {
+  'EPF':             [185,  18,  34],
+  'Unit Trust':      [220,  80,  60],
+  'Fixed Deposit':   [180, 100,   6],
+  'Stocks':          [ 60,  80, 120],
+  'Bonds':           [ 80, 110, 150],
+  'Structured Note': [130,  50,  90],
+  'REIT':            [ 40, 120, 100],
+  'ETF':             [ 80, 140, 100],
+  'Cash':            [ 80,  80,  80],
+  'Others':          [160, 160, 160],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPE
+// ─────────────────────────────────────────────────────────────────────────────
 type ReportData = {
   client: {
     name: string; status: string; segment: string; risk: string;
@@ -70,394 +259,257 @@ type ReportData = {
   generatedAt: string;
 };
 
-// ── Fetch logo from /logo.png and return base64 data URL ──────────────────────
-async function loadLogo(): Promise<string | null> {
-  try {
-    const res = await fetch('/logo.png');
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload  = () => resolve(reader.result as string);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch { return null; }
-}
-
-// ── Logo dimensions (aspect ratio 4 : 1, adjust if needed) ───────────────────
-const LOGO = { COVER_W: 78, COVER_H: 20, HEADER_W: 46, HEADER_H: 12 };
-
-// ── Section header bar ────────────────────────────────────────────────────────
-function sectionHeader(doc: jsPDF, y: number, title: string) {
-  doc.setFillColor(...C.dark);
-  doc.roundedRect(14, y, 182, 9, 1.5, 1.5, 'F');
-  doc.setFillColor(...C.red);
-  doc.roundedRect(14, y, 3, 9, 1, 1, 'F');
-  doc.setTextColor(...C.white);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text(title, 21, y + 6);
-  return y + 13;
-}
-
-// ── Stat pill ─────────────────────────────────────────────────────────────────
-function statPill(
-  doc: jsPDF, x: number, y: number, w: number,
-  label: string, value: string, color: [number,number,number]
-) {
-  doc.setFillColor(...C.offwhite);
-  doc.roundedRect(x, y, w, 16, 2, 2, 'F');
-  doc.setFillColor(...color);
-  doc.roundedRect(x, y, 3, 16, 1, 1, 'F');
-  doc.setTextColor(...C.text2);
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(safeText(label), x + 7, y + 6);
-  doc.setTextColor(...C.text);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text(safeText(value), x + 7, y + 13);
-}
-
-// ── Effective MYR value ───────────────────────────────────────────────────────
-function effectiveMYR(h: ReportData['portfolio'][0]) {
-  if (h.valueMYR > 0) return h.valueMYR;
-  if (h.currency === 'MYR' && h.valueOrig > 0) return h.valueOrig;
-  if (h.fxRate > 0 && h.valueOrig > 0) return h.valueOrig * h.fxRate;
-  const FX: Record<string, number> = { MYR:1, USD:4.47, SGD:3.32, GBP:5.65, EUR:4.85, AUD:2.90, HKD:0.57 };
-  return h.valueOrig * (FX[h.currency] ?? 1);
-}
-
-// ── Donut chart (triangle-strip approximation) ────────────────────────────────
-function drawDonutChart(
-  doc: jsPDF, cx: number, cy: number, outerR: number, innerR: number,
-  entries: Array<{ value: number; color: [number,number,number] }>
-) {
-  const total = entries.reduce((s, e) => s + e.value, 0);
-  if (total === 0) return;
-  const STEPS = 40;
-  let startAngle = -Math.PI / 2;
-  entries.forEach(entry => {
-    const sweep = (entry.value / total) * 2 * Math.PI;
-    doc.setFillColor(...entry.color);
-    for (let i = 0; i < STEPS; i++) {
-      const a1 = startAngle + sweep * (i / STEPS);
-      const a2 = startAngle + sweep * ((i + 1) / STEPS);
-      const ix1 = cx + innerR * Math.cos(a1), iy1 = cy + innerR * Math.sin(a1);
-      const ix2 = cx + innerR * Math.cos(a2), iy2 = cy + innerR * Math.sin(a2);
-      const ox1 = cx + outerR * Math.cos(a1), oy1 = cy + outerR * Math.sin(a1);
-      const ox2 = cx + outerR * Math.cos(a2), oy2 = cy + outerR * Math.sin(a2);
-      doc.triangle(ix1, iy1, ix2, iy2, ox1, oy1, 'F');
-      doc.triangle(ix2, iy2, ox2, oy2, ox1, oy1, 'F');
-    }
-    startAngle += sweep;
-  });
-  doc.setFillColor(...C.white);
-  doc.circle(cx, cy, innerR - 0.5, 'F');
-}
-
-// ── Page footer ───────────────────────────────────────────────────────────────
-function addFooter(doc: jsPDF, pageNum: number, today: string) {
-  const W = 210, H = 297;
-  doc.setFillColor(...C.black);
-  doc.rect(0, H - 10, W, 10, 'F');
-  doc.setFillColor(...C.red);
-  doc.rect(0, H - 10, 3, 10, 'F');
-  doc.setTextColor(...C.grey);
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Bill Morrisons Financial Consulting  -  CONFIDENTIAL', 8, H - 4);
-  doc.text(`Page ${pageNum} of 3  -  Generated ${today}`, W - 14, H - 4, { align: 'right' });
-}
-
-// ── Page header band (pages 2 & 3) ────────────────────────────────────────────
-function addPageHeader(
-  doc: jsPDF, title: string, clientName: string,
-  logo: string | null
-) {
-  const W = 210;
-  // Black band
-  doc.setFillColor(...C.black);
-  doc.rect(0, 0, W, 24, 'F');
-  // Red bottom accent line
-  doc.setFillColor(...C.red);
-  doc.rect(0, 24, W, 1.5, 'F');
-  // White bg behind logo
-  if (logo) {
-    doc.setFillColor(...C.white);
-    doc.roundedRect(10, 3, LOGO.HEADER_W + 4, LOGO.HEADER_H + 3, 1, 1, 'F');
-    doc.addImage(logo, 'PNG', 12, 4.5, LOGO.HEADER_W, LOGO.HEADER_H);
-  }
-  // Section title
-  doc.setTextColor(...C.white);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text(title, logo ? 64 : 14, 14);
-  // Client name (right-aligned)
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...C.grey);
-  doc.text(safeText(clientName), W - 14, 14, { align: 'right' });
-}
-
-// ── Main (async — needs to fetch logo) ───────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN
+// ─────────────────────────────────────────────────────────────────────────────
 export async function generateClientReport(data: ReportData): Promise<void> {
   const logo  = await loadLogo();
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const W = 210, H = 297;
   const today = new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' });
-  const clientNameSafe = safeText(data.client.name);
+  const clientName = safeText(data.client.name);
+  const H = 297;
 
-  // Pre-compute portfolio data
-  const active         = data.portfolio.filter(h => h.status?.includes('Active'));
-  const totalAUM       = active.reduce((s, h) => s + effectiveMYR(h), 0);
-  const activePolicies = data.insurance.filter(p => p.status?.includes('Active'));
-  const totalSA        = activePolicies.reduce((s, p) => s + p.sumAssured, 0);
-  const totalPremium   = activePolicies.reduce((s, p) => s + p.annualPremium, 0);
+  // Pre-compute
+  const active   = data.portfolio.filter(h => h.status?.includes('Active'));
+  const totalAUM = active.reduce((s, h) => s + effectiveMYR(h), 0);
+  const activePolicies  = data.insurance.filter(p => p.status?.includes('Active'));
+  const totalSA         = activePolicies.reduce((s, p) => s + p.sumAssured, 0);
+  const totalPremium    = activePolicies.reduce((s, p) => s + p.annualPremium, 0);
 
-  /* ════════════════════════════════════════════════════════════════
-     PAGE 1 — COVER
-  ════════════════════════════════════════════════════════════════ */
-  // Full black background
-  doc.setFillColor(...C.black);
-  doc.rect(0, 0, W, H, 'F');
-
-  // White logo band at top
-  doc.setFillColor(...C.white);
-  doc.rect(0, 0, W, 38, 'F');
-
-  // Logo centred in white band
-  if (logo) {
-    const lx = (W - LOGO.COVER_W) / 2;
-    const ly = (38 - LOGO.COVER_H) / 2;
-    doc.addImage(logo, 'PNG', lx, ly, LOGO.COVER_W, LOGO.COVER_H);
-  } else {
-    // Fallback: text-only
-    doc.setTextColor(...C.text);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('BILL MORRISONS', W / 2, 18, { align: 'center' });
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text('GLOBAL WEALTH ACCESS', W / 2, 26, { align: 'center', charSpace: 1 });
-  }
-
-  // Red accent strip below logo band
-  doc.setFillColor(...C.red);
-  doc.rect(0, 38, W, 3, 'F');
-
-  // Report title
-  doc.setTextColor(...C.grey);
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text('WEALTH SUMMARY REPORT', W / 2, 58, { align: 'center', charSpace: 2 });
-
-  // Thin red rule under title
-  doc.setDrawColor(...C.red);
-  doc.setLineWidth(0.5);
-  doc.line(70, 62, W - 70, 62);
-
-  // Client name — large white
-  doc.setTextColor(...C.white);
-  doc.setFontSize(22);
-  doc.setFont('helvetica', 'bold');
-  const clientLines = doc.splitTextToSize(clientNameSafe, 160);
-  doc.text(clientLines, W / 2, 76, { align: 'center' });
-
-  // Status / segment / risk badges
-  let badgeY = 86 + (clientLines.length - 1) * 8;
-  const badges = [data.client.status, data.client.segment, data.client.risk]
-    .map(safeText).filter(Boolean);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  const totalBadgeW = badges.reduce((s, b) => s + doc.getTextWidth(b) + 12, 0) + (badges.length - 1) * 4;
-  let bx = (W - totalBadgeW) / 2;
-  badges.forEach(badge => {
-    const bw = doc.getTextWidth(badge) + 12;
-    doc.setFillColor(...C.red);
-    doc.setGState(new (doc as any).GState({ opacity: 0.18 }));
-    doc.roundedRect(bx, badgeY, bw, 6, 3, 3, 'F');
-    doc.setGState(new (doc as any).GState({ opacity: 1 }));
-    doc.setDrawColor(...C.red);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(bx, badgeY, bw, 6, 3, 3, 'D');
-    doc.setTextColor(...C.red);
-    doc.text(badge, bx + bw / 2, badgeY + 4.2, { align: 'center' });
-    bx += bw + 4;
-  });
-
-  // Stats bar (4 tiles)
-  const statsY = badgeY + 18;
-  const stats = [
-    { label: 'Total AUM',      value: FMT.myr(totalAUM || data.client.aum) },
-    { label: 'Holdings',       value: `${active.length}`                   },
-    { label: 'Sum Assured',    value: FMT.myr(totalSA)                     },
-    { label: 'Annual Premium', value: FMT.myr(totalPremium)                },
-  ];
-  const sw = (W - 28 - 12) / 4;
-  stats.forEach((s, i) => {
-    const sx = 14 + i * (sw + 4);
-    // Tile bg — subtle dark box
-    doc.setFillColor(255, 255, 255);
-    doc.setGState(new (doc as any).GState({ opacity: 0.06 }));
-    doc.roundedRect(sx, statsY, sw, 18, 2, 2, 'F');
-    doc.setGState(new (doc as any).GState({ opacity: 1 }));
-    // Red left accent on first tile only (decorative)
-    if (i === 0) {
-      doc.setFillColor(...C.red);
-      doc.roundedRect(sx, statsY, 2, 18, 1, 1, 'F');
-    }
-    doc.setTextColor(...C.grey);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.text(s.label, sx + sw / 2, statsY + 6.5, { align: 'center' });
-    doc.setTextColor(...C.white);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(s.value, sx + sw / 2, statsY + 13.5, { align: 'center' });
-  });
-
-  // Financial goals
-  if (data.client.goals?.length > 0) {
-    const gy = statsY + 28;
-    doc.setTextColor(...C.grey);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('FINANCIAL GOALS', W / 2, gy, { align: 'center', charSpace: 1 });
-    doc.setTextColor(...C.red);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(data.client.goals.join('  *  ')), W / 2, gy + 7, { align: 'center' });
-  }
-
-  // Client detail grid near bottom
-  const detY = H - 88;
-  doc.setDrawColor(255, 255, 255);
-  doc.setGState(new (doc as any).GState({ opacity: 0.1 }));
-  doc.line(14, detY, W - 14, detY);
-  doc.setGState(new (doc as any).GState({ opacity: 1 }));
-
-  const details = [
-    { label: 'Date of Birth',   value: FMT.date(data.client.dob)       },
-    { label: 'Onboarding Date', value: FMT.date(data.client.onboarding) },
-    { label: 'Next Review',     value: FMT.date(data.client.nextReview) },
-    { label: 'Monthly Income',  value: data.client.income > 0 ? FMT.myr(data.client.income) : '—' },
-  ].filter(d => d.value !== '—');
-
-  const dw = (W - 28) / Math.min(details.length, 4);
-  details.slice(0, 4).forEach((d, i) => {
-    const dx = 14 + i * dw;
-    doc.setTextColor(...C.grey);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.text(d.label.toUpperCase(), dx, detY + 10);
-    doc.setTextColor(...C.white);
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'bold');
-    doc.text(d.value, dx, detY + 17);
-  });
-
-  // Red rule + disclaimer
-  doc.setFillColor(...C.red);
-  doc.rect(14, H - 32, 182, 0.5, 'F');
-  doc.setTextColor(...C.grey);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Generated on ${today}  -  CONFIDENTIAL - For client use only`, W / 2, H - 26, { align: 'center' });
-  doc.text('Bill Morrisons Financial Consulting  -  This report is for informational purposes only and does not constitute financial advice.', W / 2, H - 20, { align: 'center' });
-
-  /* ════════════════════════════════════════════════════════════════
-     PAGE 2 — PORTFOLIO
-  ════════════════════════════════════════════════════════════════ */
-  doc.addPage();
-  addPageHeader(doc, 'PORTFOLIO SUMMARY', clientNameSafe, logo);
-
-  // Asset allocation
   const byClass: Record<string, number> = {};
   active.forEach(h => {
     const cls = h.assetClass || 'Others';
     byClass[cls] = (byClass[cls] || 0) + effectiveMYR(h);
   });
   const totalPortfolio = Object.values(byClass).reduce((s, v) => s + v, 0);
-
-  const classColors: Record<string, [number,number,number]> = {
-    'EPF':             [196, 28,  44],   // red (brand primary)
-    'Unit Trust':      [220, 80,  60],   // red-orange
-    'Fixed Deposit':   [180, 100,  6],   // gold
-    'Stocks':          [80,  80,  80],   // charcoal
-    'Bonds':           [120, 120, 120],  // medium grey
-    'Structured Note': [140, 50,  70],   // dark rose
-    'REIT':            [100, 40,  30],   // dark red-brown
-    'ETF':             [160, 60,  20],   // rust
-    'Others':          [180, 180, 180],  // light grey
-  };
-
   const entries = Object.entries(byClass).sort((a, b) => b[1] - a[1]);
 
-  let y = 34;
-  y = sectionHeader(doc, y, 'ASSET ALLOCATION');
+  /* ══════════════════════════════════════════════════════════════════════
+     PAGE 1  —  COVER
+  ══════════════════════════════════════════════════════════════════════ */
 
-  if (entries.length > 0 && totalPortfolio > 0) {
-    // Donut chart (left) + legend (right)
-    const chartCX = 42, chartCY = y + 27;
-    const outerR = 22, innerR = 13;
+  // ── Full-page white background ───────────────────────────────────────────
+  doc.setFillColor(...T.white);
+  doc.rect(0, 0, W, H, 'F');
 
-    drawDonutChart(doc, chartCX, chartCY, outerR, innerR,
-      entries.map(([cls, val]) => ({ value: val, color: classColors[cls] ?? C.dark }))
-    );
+  // ── Red top banner ────────────────────────────────────────────────────────
+  doc.setFillColor(...T.red);
+  doc.rect(0, 0, W, 52, 'F');
 
-    // Centre AUM label
-    doc.setTextColor(...C.text2);
+  // ── Logo (white area within banner) ──────────────────────────────────────
+  if (logo) {
+    const lw = 70, lh = 18;
+    const lx = (W - lw) / 2, ly = 11;
+    doc.setFillColor(...T.white);
+    doc.roundedRect(lx - 6, ly - 4, lw + 12, lh + 8, 2, 2, 'F');
+    doc.addImage(logo, 'PNG', lx, ly, lw, lh);
+  } else {
+    doc.setTextColor(...T.white);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BILL MORRISONS', W / 2, 22, { align: 'center' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('GLOBAL WEALTH ACCESS', W / 2, 30, { align: 'center', charSpace: 1.5 });
+  }
+
+  // ── "Wealth Summary Report" label just below banner ───────────────────────
+  doc.setTextColor(...T.red);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('WEALTH SUMMARY REPORT', W / 2, 61, { align: 'center', charSpace: 1.5 });
+
+  // ── Thin red rule ─────────────────────────────────────────────────────────
+  doc.setDrawColor(...T.red);
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN + 40, 64, W - MARGIN - 40, 64);
+
+  // ── Client name ───────────────────────────────────────────────────────────
+  doc.setTextColor(...T.text1);
+  doc.setFontSize(26);
+  doc.setFont('helvetica', 'bold');
+  const nameLines = doc.splitTextToSize(clientName, CW);
+  doc.text(nameLines, W / 2, 76, { align: 'center' });
+  const nameBottom = 76 + (nameLines.length - 1) * 9;
+
+  // ── Status / Segment / Risk pills ────────────────────────────────────────
+  const pillY = nameBottom + 6;
+  const pills = [data.client.status, data.client.segment, data.client.risk].map(safeText).filter(Boolean);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  const pillTotalW = pills.reduce((s, p) => s + doc.getTextWidth(p) + 10, 0) + (pills.length - 1) * 4;
+  let px = (W - pillTotalW) / 2;
+  pills.forEach(pill => {
+    const pw = doc.getTextWidth(pill) + 10;
+    doc.setDrawColor(...T.red);
+    doc.setLineWidth(0.4);
+    doc.setFillColor(...T.white);
+    doc.roundedRect(px, pillY, pw, 6, 3, 3, 'FD');
+    doc.setTextColor(...T.red);
+    doc.text(pill, px + pw / 2, pillY + 4.2, { align: 'center' });
+    px += pw + 4;
+  });
+
+  // ── KPI tiles (4-up) ──────────────────────────────────────────────────────
+  const tileY = pillY + 14;
+  const tileW = (CW - 12) / 4;
+  const tileH = 28;
+  const tiles = [
+    { label: 'Total AUM',       value: FMT.myr(totalAUM || data.client.aum), sub: 'Active holdings', color: T.red },
+    { label: 'Portfolio Items', value: `${active.length}`,                   sub: 'Active positions', color: [60,80,120] as [number,number,number] },
+    { label: 'Sum Assured',     value: FMT.myr(totalSA),                     sub: 'Insurance coverage', color: [22,163,74] as [number,number,number] },
+    { label: 'Annual Premium',  value: FMT.myr(totalPremium),                sub: 'Total premiums', color: [180,100,6] as [number,number,number] },
+  ];
+  tiles.forEach((t, i) => {
+    kpiTile(doc, MARGIN + i * (tileW + 4), tileY, tileW, tileH, t.label, t.value, t.sub, t.color);
+  });
+
+  // ── Financial goals ───────────────────────────────────────────────────────
+  if (data.client.goals?.length > 0) {
+    const goalY = tileY + tileH + 12;
+    doc.setTextColor(...T.text3);
     doc.setFontSize(6.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('AUM', chartCX, chartCY - 2.5, { align: 'center' });
-    doc.setTextColor(...C.text);
-    doc.setFontSize(7.5);
+    doc.text('FINANCIAL GOALS', W / 2, goalY, { align: 'center', charSpace: 0.8 });
+    doc.setTextColor(...T.text1);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(safeText(data.client.goals.join('   |   ')), W / 2, goalY + 6, { align: 'center' });
+  }
+
+  // ── Divider ───────────────────────────────────────────────────────────────
+  const divY = tileY + tileH + (data.client.goals?.length ? 32 : 18);
+  rule(doc, divY, T.border, 0.25);
+
+  // ── Client detail grid (2 × 2 or 4 across) ───────────────────────────────
+  const details = [
+    { label: 'Date of Birth',   value: FMT.date(data.client.dob)        },
+    { label: 'Onboarded',       value: FMT.date(data.client.onboarding)  },
+    { label: 'Next Review',     value: FMT.date(data.client.nextReview)  },
+    { label: 'Monthly Income',  value: data.client.income > 0 ? FMT.myr(data.client.income) : '—' },
+  ].filter(d => d.value !== '—');
+
+  const detY = divY + 8;
+  const dw = CW / Math.min(details.length, 4);
+  details.forEach((d, i) => {
+    const dx = MARGIN + i * dw;
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(d.label.toUpperCase(), dx, detY, { charSpace: 0.3 });
+    doc.setTextColor(...T.text1);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(d.value, dx, detY + 6.5);
+  });
+
+  // ── Contact row ───────────────────────────────────────────────────────────
+  if (data.client.email || data.client.phone) {
+    const contY = detY + 16;
+    rule(doc, contY - 3, T.border, 0.2);
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    const contactLine = [data.client.email, data.client.phone].filter(Boolean).map(safeText).join('   |   ');
+    doc.text(contactLine, W / 2, contY + 3, { align: 'center' });
+  }
+
+  // ── Prepared-by footer band ────────────────────────────────────────────────
+  doc.setFillColor(...T.black);
+  doc.rect(0, H - 22, W, 22, 'F');
+  doc.setFillColor(...T.red);
+  doc.rect(0, H - 22, W, 1.5, 'F');
+  doc.setTextColor(...T.white);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Bill Morrisons Financial Consulting', MARGIN, H - 13);
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 180, 180);
+  doc.text('GLOBAL WEALTH ACCESS', MARGIN, H - 8);
+  doc.setTextColor(180, 180, 180);
+  doc.text(`Generated: ${today}`, W - MARGIN, H - 13, { align: 'right' });
+  doc.text('CONFIDENTIAL — For client use only', W - MARGIN, H - 8, { align: 'right' });
+
+  /* ══════════════════════════════════════════════════════════════════════
+     PAGE 2  —  PORTFOLIO
+  ══════════════════════════════════════════════════════════════════════ */
+  doc.addPage();
+  doc.setFillColor(...T.white);
+  doc.rect(0, 0, W, H, 'F');
+  pageHeader(doc, logo, 'Portfolio Summary', clientName);
+
+  let y = 28;
+
+  // ── Asset allocation section ───────────────────────────────────────────────
+  y = sectionTitle(doc, y, 'Asset Allocation');
+
+  if (entries.length > 0 && totalPortfolio > 0) {
+    // Donut + legend side by side
+    const chartCX = MARGIN + 26, chartCY = y + 26;
+    const outerR = 22, innerR = 13;
+    donut(doc, chartCX, chartCY, outerR, innerR,
+      entries.map(([cls, val]) => ({ value: val, color: CLASS_COLORS[cls] ?? T.text3 })));
+
+    // Centre text
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text('TOTAL', chartCX, chartCY - 3, { align: 'center' });
+    doc.setTextColor(...T.text1);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     const aumLbl = totalPortfolio >= 1_000_000
-      ? `RM ${(totalPortfolio / 1_000_000).toFixed(1)}M`
-      : `RM ${(totalPortfolio / 1_000).toFixed(0)}K`;
-    doc.text(aumLbl, chartCX, chartCY + 3.5, { align: 'center' });
+      ? `RM${(totalPortfolio / 1_000_000).toFixed(1)}M`
+      : `RM${(totalPortfolio / 1_000).toFixed(0)}K`;
+    doc.text(aumLbl, chartCX, chartCY + 3, { align: 'center' });
 
-    // Legend — two columns right of donut
-    let lx = 72, ly = y + 4, col = 0;
-    const colW = 60;
+    // Legend — 2 columns, to the right of the chart
+    const legX = MARGIN + 58, legColW = 58;
+    let ly = y + 2, legCol = 0;
     entries.forEach(([cls, val]) => {
-      const pct  = ((val / totalPortfolio) * 100).toFixed(1);
-      const lcol = classColors[cls] ?? C.dark;
-      doc.setFillColor(...lcol);
-      doc.roundedRect(lx + col * colW, ly, 3, 3, 0.5, 0.5, 'F');
-      doc.setTextColor(...C.text2);
+      const pct = ((val / totalPortfolio) * 100).toFixed(1);
+      const lx2 = legX + legCol * legColW;
+      const col = CLASS_COLORS[cls] ?? T.text3;
+      // Colour swatch
+      doc.setFillColor(...col);
+      doc.roundedRect(lx2, ly + 1, 3.5, 3.5, 0.5, 0.5, 'F');
+      // Label
+      doc.setTextColor(...T.text2);
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
-      doc.text(cls, lx + col * colW + 5, ly + 2.5);
+      doc.text(cls, lx2 + 6, ly + 4);
+      // Value + pct
+      doc.setTextColor(...T.text1);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...C.text);
-      doc.text(`${pct}%  ${FMT.myr(val)}`, lx + col * colW + 5, ly + 7.5);
+      doc.text(`${pct}%`, lx2 + 6, ly + 9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...T.text3);
+      doc.setFontSize(7);
+      doc.text(FMT.myr(val), lx2 + 20, ly + 9);
       ly += 12;
-      if (ly > y + 50 && col === 0) { col = 1; ly = y + 4; }
+      if (ly > y + 50 && legCol === 0) { legCol = 1; ly = y + 2; }
     });
 
-    y += 58;
+    y += 56;
 
-    // Allocation bar
-    let barX = 14;
-    const barW = W - 28, barH = 5;
+    // Stacked allocation bar
+    let barX = MARGIN;
+    const barW = CW, barH = 4.5;
     entries.forEach(([cls, val]) => {
       const segW = (val / totalPortfolio) * barW;
-      doc.setFillColor(...(classColors[cls] ?? C.dark));
+      doc.setFillColor(...(CLASS_COLORS[cls] ?? T.text3));
       doc.rect(barX, y, segW, barH, 'F');
       barX += segW;
     });
-    doc.setDrawColor(...C.border);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(14, y, barW, barH, 1, 1, 'D');
+    doc.setDrawColor(...T.border);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(MARGIN, y, CW, barH, 1, 1, 'D');
     y += 10;
   }
 
-  // Holdings table
-  y = sectionHeader(doc, y, 'HOLDINGS DETAIL');
+  // ── Holdings table ─────────────────────────────────────────────────────────
+  y = sectionTitle(doc, y, 'Holdings Detail');
 
   const holdingRows = active.map(h => {
     const myr = effectiveMYR(h);
@@ -476,75 +528,95 @@ export async function generateClientReport(data: ReportData): Promise<void> {
 
   autoTable(doc, {
     startY: y,
-    head: [['Holding', 'Asset Class', 'Institution', 'Value', 'Value (MYR)', 'Gain / Loss']],
-    body: holdingRows.length > 0 ? holdingRows : [['No active holdings', '', '', '', '', '']],
-    theme: 'grid',
-    styles: { fontSize: 7.5, cellPadding: 2.5, textColor: C.text, lineColor: C.border, lineWidth: 0.2 },
-    headStyles: { fillColor: C.black, textColor: C.white, fontStyle: 'bold', fontSize: 7.5 },
-    alternateRowStyles: { fillColor: C.lightbg },
+    head: [['Holding Name', 'Asset Class', 'Institution', 'Value', 'MYR Equiv.', 'Gain / Loss']],
+    body: holdingRows.length ? holdingRows : [['No active holdings', '', '', '', '', '']],
+    theme: 'plain',
+    styles: {
+      fontSize: 8, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
+      textColor: T.text2, lineColor: T.border, lineWidth: 0,
+    },
+    headStyles: {
+      fillColor: T.red, textColor: T.white, fontStyle: 'bold',
+      fontSize: 7, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
+    },
+    alternateRowStyles: { fillColor: T.bg },
     columnStyles: {
-      0: { cellWidth: 55 },
+      0: { cellWidth: 56, fontStyle: 'bold', textColor: T.text1 },
       1: { cellWidth: 28 },
       2: { cellWidth: 30 },
-      3: { cellWidth: 28, halign: 'right' },
-      4: { cellWidth: 23, halign: 'right' },
-      5: { cellWidth: 24, halign: 'right' },
+      3: { cellWidth: 27, halign: 'right' },
+      4: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 23, halign: 'right' },
     },
-    didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 5) {
-        const val = String(data.cell.raw ?? '');
-        if (val.startsWith('+')) data.cell.styles.textColor = C.green;
-        else if (val.startsWith('-')) data.cell.styles.textColor = C.redloss;
+    didParseCell: d => {
+      if (d.section === 'body' && d.column.index === 5) {
+        const v = String(d.cell.raw ?? '');
+        if (v.startsWith('+')) d.cell.styles.textColor = T.green;
+        else if (v.startsWith('-')) d.cell.styles.textColor = T.loss;
       }
     },
-    margin: { left: 14, right: 14 },
+    didDrawCell: d => {
+      // Bottom border per row
+      if (d.section === 'body') {
+        doc.setDrawColor(...T.border);
+        doc.setLineWidth(0.2);
+        doc.line(d.cell.x, d.cell.y + d.cell.height, d.cell.x + d.cell.width, d.cell.y + d.cell.height);
+      }
+    },
+    margin: { left: MARGIN, right: MARGIN },
   });
 
-  // Total row
-  const afterTable = (doc as any).lastAutoTable.finalY + 3;
-  doc.setFillColor(...C.crimson);
-  doc.roundedRect(14, afterTable, 182, 8, 1, 1, 'F');
-  doc.setTextColor(...C.white);
+  // Total bar
+  const aft2 = (doc as any).lastAutoTable.finalY + 2;
+  doc.setFillColor(...T.black);
+  doc.roundedRect(MARGIN, aft2, CW, 9, 1, 1, 'F');
+  doc.setFillColor(...T.red);
+  doc.roundedRect(MARGIN, aft2, 3, 9, 1, 1, 'F');
+  doc.rect(MARGIN + 1.5, aft2, 1.5, 9, 'F'); // fix right edge of red pip
+  doc.setTextColor(...T.white);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text('Total Portfolio (MYR)', 18, afterTable + 5.5);
-  doc.text(FMT.myr(totalPortfolio), W - 14, afterTable + 5.5, { align: 'right' });
+  doc.text('Total Portfolio Value (MYR)', MARGIN + 7, aft2 + 6);
+  doc.text(FMT.myr(totalPortfolio), W - MARGIN - 2, aft2 + 6, { align: 'right' });
 
-  addFooter(doc, 2, today);
+  pageFooter(doc, 2, 3, today);
 
-  /* ════════════════════════════════════════════════════════════════
-     PAGE 3 — INSURANCE
-  ════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════════════
+     PAGE 3  —  INSURANCE
+  ══════════════════════════════════════════════════════════════════════ */
   doc.addPage();
-  addPageHeader(doc, 'INSURANCE SUMMARY', clientNameSafe, logo);
+  doc.setFillColor(...T.white);
+  doc.rect(0, 0, W, H, 'F');
+  pageHeader(doc, logo, 'Insurance Summary', clientName);
 
-  y = 34;
+  y = 28;
 
-  // Coverage overview pills
-  y = sectionHeader(doc, y, 'COVERAGE OVERVIEW');
-  const insStats = [
-    { label: 'Sum Assured',     value: FMT.myr(totalSA),           col: C.red   },
-    { label: 'Annual Premium',  value: FMT.myr(totalPremium),      col: C.gold  },
-    { label: 'Active Policies', value: `${activePolicies.length}`, col: C.green },
-    { label: 'Total Policies',  value: `${data.insurance.length}`, col: C.dark  },
+  // ── Coverage overview ──────────────────────────────────────────────────────
+  y = sectionTitle(doc, y, 'Coverage Overview');
+
+  const insTiles = [
+    { label: 'Total Sum Assured',  value: FMT.myr(totalSA),            sub: 'All active policies', color: T.red },
+    { label: 'Annual Premium',     value: FMT.myr(totalPremium),        sub: 'Total yearly cost', color: [180,100,6] as [number,number,number] },
+    { label: 'Active Policies',    value: `${activePolicies.length}`,   sub: `of ${data.insurance.length} total`, color: T.green },
   ];
-  const isw = (W - 28 - 12) / 4;
-  insStats.forEach((s, i) => {
-    statPill(doc, 14 + i * (isw + 4), y, isw, s.label, s.value, s.col);
+  const itW = (CW - 8) / 3;
+  insTiles.forEach((t, i) => {
+    kpiTile(doc, MARGIN + i * (itW + 4), y, itW, 26, t.label, t.value, t.sub, t.color);
   });
-  y += 22;
+  y += 32;
 
-  // Individual coverage amounts
+  // ── Individual coverage ────────────────────────────────────────────────────
   const coverFields = [
-    { key: 'lifeCover', label: 'Life Cover'       },
-    { key: 'ciCover',   label: 'Critical Illness'  },
-    { key: 'paCover',   label: 'Personal Accident' },
-    { key: 'tpdCover',  label: 'TPD'               },
+    { key: 'lifeCover', label: 'Life Cover'        },
+    { key: 'ciCover',   label: 'Critical Illness'   },
+    { key: 'paCover',   label: 'Personal Accident'  },
+    { key: 'tpdCover',  label: 'TPD'                },
   ];
   const income12 = (data.client.income || 0) * 12;
 
-  y = sectionHeader(doc, y, 'INDIVIDUAL COVERAGE AMOUNTS');
-  const cw = (W - 28 - 12) / 4;
+  y = sectionTitle(doc, y, 'Individual Coverage Amounts');
+
+  const cvW = (CW - 12) / 4;
   coverFields.forEach((cf, i) => {
     const total = activePolicies.reduce(
       (s, p) => s + (((p as unknown) as Record<string, number>)[cf.key] || 0), 0
@@ -553,38 +625,39 @@ export async function generateClientReport(data: ReportData): Promise<void> {
               : cf.key === 'ciCover'   ? income12 * 5
               : cf.key === 'paCover'   ? income12 * 3 : 0;
     const adequate = total > 0 && (rec === 0 || total >= rec * 0.8);
-    const col = total === 0 ? ([180,180,180] as [number,number,number])
-              : adequate    ? C.green : C.gold;
-    statPill(doc, 14 + i * (cw + 4), y, cw, cf.label, total > 0 ? FMT.myr(total) : 'Not filled', col);
+    const acol: [number,number,number] = total === 0
+      ? [170,170,170] : adequate ? T.green : T.amber;
+    kpiTile(doc, MARGIN + i * (cvW + 4), y, cvW, 26, cf.label, total > 0 ? FMT.myr(total) : 'Not filled', '', acol);
   });
-  y += 22;
+  y += 32;
 
-  // Medical class
+  // Medical class row
   const medClasses = activePolicies.map(p => p.medicalClass).filter(Boolean);
   if (medClasses.length > 0) {
-    doc.setFillColor(...C.offwhite);
-    doc.roundedRect(14, y, 182, 8, 1.5, 1.5, 'F');
-    doc.setFillColor(...C.red);
-    doc.roundedRect(14, y, 3, 8, 1, 1, 'F');
-    doc.setTextColor(...C.text2);
-    doc.setFontSize(7.5);
+    doc.setFillColor(...T.bg);
+    doc.roundedRect(MARGIN, y, CW, 8, 1, 1, 'F');
+    doc.setFillColor(...T.red);
+    doc.roundedRect(MARGIN, y, 2.5, 8, 1, 1, 'F');
+    doc.rect(MARGIN + 1.2, y, 1.3, 8, 'F');
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.text('Medical Coverage:', 20, y + 5.5);
+    doc.text('Medical Coverage:', MARGIN + 6, y + 5.2);
+    doc.setTextColor(...T.text1);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...C.text);
-    doc.text(safeText(medClasses.join('  *  ')), 56, y + 5.5);
-    y += 12;
+    doc.text(safeText(medClasses.join('   |   ')), MARGIN + 42, y + 5.2);
+    y += 13;
   }
 
-  // Policy detail table
-  y = sectionHeader(doc, y, 'POLICY DETAIL');
+  // ── Policy detail table ────────────────────────────────────────────────────
+  y = sectionTitle(doc, y, 'Policy Detail');
 
   const insRows = data.insurance.map(p => [
     safeText(p.policyName),
     safeText(p.insurer || '—'),
     safeText(p.insuranceType || '—'),
     safeBenefits(p.benefits),
-    p.sumAssured > 0    ? Math.round(p.sumAssured).toLocaleString()    : '—',
+    p.sumAssured    > 0 ? Math.round(p.sumAssured).toLocaleString()    : '—',
     p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—',
     safeText(p.status || '—'),
   ]);
@@ -592,33 +665,46 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   autoTable(doc, {
     startY: y,
     head: [['Policy Name', 'Insurer', 'Type', 'Benefits', 'SA (MYR)', 'Premium/yr', 'Status']],
-    body: insRows.length > 0 ? insRows : [['No policies', '', '', '', '', '', '']],
-    theme: 'grid',
-    styles: { fontSize: 7, cellPadding: 2, textColor: C.text, lineColor: C.border, lineWidth: 0.2 },
-    headStyles: { fillColor: C.black, textColor: C.white, fontStyle: 'bold', fontSize: 7 },
-    alternateRowStyles: { fillColor: C.lightbg },
+    body: insRows.length ? insRows : [['No policies recorded', '', '', '', '', '', '']],
+    theme: 'plain',
+    styles: {
+      fontSize: 7.5, cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+      textColor: T.text2, lineWidth: 0,
+    },
+    headStyles: {
+      fillColor: T.red, textColor: T.white, fontStyle: 'bold',
+      fontSize: 7, cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+    },
+    alternateRowStyles: { fillColor: T.bg },
     columnStyles: {
-      0: { cellWidth: 45 },
+      0: { cellWidth: 44, fontStyle: 'bold', textColor: T.text1 },
       1: { cellWidth: 28 },
       2: { cellWidth: 20 },
       3: { cellWidth: 38 },
       4: { cellWidth: 22, halign: 'right' },
       5: { cellWidth: 18, halign: 'right' },
-      6: { cellWidth: 15, halign: 'center' },
+      6: { cellWidth: 14, halign: 'center' },
     },
-    didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 6) {
-        const val = String(data.cell.raw ?? '');
-        if (val.includes('Active')) data.cell.styles.textColor = C.green;
-        else if (val.includes('Lapsed')) data.cell.styles.textColor = C.redloss;
+    didParseCell: d => {
+      if (d.section === 'body' && d.column.index === 6) {
+        const v = String(d.cell.raw ?? '');
+        if (v.includes('Active')) d.cell.styles.textColor = T.green;
+        else if (v.includes('Lapsed')) d.cell.styles.textColor = T.loss;
       }
     },
-    margin: { left: 14, right: 14 },
+    didDrawCell: d => {
+      if (d.section === 'body') {
+        doc.setDrawColor(...T.border);
+        doc.setLineWidth(0.2);
+        doc.line(d.cell.x, d.cell.y + d.cell.height, d.cell.x + d.cell.width, d.cell.y + d.cell.height);
+      }
+    },
+    margin: { left: MARGIN, right: MARGIN },
   });
 
-  addFooter(doc, 3, today);
+  pageFooter(doc, 3, 3, today);
 
-  // ── Save ─────────────────────────────────────────────────────────────────────
-  const filename = `${safeText(data.client.name).replace(/\s+/g, '_')}_Wealth_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  // ── Save ──────────────────────────────────────────────────────────────────
+  const fname = `${safeText(data.client.name).replace(/\s+/g, '_')}_Wealth_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+  doc.save(fname);
 }
