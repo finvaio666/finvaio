@@ -24,7 +24,7 @@ export default function ClientsPage() {
       const data = await res.json();
       // Dynamically import PDF generator (client-side only)
       const { generateClientReport } = await import('@/lib/generateClientReport');
-      generateClientReport(data);
+      await generateClientReport(data);
     } catch (e) {
       alert(`Failed to generate report: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
