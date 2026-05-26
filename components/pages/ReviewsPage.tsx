@@ -205,11 +205,19 @@ export default function ReviewsPage() {
     new Set([...clients.map(c => c.name), ...meetings.map(m => m.clientName)].filter(Boolean))
   ).sort();
 
+  // clientId for the selected filter name (used as fallback match)
+  const filterClientId = clients.find(c => c.name === filterClient)?.id ?? '';
+
   // ── Filtered meetings — chosen window + optional client ──────────────────
   const visibleMeetings = meetings.filter(m => {
     const t = new Date(m.meetingDate).getTime();
-    const inWindow = t >= logWindowStart && t <= now;
-    const matchesClient = filterClient === '' || m.clientName === filterClient;
+    // allow up to end-of-today to avoid UTC timezone edge cases
+    const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+    const inWindow = t >= logWindowStart && t <= endOfToday.getTime();
+    const matchesClient =
+      filterClient === '' ||
+      m.clientName === filterClient ||           // match by saved name
+      (filterClientId !== '' && m.clientId === filterClientId); // fallback: match by ID
     return inWindow && matchesClient;
   });
 

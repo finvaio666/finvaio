@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
         'Meeting Type':   { select:    { name: meetingType } },
         'Notes':          { rich_text: [{ text: { content: notes || '' } }] },
         'Action Items':   { rich_text: [{ text: { content: actionItems || '' } }] },
+        // ── Client linkage — these fields drive the client filter in the UI ──
+        'Client Name':    { rich_text: [{ text: { content: clientName || '' } }] },
+        ...(clientId ? { 'Client': { relation: [{ id: clientId }] } } : {}),
         ...(nextReviewDate ? { 'Next Review Date': { date: { start: nextReviewDate } } } : {}),
       },
     });
