@@ -262,10 +262,11 @@ body {
 .badge.mass        { background: var(--surface2);    color: var(--text3); }
 
 /* ── CLIENT TABLE ─────────────────────────────────────────────────────────── */
-.client-table { width: 100%; }
+.client-table { width: 100%; overflow-x: auto; }
 .client-row {
   display: grid;
-  grid-template-columns: 1fr 100px 110px 110px 120px 90px 110px;
+  grid-template-columns: 1fr 90px 105px 105px 110px 85px 100px;
+  min-width: 700px;
   align-items: center; padding: 14px 24px;
   border-bottom: 1px solid var(--border);
   transition: background 0.15s; cursor: pointer;
