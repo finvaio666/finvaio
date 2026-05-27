@@ -13,31 +13,65 @@ echo.
 echo  Excel files are in:  notion-import-templates\
 echo.
 echo  ┌──────────────────────────────────────────────────────┐
-echo  │  [1]  Full Import  (Clients + Portfolio + Insurance) │
-echo  │  [2]  Dry Run      (Preview only — no writes)        │
-echo  │  [3]  Recalculate AUM only                           │
-echo  │  [4]  Open Excel templates folder                    │
-echo  │  [5]  Exit                                           │
+echo  │  STEP 1  [1]  Open Excel templates folder            │
+echo  │  STEP 2  [2]  Dry Run      (Preview — no writes)     │
+echo  │  STEP 3  [3]  Full Import  (Clients + Portfolio +    │
+echo  │                             Insurance)               │
+echo  │  STEP 4  [4]  Recalculate AUM only                   │
+echo  │          [5]  Exit                                   │
 echo  └──────────────────────────────────────────────────────┘
 echo.
 set /p CHOICE=  Choose (1-5):
 
-if "%CHOICE%"=="1" goto IMPORT
+if "%CHOICE%"=="1" goto OPEN_FOLDER
 if "%CHOICE%"=="2" goto DRY_RUN
-if "%CHOICE%"=="3" goto RECALC_AUM
-if "%CHOICE%"=="4" goto OPEN_FOLDER
+if "%CHOICE%"=="3" goto IMPORT
+if "%CHOICE%"=="4" goto RECALC_AUM
 if "%CHOICE%"=="5" goto END
 
 echo  Invalid choice. Try again.
 timeout /t 2 >nul
 goto MENU
 
-:: ── Option 1: Full Import ─────────────────────────────────────────────────
+:: ── Step 1: Open folder ───────────────────────────────────────────────────
+:OPEN_FOLDER
+cd /d "%~dp0"
+explorer notion-import-templates
+goto MENU
+
+:: ── Step 2: Dry Run ───────────────────────────────────────────────────────
+:DRY_RUN
+cls
+echo.
+echo  ╔══════════════════════════════════════════════════════╗
+echo  ║           STEP 2 — Dry Run (Preview Only)            ║
+echo  ╚══════════════════════════════════════════════════════╝
+echo.
+echo  Reads your Excel files and shows what WOULD be imported.
+echo  Nothing is written to Notion.
+echo.
+echo  Running dry run...
+echo  ────────────────────────────────────────────────────────
+cd /d "%~dp0"
+node scripts\import-from-excel.mjs --dry-run
+echo  ────────────────────────────────────────────────────────
+echo.
+if %ERRORLEVEL% NEQ 0 (
+  echo  [ERROR] Script failed. Check the output above.
+) else (
+  echo  [OK] Dry run complete — no changes were made.
+  echo  If everything looks correct, run Step 3 to import.
+)
+echo.
+pause
+goto MENU
+
+:: ── Step 3: Full Import ───────────────────────────────────────────────────
 :IMPORT
 cls
 echo.
 echo  ╔══════════════════════════════════════════════════════╗
-echo  ║                    Full Import                       ║
+echo  ║             STEP 3 — Full Import (LIVE)              ║
 echo  ╚══════════════════════════════════════════════════════╝
 echo.
 echo  Reading from:
@@ -61,43 +95,18 @@ if %ERRORLEVEL% NEQ 0 (
   echo  [ERROR] Import failed. Check the output above for details.
 ) else (
   echo  [OK] Import completed successfully!
+  echo  Run Step 4 to recalculate AUM for all clients.
 )
 echo.
 pause
 goto MENU
 
-:: ── Option 2: Dry Run ─────────────────────────────────────────────────────
-:DRY_RUN
-cls
-echo.
-echo  ╔══════════════════════════════════════════════════════╗
-echo  ║              Dry Run (Preview Only)                  ║
-echo  ╚══════════════════════════════════════════════════════╝
-echo.
-echo  Reads your Excel files and shows what WOULD be imported.
-echo  Nothing is written to Notion.
-echo.
-echo  Running dry run...
-echo  ────────────────────────────────────────────────────────
-cd /d "%~dp0"
-node scripts\import-from-excel.mjs --dry-run
-echo  ────────────────────────────────────────────────────────
-echo.
-if %ERRORLEVEL% NEQ 0 (
-  echo  [ERROR] Script failed. Check the output above.
-) else (
-  echo  [OK] Dry run complete — no changes were made.
-)
-echo.
-pause
-goto MENU
-
-:: ── Option 3: Recalculate AUM ─────────────────────────────────────────────
+:: ── Step 4: Recalculate AUM ───────────────────────────────────────────────
 :RECALC_AUM
 cls
 echo.
 echo  ╔══════════════════════════════════════════════════════╗
-echo  ║              Recalculate AUM for All Clients         ║
+echo  ║         STEP 4 — Recalculate AUM for All Clients     ║
 echo  ╚══════════════════════════════════════════════════════╝
 echo.
 echo  Reads portfolio holdings from Notion and updates each
@@ -116,16 +125,10 @@ echo.
 if %ERRORLEVEL% NEQ 0 (
   echo  [ERROR] Recalc failed. Check the output above.
 ) else (
-  echo  [OK] AUM recalculated successfully!
+  echo  [OK] AUM recalculated successfully! All done.
 )
 echo.
 pause
-goto MENU
-
-:: ── Option 4: Open folder ─────────────────────────────────────────────────
-:OPEN_FOLDER
-cd /d "%~dp0"
-explorer notion-import-templates
 goto MENU
 
 :: ── Exit ──────────────────────────────────────────────────────────────────
