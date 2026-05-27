@@ -160,8 +160,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     console.error('Cashflow submit error:', e);
+    const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: 'Failed to save to database. Please try again.' },
+      { error: `Failed to save to database: ${msg}` },
       { status: 500 }
     );
   }
