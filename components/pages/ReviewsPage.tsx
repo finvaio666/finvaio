@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
 interface Client {
   id: string; name: string; nextReview: string; lastReview: string;
@@ -58,11 +59,6 @@ function LogMeetingModal({
 
   const set = (k: keyof typeof form) => (v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  function handleClientChange(id: string) {
-    const c = clients.find(c => c.id === id);
-    setForm(p => ({ ...p, clientId: id, clientName: c?.name ?? '' }));
-  }
-
   async function handleSave() {
     if (!form.clientId) { setError('Please select a client.'); return; }
     if (!form.meetingDate) { setError('Please enter a meeting date.'); return; }
@@ -104,10 +100,13 @@ function LogMeetingModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>Client *</label>
-              <select value={form.clientId} onChange={e => handleClientChange(e.target.value)} style={{ ...inputStyle, appearance: 'none' }}>
-                <option value=''>— Select client —</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <ClientSearchCombobox
+                clients={clients}
+                value={form.clientId}
+                onChange={c => setForm(p => ({ ...p, clientId: c?.id ?? '', clientName: c?.name ?? '' }))}
+                placeholder="Search client…"
+                inputStyle={{ borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--bg)' }}
+              />
             </div>
             <div>
               <label style={labelStyle}>Meeting Date *</label>
@@ -179,7 +178,7 @@ export default function ReviewsPage() {
   const [showModal,    setShowModal]    = useState(false);
   const [preselected,  setPreselected]  = useState<Client | null>(null);
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
-  const [filterClient, setFilterClient] = useState(''); // '' = All
+  const [filterClientId, setFilterClientId] = useState(''); // '' = All
   const [logDays,      setLogDays]      = useState(90); // 0 = All time
 
   function loadAll() {
@@ -200,44 +199,41 @@ export default function ReviewsPage() {
   const logWindowStart = logDays === 0 ? 0 : now - logDays * 86_400_000;
   const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
 
-  // ── Client names for dropdown ─────────────────────────────────────────────
-  const clientNames = Array.from(
-    new Set([...clients.map(c => c.name), ...meetings.map(m => m.clientName)].filter(Boolean))
-  ).sort();
-
-  // clientId for the selected filter name (used as fallback match)
-  const filterClientId = clients.find(c => c.name === filterClient)?.id ?? '';
+  // filterClient name (for display labels)
+  const filterClientName = clients.find(c => c.id === filterClientId)?.name ?? '';
 
   // ── Filtered meetings — chosen window + optional client ──────────────────
   const visibleMeetings = meetings.filter(m => {
     const t = new Date(m.meetingDate).getTime();
-    // allow up to end-of-today to avoid UTC timezone edge cases
     const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
     const inWindow = t >= logWindowStart && t <= endOfToday.getTime();
     const matchesClient =
-      filterClient === '' ||
-      m.clientName === filterClient ||           // match by saved name
-      (filterClientId !== '' && m.clientId === filterClientId); // fallback: match by ID
+      filterClientId === '' ||
+      m.clientId === filterClientId ||                    // match by ID (preferred)
+      m.clientName === filterClientName;                  // fallback: match by name
     return inWindow && matchesClient;
   });
 
   // ── Filtered upcoming — next 90 days + optional client ───────────────────
   const upcoming = clients.filter(c => {
     const d = daysUntil(c.nextReview);
-    const matchesClient = filterClient === '' || c.name === filterClient;
+    const matchesClient = filterClientId === '' || c.id === filterClientId;
     return matchesClient && d !== null && d >= 0 && d <= 90;
   }).sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
   const overdue = clients.filter(c => {
     const d = daysUntil(c.nextReview);
-    const matchesClient = filterClient === '' || c.name === filterClient;
+    const matchesClient = filterClientId === '' || c.id === filterClientId;
     return matchesClient && d !== null && d < 0;
   });
 
   // ── Stats (always based on full dataset, but client-filtered) ─────────────
   const completedThisMonth = meetings.filter(m => {
     const t = new Date(m.meetingDate).getTime();
-    const matchesClient = filterClient === '' || m.clientName === filterClient;
+    const matchesClient =
+      filterClientId === '' ||
+      m.clientId === filterClientId ||
+      m.clientName === filterClientName;
     return matchesClient && t >= thisMonthStart && t <= now;
   }).length;
 
@@ -256,31 +252,14 @@ export default function ReviewsPage() {
     <>
       {/* ── Client Filter Bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative' }}>
-          <select
-            value={filterClient}
-            onChange={e => { setFilterClient(e.target.value); setExpandedMeeting(null); }}
-            style={{
-              padding: '10px 36px 10px 18px', borderRadius: 'var(--r-pill)',
-              border: `1.5px solid ${filterClient ? 'var(--accent2)' : 'var(--border)'}`,
-              background: 'var(--surface)', color: filterClient ? 'var(--text)' : 'var(--text3)',
-              fontSize: 14, fontFamily: 'var(--font-sans)', fontWeight: 600,
-              cursor: 'pointer', outline: 'none', appearance: 'none',
-              boxShadow: 'var(--shadow-sm)', minWidth: 220,
-            }}
-          >
-            <option value=''>👥 All Clients</option>
-            {clientNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+        <div style={{ width: 280 }}>
+          <ClientSearchCombobox
+            clients={clients}
+            value={filterClientId}
+            onChange={c => { setFilterClientId(c?.id ?? ''); setExpandedMeeting(null); }}
+            placeholder="Filter by client…"
+          />
         </div>
-
-        {filterClient && (
-          <button onClick={() => { setFilterClient(''); setExpandedMeeting(null); }} style={{
-            padding: '8px 16px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
-            background: 'var(--surface2)', color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          }}>✕ Clear</button>
-        )}
 
         {/* Duration chips for Meeting History window */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -332,7 +311,7 @@ export default function ReviewsPage() {
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--gold)' }} />
             Upcoming Reviews
-            {filterClient && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>· {filterClient}</span>}
+            {filterClientId && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>· { filterClientName }</span>}
           </div>
           <button onClick={() => openLog()} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px', borderRadius: 'var(--r-pill)', border: 'none', background: 'var(--text)', color: 'var(--bg)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
             ✏️ Log Meeting
@@ -343,8 +322,8 @@ export default function ReviewsPage() {
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text3)' }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📅</div>
             <div style={{ fontSize: 15 }}>
-              {filterClient
-                ? `No upcoming reviews for ${filterClient} in the next 90 days`
+              {filterClientId
+                ? `No upcoming reviews for ${ filterClientName } in the next 90 days`
                 : 'No upcoming reviews in the next 90 days'}
             </div>
           </div>
@@ -385,7 +364,7 @@ export default function ReviewsPage() {
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--accent)' }} />
             Meeting History
-            {filterClient && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>· {filterClient}</span>}
+            {filterClientId && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>· { filterClientName }</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)' }}>
@@ -398,8 +377,8 @@ export default function ReviewsPage() {
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text3)' }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📝</div>
             <div style={{ fontSize: 15 }}>
-              {filterClient
-                ? `No meetings logged for ${filterClient} in this period`
+              {filterClientId
+                ? `No meetings logged for ${ filterClientName } in this period`
                 : 'No meetings logged in this period'}
             </div>
           </div>
