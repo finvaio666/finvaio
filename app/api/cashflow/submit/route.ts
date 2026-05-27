@@ -112,20 +112,22 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    // Optional enrichment fields — skip gracefully if they don't exist in this DB
-    // These can be added to Notion later without breaking anything
-    try {
-      properties['Notes'] = {
-        rich_text: [{ text: { content: details.substring(0, 2000) } }],
-      };
-    } catch { /* field may not exist */ }
-
     const page = await notion.pages.create({
       parent: { database_id: config.cashflowDbId },
       properties: properties as never,
     });
 
-    // Try to add optional fields in a follow-up update (won't fail if fields don't exist)
+    // Optional enrichment fields — each in its own try/catch so one missing
+    // property never breaks the whole submission
+    try {
+      await notion.pages.update({
+        page_id: page.id,
+        properties: {
+          'Notes': { rich_text: [{ text: { content: details.substring(0, 2000) } }] },
+        } as never,
+      });
+    } catch { /* Notes column may not exist in this DB */ }
+
     try {
       await notion.pages.update({
         page_id: page.id,
