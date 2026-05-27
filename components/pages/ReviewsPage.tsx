@@ -105,7 +105,7 @@ function LogMeetingModal({
                 value={form.clientId}
                 onChange={c => setForm(p => ({ ...p, clientId: c?.id ?? '', clientName: c?.name ?? '' }))}
                 placeholder="Search client…"
-                inputStyle={{ borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--bg)' }}
+                inputStyle={{ border: '1px solid var(--border)', background: 'var(--bg)' }}
               />
             </div>
             <div>

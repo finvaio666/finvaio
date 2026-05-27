@@ -10,7 +10,19 @@ export default function ClientsPage() {
 
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [generatingReport, setGeneratingReport] = useState<string | null>(null); // clientId being generated
+  const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+
+  const filteredClients = search.trim() === '' ? clients : clients.filter(c => {
+    const q = search.toLowerCase();
+    return (
+      c.name?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.phone?.replace(/\s/g, '').includes(q.replace(/\s/g, '')) ||
+      c.segment?.toLowerCase().includes(q) ||
+      c.risk?.toLowerCase().includes(q)
+    );
+  });
 
   const handleGenerateReport = useCallback(async (clientId: string, clientName: string) => {
     setGeneratingReport(clientId);
@@ -72,11 +84,40 @@ export default function ClientsPage() {
       </div>
 
       <div className="section">
-        <div className="section-header">
+        <div className="section-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--accent)' }} />
             All Clients
           </div>
+
+          {/* ── Search bar ── */}
+          <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 320 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--text3)', pointerEvents: 'none' }}>🔍</span>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by name, email, phone…"
+              style={{
+                width: '100%', padding: '7px 32px 7px 32px',
+                borderRadius: 'var(--r-pill)',
+                border: `1.5px solid ${search ? 'var(--accent2)' : 'var(--border)'}`,
+                background: 'var(--surface)', color: 'var(--text)',
+                fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none',
+                boxSizing: 'border-box', transition: 'border-color 0.15s',
+              }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{
+                position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                width: 18, height: 18, borderRadius: '50%', border: 'none',
+                background: 'var(--border)', color: 'var(--text3)',
+                fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+              }}>✕</button>
+            )}
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {syncMsg && (
               <span style={{ fontSize: 11, color: syncMsg.startsWith('✅') ? 'var(--green)' : 'var(--red)' }}>
@@ -103,7 +144,9 @@ export default function ClientsPage() {
               ) : '↻ Sync AUM'}
             </button>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>
-              {loading ? 'Loading…' : `${clients.length} client${clients.length !== 1 ? 's' : ''}`}
+              {loading ? 'Loading…' : search
+                ? `${filteredClients.length} of ${clients.length}`
+                : `${clients.length} client${clients.length !== 1 ? 's' : ''}`}
             </span>
           </div>
         </div>
@@ -122,7 +165,12 @@ export default function ClientsPage() {
               ⚠️ {error}
             </div>
           )}
-          {!loading && clients.map(client => (
+          {!loading && filteredClients.length === 0 && (
+            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              No clients match &ldquo;{search}&rdquo;
+            </div>
+          )}
+          {!loading && filteredClients.map(client => (
             <div key={client.id} className="client-row">
               <div className="client-name-cell">
                 <div className="client-avatar">{initials(client.name)}</div>

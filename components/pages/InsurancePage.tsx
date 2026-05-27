@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
 interface Policy {
   id: string;
@@ -218,7 +219,7 @@ export default function InsurancePage() {
   const [clients,  setClients]  = useState<ClientData[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [filterClient, setFilter] = useState<string | null>(null);
+  const [filterClientId, setFilterId] = useState<string>('');   // '' = none, 'All' = all, id = specific
   const [activeView, setView]   = useState<'policies' | 'gaps'>('policies');
   const [search, setSearch]     = useState('');
 
@@ -239,6 +240,14 @@ export default function InsurancePage() {
   useEffect(() => { loadData(); }, []);
 
   const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
+
+  // Derive name from id for filtering (policies only have clientName)
+  const filterClient: string | null = filterClientId === ''
+    ? null
+    : filterClientId === 'All'
+    ? 'All'
+    : clients.find(c => c.id === filterClientId)?.name ?? null;
+
   const visible = filterClient === null ? [] : filterClient === 'All'
     ? policies
     : policies.filter(p => p.clientName === filterClient);
@@ -280,32 +289,34 @@ export default function InsurancePage() {
   return (
     <>
       {/* ── Client selector ── always visible at top ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative' }}>
-          <select
-            value={filterClient ?? ''}
-            onChange={e => { setFilter(e.target.value || null); setSearch(''); }}
-            style={{
-              padding: '10px 36px 10px 18px', borderRadius: 'var(--r-pill)',
-              border: `1.5px solid ${filterClient ? 'var(--accent2)' : 'var(--border)'}`,
-              background: 'var(--surface)', color: filterClient ? 'var(--text)' : 'var(--text3)',
-              fontSize: 14, fontFamily: 'var(--font-sans)', fontWeight: 600,
-              cursor: 'pointer', outline: 'none', appearance: 'none',
-              boxShadow: 'var(--shadow-sm)', minWidth: 220,
-            }}
-          >
-            <option value=''>— Select a client —</option>
-            <option value='All'>All Clients</option>
-            {clientNames.map(n => (
-              <option key={n} value={n}>{n} ({policies.filter(p => p.clientName === n).length} policies)</option>
-            ))}
-          </select>
-          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ width: 300 }}>
+          <ClientSearchCombobox
+            clients={clients}
+            value={filterClientId === 'All' ? '' : filterClientId}
+            onChange={c => { setFilterId(c?.id ?? ''); setSearch(''); }}
+            placeholder="Search client…"
+          />
         </div>
 
-        {filterClient && (
-          <button onClick={() => { setFilter(null); setSearch(''); }} style={{
-            padding: '8px 16px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
+        {/* All Clients toggle */}
+        <button
+          onClick={() => { setFilterId(filterClientId === 'All' ? '' : 'All'); setSearch(''); }}
+          style={{
+            padding: '9px 16px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-sans)',
+            border: `1.5px solid ${filterClientId === 'All' ? 'var(--accent2)' : 'var(--border)'}`,
+            background: filterClientId === 'All' ? 'var(--accent2)' : 'var(--surface)',
+            color: filterClientId === 'All' ? '#fff' : 'var(--text3)',
+            transition: 'all 0.15s', whiteSpace: 'nowrap',
+          }}
+        >
+          👥 All Clients
+        </button>
+
+        {filterClientId && filterClientId !== 'All' && (
+          <button onClick={() => { setFilterId(''); setSearch(''); }} style={{
+            padding: '8px 14px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)',
             background: 'var(--surface2)', color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>✕ Clear</button>
         )}

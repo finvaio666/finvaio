@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import PortfolioSwitchPanel from '@/components/PortfolioSwitchPanel';
 import NavUpdatePanel from '@/components/NavUpdatePanel';
+import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
 interface Holding {
   id: string;
@@ -40,7 +41,7 @@ const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).m
 export default function PortfolioPage() {
   const [holdings,     setHoldings]    = useState<Holding[]>([]);
   const [loading,      setLoading]     = useState(true);
-  const [activeTab,    setTab]         = useState<string | null>(null);
+  const [activeTabId,  setTabId]       = useState<string>('');  // '' | 'All' | clientId
   const [showSwitch,   setShowSwitch]  = useState(false);
   const [showNav,      setShowNav]     = useState(false);
 
@@ -55,6 +56,18 @@ export default function PortfolioPage() {
   useEffect(() => { loadHoldings(); }, []);
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
+
+  // Build unique clients list from holdings for the combobox (no separate clients fetch)
+  const uniqueClients = Array.from(
+    new Map(holdings.map(h => [h.clientId, { id: h.clientId, name: h.clientName || 'Unknown' }])).values()
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Derive activeTab (name string) from id — preserves all existing filtering logic
+  const activeTab: string | null = activeTabId === ''
+    ? null
+    : activeTabId === 'All'
+    ? 'All'
+    : uniqueClients.find(c => c.id === activeTabId)?.name ?? null;
 
   const visible = activeTab === null ? [] : activeTab === 'All'
     ? holdings
@@ -75,34 +88,34 @@ export default function PortfolioPage() {
   return (
     <>
       {/* ── Client selector ── always visible at top ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <div style={{ position: 'relative' }}>
-          <select
-            value={activeTab ?? ''}
-            onChange={e => setTab(e.target.value || null)}
-            style={{
-              padding: '10px 36px 10px 18px', borderRadius: 'var(--r-pill)',
-              border: `1.5px solid ${activeTab ? 'var(--accent2)' : 'var(--border)'}`,
-              background: 'var(--surface)', color: activeTab ? 'var(--text)' : 'var(--text3)',
-              fontSize: 14, fontFamily: 'var(--font-sans)', fontWeight: 600,
-              cursor: 'pointer', outline: 'none', appearance: 'none',
-              boxShadow: 'var(--shadow-sm)', minWidth: 220,
-            }}
-          >
-            <option value=''>— Select a client —</option>
-            <option value='All'>All Clients</option>
-            {clientNames.map(name => (
-              <option key={name} value={name}>
-                {name} ({holdings.filter(h => h.clientName === name).length} holdings)
-              </option>
-            ))}
-          </select>
-          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ width: 300 }}>
+          <ClientSearchCombobox
+            clients={uniqueClients}
+            value={activeTabId === 'All' ? '' : activeTabId}
+            onChange={c => setTabId(c?.id ?? '')}
+            placeholder="Search client…"
+          />
         </div>
 
-        {activeTab && (
-          <button onClick={() => setTab(null)} style={{
-            padding: '8px 16px', borderRadius: 'var(--r-pill)',
+        {/* All Clients toggle */}
+        <button
+          onClick={() => setTabId(activeTabId === 'All' ? '' : 'All')}
+          style={{
+            padding: '9px 16px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-sans)',
+            border: `1.5px solid ${activeTabId === 'All' ? 'var(--accent2)' : 'var(--border)'}`,
+            background: activeTabId === 'All' ? 'var(--accent2)' : 'var(--surface)',
+            color: activeTabId === 'All' ? '#fff' : 'var(--text3)',
+            transition: 'all 0.15s', whiteSpace: 'nowrap',
+          }}
+        >
+          👥 All Clients
+        </button>
+
+        {activeTabId && activeTabId !== 'All' && (
+          <button onClick={() => setTabId('')} style={{
+            padding: '8px 14px', borderRadius: 'var(--r-pill)',
             background: 'var(--surface2)', border: '1px solid var(--border)',
             color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>✕ Clear</button>

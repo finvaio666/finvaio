@@ -167,7 +167,7 @@ export default function ClientSearchCombobox({
           style={{
             width: '100%',
             padding: '10px 36px 10px 34px',
-            borderRadius: 'var(--r-md)',
+            borderRadius: 'var(--r-pill)',
             border: `1.5px solid ${open || selected ? 'var(--accent2)' : 'var(--border)'}`,
             background: 'var(--surface)',
             color: 'var(--text)',
@@ -221,7 +221,7 @@ export default function ClientSearchCombobox({
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
             background: 'var(--surface)',
             border: '1.5px solid var(--border)',
-            borderRadius: 'var(--r-md)',
+            borderRadius: 16,
             boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
             maxHeight: 260,
             overflowY: 'auto',

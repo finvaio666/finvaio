@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
 // ─── Client data ──────────────────────────────────────────────────────────────
 interface ClientData {
@@ -1088,23 +1089,16 @@ export default function PlanningPage() {
           ))}
         </div>
 
-        {/* Client dropdown — shown in existing mode */}
+        {/* Client search — shown in existing mode */}
         {mode === 'existing' && (
           <>
-            <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
-              <select value={selectedId} onChange={e => setSelectedId(e.target.value)} style={{
-                width: '100%', padding: '8px 32px 8px 14px', borderRadius: 'var(--r-pill)',
-                border: `1px solid ${selectedId ? 'var(--accent2)' : 'var(--border)'}`,
-                background: 'var(--bg)', color: selectedId ? 'var(--text)' : 'var(--text3)',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none', appearance: 'none',
-                fontFamily: 'var(--font-sans)',
-              }}>
-                <option value=''>— select client —</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 10, color: 'var(--text3)' }}>▼</span>
+            <div style={{ flex: 1, maxWidth: 320 }}>
+              <ClientSearchCombobox
+                clients={clients}
+                value={selectedId}
+                onChange={c => setSelectedId(c?.id ?? '')}
+                placeholder="Search client…"
+              />
             </div>
 
             {/* Client summary chips */}
@@ -1129,7 +1123,7 @@ export default function PlanningPage() {
             )}
 
             {selectedId && (
-              <button onClick={() => setSelectedId('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '4px 8px', borderRadius: 8 }}>✕ Clear</button>
+              <button onClick={() => setSelectedId('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '4px 8px', borderRadius: 'var(--r-pill)' }}>✕ Clear</button>
             )}
           </>
         )}
