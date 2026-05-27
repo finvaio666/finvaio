@@ -42,18 +42,31 @@ const EMPTY: FormValues = {
 };
 
 const n = (v: string) => parseFloat(v) || 0;
-const fmt = (v: number) => v > 0 ? `RM ${v.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—';
+const fmt = (v: number) => v > 0
+  ? `RM ${v.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  : '—';
 
-// ── Input component ──────────────────────────────────────────────────────────
-function AmtInput({ label, value, onChange, hint }: { label: string; value: string; onChange: (v: string) => void; hint?: string }) {
+// ── Amount input ─────────────────────────────────────────────────────────────
+function AmtInput({ label, value, onChange, hint }: {
+  label: string; value: string; onChange: (v: string) => void; hint?: string;
+}) {
+  const [focused, setFocused] = useState(false);
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+      <label style={{
+        display: 'block', fontSize: 13, fontWeight: 700,
+        color: 'var(--text3)', marginBottom: 5,
+        textTransform: 'uppercase', letterSpacing: '0.06em',
+      }}>
         {label}
-        {hint && <span style={{ fontSize: 11, fontWeight: 400, color: '#9CA3AF', marginLeft: 6 }}>{hint}</span>}
+        {hint && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>{hint}</span>}
       </label>
       <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: '#6B7280' }}>RM</span>
+        <span style={{
+          position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+          fontSize: 13, fontWeight: 700, color: focused ? 'var(--accent2)' : 'var(--text3)',
+          fontFamily: 'var(--font-mono)', transition: 'color 0.15s',
+        }}>RM</span>
         <input
           type="number"
           min="0"
@@ -61,32 +74,52 @@ function AmtInput({ label, value, onChange, hint }: { label: string; value: stri
           placeholder="0"
           value={value}
           onChange={e => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           style={{
-            width: '100%', padding: '11px 14px 11px 36px',
-            border: '1.5px solid #E5E7EB', borderRadius: 10,
-            fontSize: 15, fontFamily: 'monospace', fontWeight: 600, color: '#111827',
-            background: '#FAFAFA', outline: 'none', boxSizing: 'border-box',
-            transition: 'border-color 0.15s',
+            width: '100%', padding: '11px 14px 11px 42px',
+            border: `1.5px solid ${focused ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 'var(--r-sm)',
+            fontSize: 15, fontFamily: 'var(--font-mono)', fontWeight: 600,
+            color: 'var(--text)',
+            background: focused ? 'var(--surface)' : 'var(--bg2)',
+            outline: 'none', boxSizing: 'border-box',
+            transition: 'border-color 0.15s, background 0.15s',
           }}
-          onFocus={e => { e.target.style.borderColor = '#6366F1'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#E5E7EB'; e.target.style.background = '#FAFAFA'; }}
         />
       </div>
     </div>
   );
 }
 
-// ── Section header ───────────────────────────────────────────────────────────
-function SectionHeader({ emoji, title, subtitle, total, color }: { emoji: string; title: string; subtitle: string; total: number; color: string }) {
+// ── Section card header ───────────────────────────────────────────────────────
+function SectionHeader({ emoji, title, subtitle, total, dotColor }: {
+  emoji: string; title: string; subtitle: string; total: number; dotColor: string;
+}) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, paddingBottom: 12, borderBottom: `2px solid ${color}22` }}>
-      <div style={{ width: 40, height: 40, borderRadius: 12, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{emoji}</div>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      marginBottom: 18, paddingBottom: 14,
+      borderBottom: '1px solid var(--border)',
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 'var(--r-sm)',
+        background: 'var(--accent-dim)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 20, flexShrink: 0,
+      }}>{emoji}</div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 800, fontSize: 15, color: '#111827' }}>{title}</div>
-        <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{subtitle}</div>
+        <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', letterSpacing: '-0.01em' }}>{title}</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{subtitle}</div>
       </div>
       {total > 0 && (
-        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color, background: `${color}18`, padding: '4px 10px', borderRadius: 8 }}>
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14,
+          color: dotColor,
+          background: 'var(--bg2)',
+          border: '1px solid var(--border)',
+          padding: '4px 12px', borderRadius: 'var(--r-pill)',
+        }}>
           RM {total.toLocaleString()}
         </div>
       )}
@@ -99,16 +132,15 @@ export default function CashflowFormPage() {
   const params = useParams();
   const token  = params?.token as string;
 
-  const [info,     setInfo]     = useState<TokenInfo | null>(null);
-  const [form,     setForm]     = useState<FormValues>(EMPTY);
-  const [step,     setStep]     = useState<'loading' | 'form' | 'submitting' | 'done' | 'error'>('loading');
-  const [errMsg,   setErrMsg]   = useState('');
+  const [info,      setInfo]      = useState<TokenInfo | null>(null);
+  const [form,      setForm]      = useState<FormValues>(EMPTY);
+  const [step,      setStep]      = useState<'loading' | 'form' | 'submitting' | 'done' | 'error'>('loading');
+  const [errMsg,    setErrMsg]    = useState('');
   const [submitted, setSubmitted] = useState<{ income: number; expenses: number; surplus: number } | null>(null);
 
-  // Verify token on mount
+  // Decode token on mount (client-side display only; server verifies on submit)
   useEffect(() => {
     if (!token) { setStep('error'); setErrMsg('No token in URL.'); return; }
-    // Token is verified server-side on submit — here we just decode client-side for display
     try {
       const parts = token.split('.');
       if (parts.length < 2) throw new Error('Invalid format');
@@ -119,14 +151,7 @@ export default function CashflowFormPage() {
         setStep('error');
         return;
       }
-      const monthDate = new Date(payload.month + 'T00:00:00');
-      setInfo({
-        valid:       true,
-        clientName:  payload.clientName,
-        month:       payload.month,
-        advisorName: '', // will be shown as generic
-      });
-      // Pre-fill EPF estimate if salary entered later
+      setInfo({ valid: true, clientName: payload.clientName, month: payload.month, advisorName: '' });
       setStep('form');
     } catch {
       setInfo({ valid: false, error: 'This link is invalid or has been tampered with.' });
@@ -136,7 +161,7 @@ export default function CashflowFormPage() {
 
   const set = (key: keyof FormValues) => (val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  // ── Live calculations ────────────────────────────────────────────────────────
+  // Live totals
   const totals = useMemo(() => {
     const income   = n(form.salary) + n(form.business) + n(form.rental) + n(form.investment) + n(form.otherIncome);
     const fixed    = n(form.housing) + n(form.carLoan) + n(form.insurancePremium) + n(form.education) + n(form.otherFixed);
@@ -147,7 +172,6 @@ export default function CashflowFormPage() {
     return { income, fixed, variable, epf, surplus, savingsRate };
   }, [form]);
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (totals.income === 0) {
       alert('Please enter at least your monthly income before submitting.');
@@ -184,164 +208,264 @@ export default function CashflowFormPage() {
     ? new Date(info.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' })
     : '';
 
-  // ── Render states ────────────────────────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (step === 'loading') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F9FAFB' }}>
-        <div style={{ textAlign: 'center', color: '#6B7280' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text3)' }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-          <div>Loading your form…</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Loading your form…</div>
         </div>
       </div>
     );
   }
 
+  // ── Error ────────────────────────────────────────────────────────────────────
   if (step === 'error') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FEF2F2', padding: 24 }}>
-        <div style={{ maxWidth: 400, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🔗</div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginBottom: 8 }}>Link Problem</h2>
-          <p style={{ fontSize: 14, color: '#6B7280', lineHeight: 1.6 }}>{info?.error ?? errMsg ?? 'This link is no longer valid.'}</p>
-          <p style={{ fontSize: 13, color: '#9CA3AF', marginTop: 16 }}>Please contact your financial advisor for assistance.</p>
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg)', padding: 24,
+      }}>
+        <div style={{
+          maxWidth: 400, textAlign: 'center',
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '40px 32px', boxShadow: 'var(--shadow)',
+        }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 'var(--r)',
+            background: 'var(--red-dim)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 28, margin: '0 auto 20px',
+          }}>🔗</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 8, letterSpacing: '-0.02em' }}>Link Problem</h2>
+          <p style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.6, marginBottom: 16 }}>
+            {info?.error ?? errMsg ?? 'This link is no longer valid.'}
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+            Please contact your financial advisor for assistance.
+          </p>
         </div>
       </div>
     );
   }
 
+  // ── Done ─────────────────────────────────────────────────────────────────────
   if (step === 'done' && submitted) {
     const surplus = submitted.surplus;
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ maxWidth: 420, width: '100%', background: '#fff', borderRadius: 20, padding: 36, boxShadow: '0 8px 40px rgba(0,0,0,0.12)', textAlign: 'center' }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#111827', marginBottom: 8 }}>Submitted!</h2>
-          <p style={{ fontSize: 14, color: '#6B7280', lineHeight: 1.6, marginBottom: 24 }}>
-            Thank you, <strong>{info?.clientName}</strong>. Your cash flow for <strong>{monthLabel}</strong> has been received by your financial advisor.
+      <div style={{
+        minHeight: '100vh', background: 'var(--bg)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+        <div style={{
+          maxWidth: 440, width: '100%',
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '40px 32px', boxShadow: 'var(--shadow)', textAlign: 'center',
+        }}>
+          {/* Top accent bar */}
+          <div style={{ height: 4, background: 'var(--green)', borderRadius: 999, margin: '-40px -32px 32px', borderTopLeftRadius: 'var(--r)', borderTopRightRadius: 'var(--r)' }} />
+
+          <div style={{
+            width: 64, height: 64, borderRadius: 'var(--r)',
+            background: 'var(--green-dim)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 28, margin: '0 auto 20px',
+          }}>✅</div>
+
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 8, letterSpacing: '-0.02em' }}>Submitted!</h2>
+          <p style={{ fontSize: 14, color: 'var(--text3)', lineHeight: 1.6, marginBottom: 28 }}>
+            Thank you, <strong style={{ color: 'var(--text)' }}>{info?.clientName}</strong>. Your cash flow for{' '}
+            <strong style={{ color: 'var(--accent2)' }}>{monthLabel}</strong> has been received.
           </p>
 
-          {/* Summary */}
-          <div style={{ background: '#F9FAFB', borderRadius: 12, padding: '16px 20px', textAlign: 'left', marginBottom: 24 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', marginBottom: 12, letterSpacing: '0.06em' }}>YOUR SUMMARY</div>
+          {/* Summary rows */}
+          <div style={{
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 'var(--r-sm)', padding: '16px 20px', textAlign: 'left', marginBottom: 24,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', marginBottom: 14, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Your Summary
+            </div>
             {[
-              { label: 'Monthly Income', val: submitted.income, color: '#10B981' },
-              { label: 'Total Expenses', val: submitted.expenses, color: '#EF4444' },
-              { label: surplus >= 0 ? 'Monthly Surplus' : 'Monthly Deficit', val: Math.abs(surplus), color: surplus >= 0 ? '#6366F1' : '#F59E0B' },
+              { label: 'Monthly Income',  val: submitted.income,   color: 'var(--green)' },
+              { label: 'Total Expenses',  val: submitted.expenses, color: 'var(--red)' },
+              { label: surplus >= 0 ? 'Monthly Surplus' : 'Monthly Deficit',
+                val: Math.abs(surplus),
+                color: surplus >= 0 ? 'var(--accent2)' : 'var(--gold)' },
             ].map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, color: '#374151' }}>{row.label}</span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: row.color }}>
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 14, color: 'var(--text2)' }}>{row.label}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14, color: row.color }}>
                   RM {row.val.toLocaleString()}
                 </span>
               </div>
             ))}
           </div>
 
-          <p style={{ fontSize: 12, color: '#9CA3AF', lineHeight: 1.6 }}>
-            Your advisor will review your cash flow and may follow up with you during your next review session.
+          <p style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+            Your advisor will review your cash flow and may follow up during your next session.
           </p>
         </div>
       </div>
     );
   }
 
-  // ── Main form ─────────────────────────────────────────────────────────────
+  // ── Main form ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: '#F3F4F6', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', padding: '24px 20px 20px', textAlign: 'center', color: '#fff' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', opacity: 0.75, marginBottom: 4, textTransform: 'uppercase' }}>
-          Bill Morrisons Financial Consulting
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'var(--font-sans)' }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        background: 'var(--surface)',
+        borderBottom: '1px solid var(--border)',
+        padding: '20px 24px 18px',
+        textAlign: 'center',
+      }}>
+        {/* Orange top-bar */}
+        <div style={{ height: 4, background: 'var(--accent)', borderRadius: 999, margin: '-20px -24px 20px' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 8,
+            background: 'var(--accent-dim)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 15,
+          }}>💰</div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Bill Morrisons Financial Consulting
+          </span>
         </div>
-        <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, marginBottom: 4 }}>Monthly Cash Flow</h1>
-        <div style={{ fontSize: 14, opacity: 0.85 }}>
-          {info?.clientName ? `Hi ${info.clientName}` : 'Hi there'} 👋 · <strong>{monthLabel}</strong>
-        </div>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, marginBottom: 4, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+          Monthly Cash Flow
+        </h1>
+        {info?.clientName && (
+          <div style={{ fontSize: 14, color: 'var(--text3)' }}>
+            Hi <strong style={{ color: 'var(--accent2)' }}>{info.clientName}</strong>{monthLabel ? ` · ${monthLabel}` : ''}
+          </div>
+        )}
       </div>
 
-      <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 16px 80px' }}>
+      <div style={{ maxWidth: 540, margin: '0 auto', padding: '24px 16px 96px' }}>
 
-        {/* Live summary bar */}
+        {/* ── Live summary bar ── */}
         {(totals.income > 0 || totals.fixed > 0 || totals.variable > 0) && (
           <div style={{
-            background: '#fff', borderRadius: 14, padding: '14px 18px', marginBottom: 20,
-            boxShadow: '0 2px 12px rgba(0,0,0,0.08)', border: '1px solid #E5E7EB',
+            background: 'var(--surface)', borderRadius: 'var(--r)',
+            padding: '16px 20px', marginBottom: 20,
+            boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 10 }}>LIVE SUMMARY</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
+              Live Summary
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
               {[
-                { label: 'Income', val: totals.income, color: '#10B981' },
-                { label: 'Expenses', val: totals.fixed + totals.variable, color: '#EF4444' },
-                { label: totals.surplus >= 0 ? 'Surplus' : 'Deficit', val: Math.abs(totals.surplus), color: totals.surplus >= 0 ? '#6366F1' : '#F59E0B' },
+                { label: 'Income',   val: totals.income,                          color: 'var(--green)' },
+                { label: 'Expenses', val: totals.fixed + totals.variable,         color: 'var(--red)' },
+                { label: totals.surplus >= 0 ? 'Surplus' : 'Deficit',
+                  val: Math.abs(totals.surplus),
+                  color: totals.surplus >= 0 ? 'var(--accent2)' : 'var(--gold)' },
               ].map(s => (
-                <div key={s.label} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>{s.label}</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: s.color }}>
+                <div key={s.label} style={{
+                  textAlign: 'center', background: 'var(--bg2)',
+                  borderRadius: 'var(--r-sm)', padding: '10px 8px',
+                  border: '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: s.color }}>
                     {fmt(s.val)}
                   </div>
                 </div>
               ))}
             </div>
             {totals.income > 0 && (
-              <div style={{ marginTop: 10, height: 6, borderRadius: 999, background: '#F3F4F6', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 999, transition: 'width 0.3s ease',
-                  background: totals.surplus >= 0 ? '#6366F1' : '#F59E0B',
-                  width: `${Math.min(Math.max((totals.surplus / totals.income) * 100, 0), 100)}%`,
-                }} />
-              </div>
-            )}
-            {totals.income > 0 && (
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, textAlign: 'center' }}>
-                Savings rate: <strong style={{ color: totals.savingsRate >= 30 ? '#10B981' : '#F59E0B' }}>{totals.savingsRate}%</strong>
-                {totals.savingsRate >= 30 ? ' ✅' : ' ⚠️ target: 30%+'}
-              </div>
+              <>
+                <div style={{ height: 6, borderRadius: 999, background: 'var(--surface2)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 999,
+                    background: totals.surplus >= 0 ? 'var(--accent)' : 'var(--gold)',
+                    width: `${Math.min(Math.max((totals.surplus / totals.income) * 100, 0), 100)}%`,
+                    transition: 'width 0.3s ease',
+                  }} />
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>
+                  Savings rate:{' '}
+                  <strong style={{ color: totals.savingsRate >= 30 ? 'var(--green)' : 'var(--gold)' }}>
+                    {totals.savingsRate}%
+                  </strong>
+                  {totals.savingsRate >= 30 ? ' ✅' : ' ⚠️ target: 30%+'}
+                </div>
+              </>
             )}
           </div>
         )}
 
         {/* ── Section 1: Income ── */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 8px', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <SectionHeader emoji="💼" title="Monthly Income" subtitle="Enter your regular income sources" total={totals.income} color="#10B981" />
-          <AmtInput label="Salary / Employment" value={form.salary} onChange={set('salary')} hint="gross monthly" />
-          <AmtInput label="Business Income" value={form.business} onChange={set('business')} hint="if self-employed" />
-          <AmtInput label="Rental Income" value={form.rental} onChange={set('rental')} />
-          <AmtInput label="Investment Returns" value={form.investment} onChange={set('investment')} hint="dividends, interest" />
-          <AmtInput label="Other Income" value={form.otherIncome} onChange={set('otherIncome')} hint="freelance, etc." />
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '22px 22px 10px', marginBottom: 16,
+          boxShadow: 'var(--shadow-sm)',
+          borderTop: '3px solid var(--green)',
+        }}>
+          <SectionHeader emoji="💼" title="Monthly Income" subtitle="Enter your regular income sources" total={totals.income} dotColor="var(--green)" />
+          <AmtInput label="Salary / Employment" value={form.salary}     onChange={set('salary')}     hint="gross monthly" />
+          <AmtInput label="Business Income"     value={form.business}   onChange={set('business')}   hint="if self-employed" />
+          <AmtInput label="Rental Income"       value={form.rental}     onChange={set('rental')} />
+          <AmtInput label="Investment Returns"  value={form.investment} onChange={set('investment')} hint="dividends, interest" />
+          <AmtInput label="Other Income"        value={form.otherIncome} onChange={set('otherIncome')} hint="freelance, etc." />
         </div>
 
         {/* ── Section 2: Fixed Expenses ── */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 8px', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <SectionHeader emoji="🏠" title="Fixed Expenses" subtitle="Regular monthly commitments" total={totals.fixed} color="#EF4444" />
-          <AmtInput label="Housing (Mortgage / Rent)" value={form.housing} onChange={set('housing')} />
-          <AmtInput label="Car Loan" value={form.carLoan} onChange={set('carLoan')} hint="monthly instalment" />
-          <AmtInput label="Insurance Premiums" value={form.insurancePremium} onChange={set('insurancePremium')} hint="life, medical, etc." />
-          <AmtInput label="Education" value={form.education} onChange={set('education')} hint="school fees, tuition" />
-          <AmtInput label="Other Fixed Commitments" value={form.otherFixed} onChange={set('otherFixed')} hint="personal loan, etc." />
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '22px 22px 10px', marginBottom: 16,
+          boxShadow: 'var(--shadow-sm)',
+          borderTop: '3px solid var(--red)',
+        }}>
+          <SectionHeader emoji="🏠" title="Fixed Expenses" subtitle="Regular monthly commitments" total={totals.fixed} dotColor="var(--red)" />
+          <AmtInput label="Housing (Mortgage / Rent)" value={form.housing}          onChange={set('housing')} />
+          <AmtInput label="Car Loan"                  value={form.carLoan}          onChange={set('carLoan')}          hint="monthly instalment" />
+          <AmtInput label="Insurance Premiums"        value={form.insurancePremium} onChange={set('insurancePremium')} hint="life, medical, etc." />
+          <AmtInput label="Education"                 value={form.education}        onChange={set('education')}        hint="school fees, tuition" />
+          <AmtInput label="Other Fixed Commitments"   value={form.otherFixed}       onChange={set('otherFixed')}       hint="personal loan, etc." />
         </div>
 
         {/* ── Section 3: Variable Expenses ── */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 8px', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <SectionHeader emoji="🛒" title="Variable Expenses" subtitle="Day-to-day spending" total={totals.variable} color="#F59E0B" />
-          <AmtInput label="Food & Groceries" value={form.food} onChange={set('food')} />
-          <AmtInput label="Transport" value={form.transport} onChange={set('transport')} hint="petrol, toll, Grab" />
-          <AmtInput label="Lifestyle & Entertainment" value={form.lifestyle} onChange={set('lifestyle')} hint="dining out, subscriptions" />
-          <AmtInput label="Healthcare" value={form.healthcare} onChange={set('healthcare')} hint="clinic, pharmacy" />
-          <AmtInput label="Other Variable" value={form.otherVariable} onChange={set('otherVariable')} />
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '22px 22px 10px', marginBottom: 16,
+          boxShadow: 'var(--shadow-sm)',
+          borderTop: '3px solid var(--gold)',
+        }}>
+          <SectionHeader emoji="🛒" title="Variable Expenses" subtitle="Day-to-day spending" total={totals.variable} dotColor="var(--gold)" />
+          <AmtInput label="Food & Groceries"       value={form.food}          onChange={set('food')} />
+          <AmtInput label="Transport"              value={form.transport}     onChange={set('transport')}  hint="petrol, toll, Grab" />
+          <AmtInput label="Lifestyle & Entertainment" value={form.lifestyle}  onChange={set('lifestyle')}  hint="dining out, subscriptions" />
+          <AmtInput label="Healthcare"             value={form.healthcare}    onChange={set('healthcare')} hint="clinic, pharmacy" />
+          <AmtInput label="Other Variable"         value={form.otherVariable} onChange={set('otherVariable')} />
         </div>
 
         {/* ── Section 4: EPF & Savings ── */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 20px 8px', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <SectionHeader emoji="🏦" title="EPF & Savings" subtitle="Mandatory deductions & savings" total={totals.epf} color="#6366F1" />
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '22px 22px 10px', marginBottom: 16,
+          boxShadow: 'var(--shadow-sm)',
+          borderTop: '3px solid var(--blue)',
+        }}>
+          <SectionHeader emoji="🏦" title="EPF & Savings" subtitle="Mandatory deductions & savings" total={totals.epf} dotColor="var(--blue)" />
           <AmtInput label="EPF (Employee Contribution)" value={form.epfEmployee} onChange={set('epfEmployee')} hint="11% of salary" />
           <AmtInput label="EPF (Employer Contribution)" value={form.epfEmployer} onChange={set('epfEmployer')} hint="13% of salary" />
-          <AmtInput label="Other Savings" value={form.otherSavings} onChange={set('otherSavings')} hint="SOCSO, PRS, ASB, etc." />
+          <AmtInput label="Other Savings"               value={form.otherSavings} onChange={set('otherSavings')} hint="SOCSO, PRS, ASB, etc." />
         </div>
 
         {/* ── Notes ── */}
-        <div style={{ background: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-            📝 Additional Notes <span style={{ fontWeight: 400, color: '#9CA3AF' }}>(optional)</span>
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--r)',
+          padding: '22px 22px 18px', marginBottom: 24,
+          boxShadow: 'var(--shadow-sm)',
+        }}>
+          <label style={{
+            display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text3)',
+            marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            📝 Additional Notes <span style={{ fontWeight: 400, color: 'var(--text3)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
           </label>
           <textarea
             placeholder="Any changes, one-off expenses, or notes for your advisor…"
@@ -349,13 +473,17 @@ export default function CashflowFormPage() {
             onChange={e => set('notes')(e.target.value)}
             rows={3}
             style={{
-              width: '100%', padding: '10px 14px', borderRadius: 10,
-              border: '1.5px solid #E5E7EB', resize: 'vertical',
-              fontSize: 14, color: '#374151', background: '#FAFAFA', boxSizing: 'border-box',
-              fontFamily: 'inherit', outline: 'none',
+              width: '100%', padding: '11px 14px',
+              borderRadius: 'var(--r-sm)',
+              border: '1.5px solid var(--border)',
+              resize: 'vertical', fontSize: 14,
+              color: 'var(--text2)', background: 'var(--bg2)',
+              boxSizing: 'border-box', fontFamily: 'var(--font-sans)',
+              outline: 'none', transition: 'border-color 0.15s, background 0.15s',
+              lineHeight: 1.6,
             }}
-            onFocus={e => { e.target.style.borderColor = '#6366F1'; e.target.style.background = '#fff'; }}
-            onBlur={e => { e.target.style.borderColor = '#E5E7EB'; e.target.style.background = '#FAFAFA'; }}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--surface)'; }}
+            onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg2)'; }}
           />
         </div>
 
@@ -364,21 +492,36 @@ export default function CashflowFormPage() {
           onClick={handleSubmit}
           disabled={step === 'submitting'}
           style={{
-            width: '100%', padding: '16px', borderRadius: 14, border: 'none',
-            background: step === 'submitting' ? '#A5B4FC' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-            color: '#fff', fontSize: 16, fontWeight: 800, cursor: step === 'submitting' ? 'not-allowed' : 'pointer',
-            boxShadow: step === 'submitting' ? 'none' : '0 4px 16px rgba(99,102,241,0.35)',
+            width: '100%', padding: '16px', borderRadius: 'var(--r-pill)', border: 'none',
+            background: step === 'submitting' ? 'var(--surface2)' : 'var(--accent2)',
+            color: step === 'submitting' ? 'var(--text3)' : '#fff',
+            fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-sans)',
+            cursor: step === 'submitting' ? 'not-allowed' : 'pointer',
+            boxShadow: step === 'submitting' ? 'none' : '0 4px 16px rgba(207,69,0,0.3)',
             transition: 'all 0.15s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}
         >
-          {step === 'submitting' ? '⏳ Submitting…' : '✅ Submit Cash Flow'}
+          {step === 'submitting' ? (
+            <>
+              <span style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid var(--text3)', borderTopColor: 'var(--accent)', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+              Submitting…
+            </>
+          ) : '✅ Submit Cash Flow'}
         </button>
 
-        <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF', marginTop: 14, lineHeight: 1.6 }}>
+        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text3)', marginTop: 16, lineHeight: 1.6 }}>
           Your information is shared only with your financial advisor.<br />
-          This form was sent by <strong>Bill Morrisons Financial Consulting</strong>.
+          This form was sent by <strong style={{ color: 'var(--text2)' }}>Bill Morrisons Financial Consulting</strong>.
         </p>
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+      `}</style>
     </div>
   );
 }
