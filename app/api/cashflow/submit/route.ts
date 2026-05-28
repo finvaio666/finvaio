@@ -60,7 +60,9 @@ export async function POST(req: NextRequest) {
   const totalIncome   = (body.salary ?? 0) + (body.business ?? 0) + (body.rental ?? 0) + (body.investment ?? 0) + (body.otherIncome ?? 0);
   const totalFixed    = (body.housing ?? 0) + (body.carLoan ?? 0) + (body.insurancePremium ?? 0) + (body.education ?? 0) + (body.internet ?? 0) + (body.subscriptions ?? 0) + (body.otherFixed ?? 0);
   const totalVariable = (body.food ?? 0) + (body.diningOut ?? 0) + (body.transport ?? 0) + (body.entertainment ?? 0) + (body.lifestyle ?? 0) + (body.healthcare ?? 0) + (body.clothing ?? 0) + (body.selfDevelopment ?? 0) + (body.travel ?? 0) + (body.gifts ?? 0) + (body.otherVariable ?? 0);
-  const totalEPF      = (body.epfEmployee ?? 0) + (body.epfEmployer ?? 0) + (body.otherSavings ?? 0);
+  // Employer EPF is funded by the company — exclude from deduction, record separately in notes only
+  const totalEPF      = (body.epfEmployee ?? 0) + (body.otherSavings ?? 0);
+  const employerEPF   = (body.epfEmployer ?? 0);
 
   // 4. Build detailed notes as formatted text
   const monthLabel = new Date(payload.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' });
@@ -94,9 +96,9 @@ export async function POST(req: NextRequest) {
     body.otherVariable    ? `Other Variable: RM ${body.otherVariable.toLocaleString()}`        : '',
     '',
     `=== EPF & SAVINGS (RM ${totalEPF.toLocaleString()}) ===`,
-    body.epfEmployee     ? `EPF Employee: RM ${body.epfEmployee.toLocaleString()}`        : '',
-    body.epfEmployer     ? `EPF Employer: RM ${body.epfEmployer.toLocaleString()}`        : '',
-    body.otherSavings    ? `Other Savings: RM ${body.otherSavings.toLocaleString()}`      : '',
+    body.epfEmployee     ? `EPF Employee (deducted): RM ${body.epfEmployee.toLocaleString()}`           : '',
+    body.otherSavings    ? `Other Savings (deducted): RM ${body.otherSavings.toLocaleString()}`         : '',
+    employerEPF          ? `EPF Employer (company contribution, not deducted): RM ${employerEPF.toLocaleString()}` : '',
     body.notes ? `\nNotes: ${body.notes}` : '',
   ].filter(l => l !== '').join('\n');
 
@@ -172,7 +174,7 @@ export async function POST(req: NextRequest) {
         income:   totalIncome,
         expenses: totalFixed + totalVariable,
         epf:      totalEPF,
-        surplus:  totalIncome - totalFixed - totalVariable - totalEPF,
+        surplus:  totalIncome - totalFixed - totalVariable - totalEPF, // employer EPF excluded
       },
     });
   } catch (e: unknown) {

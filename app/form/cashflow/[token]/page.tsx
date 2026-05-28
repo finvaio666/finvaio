@@ -179,7 +179,8 @@ export default function CashflowFormPage() {
     const income   = n(form.salary) + n(form.business) + n(form.rental) + n(form.investment) + n(form.otherIncome);
     const fixed    = n(form.housing) + n(form.carLoan) + n(form.insurancePremium) + n(form.education) + n(form.internet) + n(form.subscriptions) + n(form.otherFixed);
     const variable = n(form.food) + n(form.diningOut) + n(form.transport) + n(form.entertainment) + n(form.healthcare) + n(form.clothing) + n(form.selfDevelopment) + n(form.travel) + n(form.gifts) + n(form.otherVariable);
-    const epf      = n(form.epfEmployee) + n(form.epfEmployer) + n(form.otherSavings);
+    // Employer EPF is funded by the company — does NOT reduce the client's cash flow
+    const epf      = n(form.epfEmployee) + n(form.otherSavings);
     const surplus  = income - fixed - variable - epf;
     const savingsRate = income > 0 ? Math.round(((surplus + epf) / income) * 100) : 0;
     return { income, fixed, variable, epf, surplus, savingsRate };
