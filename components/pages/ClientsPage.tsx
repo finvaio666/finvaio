@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, segmentLabel, statusClass } from '@/components/useClients';
 
 export default function ClientsPage() {
+  const router = useRouter();
   const { clients, loading, error, totalAum, activeCount, prospectCount, reload } = useClients();
   const inactiveCount = clients.filter(c => c.status?.toLowerCase().includes('inactive')).length;
 
@@ -179,7 +181,12 @@ export default function ClientsPage() {
             </div>
           )}
           {!loading && filteredClients.map(client => (
-            <div key={client.id} className="client-row">
+            <div
+              key={client.id}
+              className="client-row"
+              onClick={() => router.push(`/clients/${encodeURIComponent(client.id)}`)}
+              style={{ cursor: 'pointer' }}
+            >
               <div className="client-name-cell">
                 <div className="client-avatar">{initials(client.name)}</div>
                 <div>
@@ -194,7 +201,7 @@ export default function ClientsPage() {
               <div><span className={`badge ${riskClass(client.risk)}`}>{client.risk}</span></div>
               <div>
                 <button
-                  onClick={() => handleGenerateReport(client.id, client.name)}
+                  onClick={e => { e.stopPropagation(); handleGenerateReport(client.id, client.name); }}
                   disabled={generatingReport === client.id}
                   title="Generate Wealth Summary PDF"
                   style={{
