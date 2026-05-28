@@ -8,29 +8,37 @@ export const dynamic = 'force-dynamic';
 export interface CashflowFormData {
   token: string;
   // Income
-  salary:       number;
-  business:     number;
-  rental:       number;
-  investment:   number;
-  otherIncome:  number;
+  salary:           number;
+  business:         number;
+  rental:           number;
+  investment:       number;
+  otherIncome:      number;
   // Fixed expenses
-  housing:      number;
-  carLoan:      number;
+  housing:          number;
+  carLoan:          number;
   insurancePremium: number;
-  education:    number;
-  otherFixed:   number;
+  education:        number;
+  internet:         number;
+  subscriptions:    number;
+  otherFixed:       number;
   // Variable expenses
-  food:         number;
-  transport:    number;
-  lifestyle:    number;
-  healthcare:   number;
-  otherVariable: number;
+  food:             number;
+  diningOut:        number;
+  transport:        number;
+  entertainment:    number;
+  lifestyle:        number; // legacy — kept for old submissions
+  healthcare:       number;
+  clothing:         number;
+  selfDevelopment:  number;
+  travel:           number;
+  gifts:            number;
+  otherVariable:    number;
   // EPF / savings
-  epfEmployee:  number;
-  epfEmployer:  number;
-  otherSavings: number;
+  epfEmployee:      number;
+  epfEmployer:      number;
+  otherSavings:     number;
   // Meta
-  notes:        string;
+  notes:            string;
 }
 
 export async function POST(req: NextRequest) {
@@ -50,8 +58,8 @@ export async function POST(req: NextRequest) {
 
   // 3. Aggregate totals
   const totalIncome   = (body.salary ?? 0) + (body.business ?? 0) + (body.rental ?? 0) + (body.investment ?? 0) + (body.otherIncome ?? 0);
-  const totalFixed    = (body.housing ?? 0) + (body.carLoan ?? 0) + (body.insurancePremium ?? 0) + (body.education ?? 0) + (body.otherFixed ?? 0);
-  const totalVariable = (body.food ?? 0) + (body.transport ?? 0) + (body.lifestyle ?? 0) + (body.healthcare ?? 0) + (body.otherVariable ?? 0);
+  const totalFixed    = (body.housing ?? 0) + (body.carLoan ?? 0) + (body.insurancePremium ?? 0) + (body.education ?? 0) + (body.internet ?? 0) + (body.subscriptions ?? 0) + (body.otherFixed ?? 0);
+  const totalVariable = (body.food ?? 0) + (body.diningOut ?? 0) + (body.transport ?? 0) + (body.entertainment ?? 0) + (body.lifestyle ?? 0) + (body.healthcare ?? 0) + (body.clothing ?? 0) + (body.selfDevelopment ?? 0) + (body.travel ?? 0) + (body.gifts ?? 0) + (body.otherVariable ?? 0);
   const totalEPF      = (body.epfEmployee ?? 0) + (body.epfEmployer ?? 0) + (body.otherSavings ?? 0);
 
   // 4. Build detailed notes as formatted text
@@ -65,18 +73,25 @@ export async function POST(req: NextRequest) {
     body.otherIncome     ? `Other Income: RM ${body.otherIncome.toLocaleString()}`        : '',
     '',
     `=== FIXED EXPENSES (RM ${totalFixed.toLocaleString()}) ===`,
-    body.housing         ? `Housing/Mortgage: RM ${body.housing.toLocaleString()}`        : '',
-    body.carLoan         ? `Car Loan: RM ${body.carLoan.toLocaleString()}`                : '',
-    body.insurancePremium? `Insurance Premiums: RM ${body.insurancePremium.toLocaleString()}` : '',
-    body.education       ? `Education: RM ${body.education.toLocaleString()}`             : '',
-    body.otherFixed      ? `Other Fixed: RM ${body.otherFixed.toLocaleString()}`          : '',
+    body.housing          ? `Housing/Mortgage: RM ${body.housing.toLocaleString()}`            : '',
+    body.carLoan          ? `Car Loan: RM ${body.carLoan.toLocaleString()}`                    : '',
+    body.insurancePremium ? `Insurance Premiums: RM ${body.insurancePremium.toLocaleString()}` : '',
+    body.education        ? `Education: RM ${body.education.toLocaleString()}`                 : '',
+    body.internet         ? `Internet & Phone Bills: RM ${body.internet.toLocaleString()}`     : '',
+    body.subscriptions    ? `Subscriptions: RM ${body.subscriptions.toLocaleString()}`         : '',
+    body.otherFixed       ? `Other Fixed: RM ${body.otherFixed.toLocaleString()}`              : '',
     '',
     `=== VARIABLE EXPENSES (RM ${totalVariable.toLocaleString()}) ===`,
-    body.food            ? `Food & Groceries: RM ${body.food.toLocaleString()}`           : '',
-    body.transport       ? `Transport: RM ${body.transport.toLocaleString()}`             : '',
-    body.lifestyle       ? `Lifestyle/Entertainment: RM ${body.lifestyle.toLocaleString()}` : '',
-    body.healthcare      ? `Healthcare: RM ${body.healthcare.toLocaleString()}`           : '',
-    body.otherVariable   ? `Other Variable: RM ${body.otherVariable.toLocaleString()}`   : '',
+    body.food             ? `Food & Groceries: RM ${body.food.toLocaleString()}`               : '',
+    body.diningOut        ? `Dining Out / Food Delivery: RM ${body.diningOut.toLocaleString()}`: '',
+    body.transport        ? `Transport: RM ${body.transport.toLocaleString()}`                 : '',
+    body.entertainment    ? `Entertainment: RM ${body.entertainment.toLocaleString()}`         : '',
+    body.healthcare       ? `Healthcare: RM ${body.healthcare.toLocaleString()}`               : '',
+    body.clothing         ? `Clothing & Personal Care: RM ${body.clothing.toLocaleString()}`   : '',
+    body.selfDevelopment  ? `Education / Books / Courses: RM ${body.selfDevelopment.toLocaleString()}` : '',
+    body.travel           ? `Travel & Holidays: RM ${body.travel.toLocaleString()}`            : '',
+    body.gifts            ? `Gifts & Donations: RM ${body.gifts.toLocaleString()}`             : '',
+    body.otherVariable    ? `Other Variable: RM ${body.otherVariable.toLocaleString()}`        : '',
     '',
     `=== EPF & SAVINGS (RM ${totalEPF.toLocaleString()}) ===`,
     body.epfEmployee     ? `EPF Employee: RM ${body.epfEmployee.toLocaleString()}`        : '',

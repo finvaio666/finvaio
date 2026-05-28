@@ -13,32 +13,45 @@ interface TokenInfo {
 }
 
 interface FormValues {
-  salary:            string;
-  business:          string;
-  rental:            string;
-  investment:        string;
-  otherIncome:       string;
-  housing:           string;
-  carLoan:           string;
-  insurancePremium:  string;
-  education:         string;
-  otherFixed:        string;
-  food:              string;
-  transport:         string;
-  lifestyle:         string;
-  healthcare:        string;
-  otherVariable:     string;
-  epfEmployee:       string;
-  epfEmployer:       string;
-  otherSavings:      string;
-  notes:             string;
+  // Income
+  salary:           string;
+  business:         string;
+  rental:           string;
+  investment:       string;
+  otherIncome:      string;
+  // Fixed
+  housing:          string;
+  carLoan:          string;
+  insurancePremium: string;
+  education:        string;
+  internet:         string;
+  subscriptions:    string;
+  otherFixed:       string;
+  // Variable
+  food:             string;
+  diningOut:        string;
+  transport:        string;
+  entertainment:    string;
+  healthcare:       string;
+  clothing:         string;
+  selfDevelopment:  string;
+  travel:           string;
+  gifts:            string;
+  otherVariable:    string;
+  // EPF
+  epfEmployee:      string;
+  epfEmployer:      string;
+  otherSavings:     string;
+  // Notes
+  notes:            string;
 }
 
 const EMPTY: FormValues = {
   salary:'', business:'', rental:'', investment:'', otherIncome:'',
-  housing:'', carLoan:'', insurancePremium:'', education:'', otherFixed:'',
-  food:'', transport:'', lifestyle:'', healthcare:'', otherVariable:'',
-  epfEmployee:'', epfEmployer:'', otherSavings:'', notes:'',
+  housing:'', carLoan:'', insurancePremium:'', education:'', internet:'', subscriptions:'', otherFixed:'',
+  food:'', diningOut:'', transport:'', entertainment:'', healthcare:'', clothing:'', selfDevelopment:'', travel:'', gifts:'', otherVariable:'',
+  epfEmployee:'', epfEmployer:'', otherSavings:'',
+  notes:'',
 };
 
 const n = (v: string) => parseFloat(v) || 0;
@@ -164,8 +177,8 @@ export default function CashflowFormPage() {
   // Live totals
   const totals = useMemo(() => {
     const income   = n(form.salary) + n(form.business) + n(form.rental) + n(form.investment) + n(form.otherIncome);
-    const fixed    = n(form.housing) + n(form.carLoan) + n(form.insurancePremium) + n(form.education) + n(form.otherFixed);
-    const variable = n(form.food) + n(form.transport) + n(form.lifestyle) + n(form.healthcare) + n(form.otherVariable);
+    const fixed    = n(form.housing) + n(form.carLoan) + n(form.insurancePremium) + n(form.education) + n(form.internet) + n(form.subscriptions) + n(form.otherFixed);
+    const variable = n(form.food) + n(form.diningOut) + n(form.transport) + n(form.entertainment) + n(form.healthcare) + n(form.clothing) + n(form.selfDevelopment) + n(form.travel) + n(form.gifts) + n(form.otherVariable);
     const epf      = n(form.epfEmployee) + n(form.epfEmployer) + n(form.otherSavings);
     const surplus  = income - fixed - variable - epf;
     const savingsRate = income > 0 ? Math.round(((surplus + epf) / income) * 100) : 0;
@@ -424,6 +437,8 @@ export default function CashflowFormPage() {
           <AmtInput label="Car Loan"                  value={form.carLoan}          onChange={set('carLoan')}          hint="monthly instalment" />
           <AmtInput label="Insurance Premiums"        value={form.insurancePremium} onChange={set('insurancePremium')} hint="life, medical, etc." />
           <AmtInput label="Education"                 value={form.education}        onChange={set('education')}        hint="school fees, tuition" />
+          <AmtInput label="Internet & Phone Bills"    value={form.internet}         onChange={set('internet')}         hint="broadband, mobile plan" />
+          <AmtInput label="Subscriptions"             value={form.subscriptions}    onChange={set('subscriptions')}    hint="Netflix, Spotify, etc." />
           <AmtInput label="Other Fixed Commitments"   value={form.otherFixed}       onChange={set('otherFixed')}       hint="personal loan, etc." />
         </div>
 
@@ -435,11 +450,16 @@ export default function CashflowFormPage() {
           borderTop: '3px solid var(--gold)',
         }}>
           <SectionHeader emoji="🛒" title="Variable Expenses" subtitle="Day-to-day spending" total={totals.variable} dotColor="var(--gold)" />
-          <AmtInput label="Food & Groceries"       value={form.food}          onChange={set('food')} />
-          <AmtInput label="Transport"              value={form.transport}     onChange={set('transport')}  hint="petrol, toll, Grab" />
-          <AmtInput label="Lifestyle & Entertainment" value={form.lifestyle}  onChange={set('lifestyle')}  hint="dining out, subscriptions" />
-          <AmtInput label="Healthcare"             value={form.healthcare}    onChange={set('healthcare')} hint="clinic, pharmacy" />
-          <AmtInput label="Other Variable"         value={form.otherVariable} onChange={set('otherVariable')} />
+          <AmtInput label="Food & Groceries"              value={form.food}            onChange={set('food')}            hint="wet market, supermarket" />
+          <AmtInput label="Dining Out / Food Delivery"    value={form.diningOut}       onChange={set('diningOut')}       hint="restaurants, GrabFood, etc." />
+          <AmtInput label="Transport"                     value={form.transport}       onChange={set('transport')}       hint="petrol, toll, Grab" />
+          <AmtInput label="Entertainment"                 value={form.entertainment}   onChange={set('entertainment')}   hint="movies, events, hobbies" />
+          <AmtInput label="Healthcare"                    value={form.healthcare}      onChange={set('healthcare')}      hint="clinic, pharmacy" />
+          <AmtInput label="Clothing & Personal Care"      value={form.clothing}        onChange={set('clothing')}        hint="grooming, skincare, apparel" />
+          <AmtInput label="Education / Books / Courses"   value={form.selfDevelopment} onChange={set('selfDevelopment')} hint="online courses, books" />
+          <AmtInput label="Travel & Holidays"             value={form.travel}          onChange={set('travel')}          hint="flights, hotels, trips" />
+          <AmtInput label="Gifts & Donations"             value={form.gifts}           onChange={set('gifts')}           hint="zakat, charity, gifts" />
+          <AmtInput label="Other Variable"                value={form.otherVariable}   onChange={set('otherVariable')} />
         </div>
 
         {/* ── Section 4: EPF & Savings ── */}
