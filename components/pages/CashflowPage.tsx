@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useClients } from '@/components/useClients';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
@@ -139,8 +140,12 @@ export default function CashflowPage() {
     });
   };
 
+  const router      = useRouter();
   const clientReady = !loading && !clientsLoading && !!clientLatest && !!selectedId;
   const firstName   = selectedClient?.name?.split(' ')[0] ?? '';
+
+  // Extract client first name from an entry title like "JANICE QUEK KHANG WEN — May 2026"
+  const clientNameFromEntry = (entry: string) => entry.split('—')[0].trim();
 
   return (
     <>
@@ -326,18 +331,33 @@ export default function CashflowPage() {
                   {/* ── Summary row ── */}
                   <div
                     className="cf-row"
-                    onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                    style={{ cursor: 'pointer', background: isExpanded ? 'var(--accent-dim)' : '' }}
+                    style={{ background: isExpanded ? 'var(--accent-dim)' : '' }}
                     onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--surface2)'; }}
                     onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                        {row.entry}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 16 }}>
-                        {row.month ? new Date(row.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' }) : ''}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
+                      {/* ▶ toggle — expands breakdown */}
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                        style={{ background: 'none', border: 'none', padding: '2px 6px 0 0', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}
+                        title="View breakdown"
+                      >
+                        <span style={{ fontSize: 10, color: 'var(--text3)', display: 'inline-block', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                      </button>
+                      {/* Client name — navigates to client profile */}
+                      <div>
+                        <div
+                          onClick={() => router.push(`/clients?q=${encodeURIComponent(clientNameFromEntry(row.entry))}`)}
+                          style={{ fontWeight: 500, color: 'var(--accent2)', cursor: 'pointer', textDecoration: 'none' }}
+                          onMouseOver={e => (e.currentTarget.style.textDecoration = 'underline')}
+                          onMouseOut={e => (e.currentTarget.style.textDecoration = 'none')}
+                          title="Go to client profile"
+                        >
+                          {row.entry}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                          {row.month ? new Date(row.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' }) : ''}
+                        </div>
                       </div>
                     </div>
                     <div><span className="cf-val cf-neutral">{fmt(row.income)}</span></div>

@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, segmentLabel, statusClass } from '@/components/useClients';
 
 export default function ClientsPage() {
@@ -11,7 +12,14 @@ export default function ClientsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState(searchParams?.get('q') ?? '');
+
+  // Sync search box if the URL ?q param changes (e.g. navigating from Cash Flow)
+  useEffect(() => {
+    const q = searchParams?.get('q');
+    if (q) setSearch(q);
+  }, [searchParams]);
 
   const filteredClients = search.trim() === '' ? clients : clients.filter(c => {
     const q = search.toLowerCase();
