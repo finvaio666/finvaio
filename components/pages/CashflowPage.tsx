@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useClients } from '@/components/useClients';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
@@ -58,11 +58,18 @@ export default function CashflowPage() {
   const { clients, loading: clientsLoading } = useClients();
   const [cashflow,   setCashflow]   = useState<CashflowEntry[]>([]);
   const [loading,    setLoading]    = useState(true);
-  const [selectedId, setSelectedId] = useState('');
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState(searchParams?.get('client') ?? '');
   const [sending,    setSending]    = useState(false);
   const [linkModal,  setLinkModal]  = useState<{ url: string; clientName: string } | null>(null);
   const [copied,     setCopied]     = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Sync when navigating from another page with ?client= param
+  useEffect(() => {
+    const id = searchParams?.get('client');
+    if (id) setSelectedId(id);
+  }, [searchParams]);
 
   useEffect(() => {
     fetch('/api/notion?type=cashflow', { cache: 'no-store' })
@@ -144,8 +151,15 @@ export default function CashflowPage() {
   const clientReady = !loading && !clientsLoading && !!clientLatest && !!selectedId;
   const firstName   = selectedClient?.name?.split(' ')[0] ?? '';
 
-  // Extract client first name from an entry title like "JANICE QUEK KHANG WEN — May 2026"
-  const clientNameFromEntry = (entry: string) => entry.split('—')[0].trim();
+  // Find the client ID from an entry title like "JANICE QUEK KHANG WEN — May 2026"
+  const clientIdFromEntry = (entry: string) => {
+    const entryName = entry.split('—')[0].trim().toLowerCase();
+    const match = clients.find(c =>
+      entryName.includes(c.name.split(' ')[0].toLowerCase()) ||
+      c.name.toLowerCase().includes(entryName.split(' ')[0].toLowerCase())
+    );
+    return match?.id ?? null;
+  };
 
   return (
     <>
@@ -344,14 +358,17 @@ export default function CashflowPage() {
                       >
                         <span style={{ fontSize: 10, color: 'var(--text3)', display: 'inline-block', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
                       </button>
-                      {/* Client name — navigates to client profile */}
+                      {/* Client name — navigates to this client's cashflow view */}
                       <div>
                         <div
-                          onClick={() => router.push(`/clients?q=${encodeURIComponent(clientNameFromEntry(row.entry))}`)}
+                          onClick={() => {
+                            const cid = clientIdFromEntry(row.entry);
+                            if (cid) router.push(`/cashflow?client=${encodeURIComponent(cid)}`);
+                          }}
                           style={{ fontWeight: 500, color: 'var(--accent2)', cursor: 'pointer', textDecoration: 'none' }}
                           onMouseOver={e => (e.currentTarget.style.textDecoration = 'underline')}
                           onMouseOut={e => (e.currentTarget.style.textDecoration = 'none')}
-                          title="Go to client profile"
+                          title="View this client's cash flow"
                         >
                           {row.entry}
                         </div>
