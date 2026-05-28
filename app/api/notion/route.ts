@@ -141,11 +141,22 @@ export async function GET(req: NextRequest) {
         const epf      = p['EPF contribution (MYR)']?.type === 'number'  ? p['EPF contribution (MYR)'].number ?? 0  : 0;
         const surplus  = income - fixed - variable - epf;
         const savingsRate = income > 0 ? Math.round((surplus / income) * 100) : 0;
+
+        // Parse breakdown JSON stored in Notes field (if present)
+        let breakdown: Record<string, Record<string, number>> | null = null;
+        try {
+          const notesRaw = p['Notes']?.type === 'rich_text'
+            ? (p['Notes'] as { type: string; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? ''
+            : '';
+          if (notesRaw.startsWith('{')) breakdown = JSON.parse(notesRaw);
+        } catch { /* no breakdown stored */ }
+
         return {
           id:       page.id,
           entry:    p['Entry']?.type === 'title' ? p['Entry'].title[0]?.plain_text ?? '' : '',
           month:    p['Month']?.type === 'date'  ? p['Month'].date?.start ?? ''           : '',
           income, fixed, variable, epf, surplus, savingsRate,
+          breakdown,
         };
       });
       return NextResponse.json({ data });

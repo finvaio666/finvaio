@@ -4,6 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { useClients } from '@/components/useClients';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
+interface CashflowBreakdown {
+  income:   Record<string, number>;
+  fixed:    Record<string, number>;
+  variable: Record<string, number>;
+  epf:      Record<string, number>;
+  advisorNotes?: string;
+}
+
 interface CashflowEntry {
   id:          string;
   entry:       string;
@@ -14,10 +22,36 @@ interface CashflowEntry {
   epf:         number;
   surplus:     number;
   savingsRate: number;
+  breakdown:   CashflowBreakdown | null;
 }
 
 const fmt  = (n: number) => n.toLocaleString();
 const fmtK = (n: number) => n >= 1000 ? `RM ${(n / 1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
+
+function BreakdownSection({ title, color, items }: {
+  title: string;
+  color: string;
+  items: { label: string; val: number | undefined }[];
+}) {
+  const active = items.filter(i => (i.val ?? 0) > 0);
+  if (active.length === 0) return null;
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block' }} />
+        {title}
+      </div>
+      {active.map(item => (
+        <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>{item.label}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+            RM {(item.val ?? 0).toLocaleString()}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function CashflowPage() {
   const { clients, loading: clientsLoading } = useClients();
@@ -27,6 +61,7 @@ export default function CashflowPage() {
   const [sending,    setSending]    = useState(false);
   const [linkModal,  setLinkModal]  = useState<{ url: string; clientName: string } | null>(null);
   const [copied,     setCopied]     = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/notion?type=cashflow', { cache: 'no-store' })
@@ -283,30 +318,99 @@ export default function CashflowPage() {
               <div>EPF</div>
               <div>Surplus</div>
             </div>
-            {filtered.map(row => (
-              <div
-                key={row.id}
-                className="cf-row"
-                onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
-                onMouseOut={e => (e.currentTarget.style.background = '')}
-              >
-                <div>
-                  <div style={{ fontWeight: 500, color: 'var(--text)' }}>{row.entry}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                    {row.month ? new Date(row.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' }) : ''}
+            {filtered.map(row => {
+              const isExpanded = expandedId === row.id;
+              const bd = row.breakdown;
+              return (
+                <div key={row.id}>
+                  {/* ── Summary row ── */}
+                  <div
+                    className="cf-row"
+                    onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                    style={{ cursor: 'pointer', background: isExpanded ? 'var(--accent-dim)' : '' }}
+                    onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--surface2)'; }}
+                    onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                        {row.entry}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 16 }}>
+                        {row.month ? new Date(row.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' }) : ''}
+                      </div>
+                    </div>
+                    <div><span className="cf-val cf-neutral">{fmt(row.income)}</span></div>
+                    <div><span className="cf-val cf-neg">{fmt(row.fixed)}</span></div>
+                    <div><span className="cf-val cf-neg">{fmt(row.variable)}</span></div>
+                    <div><span className="cf-val cf-neutral">{fmt(row.epf)}</span></div>
+                    <div>
+                      <span className={`cf-val ${row.surplus >= 0 ? 'cf-pos' : 'cf-neg'}`}>
+                        {row.surplus >= 0 ? '+' : ''}{fmt(row.surplus)}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* ── Expanded breakdown panel ── */}
+                  {isExpanded && (
+                    <div style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)', padding: '16px 24px 20px' }}>
+                      {bd ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                          {/* Fixed Expenses */}
+                          <BreakdownSection title="Fixed Expenses" color="var(--red)" items={[
+                            { label: 'Housing / Mortgage', val: bd.fixed.housing },
+                            { label: 'Car Loan',           val: bd.fixed.carLoan },
+                            { label: 'Insurance Premiums', val: bd.fixed.insurancePremium },
+                            { label: 'Education',          val: bd.fixed.education },
+                            { label: 'Internet & Phone',   val: bd.fixed.internet },
+                            { label: 'Subscriptions',      val: bd.fixed.subscriptions },
+                            { label: 'Other Fixed',        val: bd.fixed.otherFixed },
+                          ]} />
+                          {/* Variable Expenses */}
+                          <BreakdownSection title="Variable Expenses" color="var(--gold)" items={[
+                            { label: 'Food & Groceries',       val: bd.variable.food },
+                            { label: 'Dining Out / Delivery',  val: bd.variable.diningOut },
+                            { label: 'Transport',              val: bd.variable.transport },
+                            { label: 'Entertainment',          val: bd.variable.entertainment },
+                            { label: 'Healthcare',             val: bd.variable.healthcare },
+                            { label: 'Clothing & Personal',    val: bd.variable.clothing },
+                            { label: 'Education / Courses',    val: bd.variable.selfDevelopment },
+                            { label: 'Travel & Holidays',      val: bd.variable.travel },
+                            { label: 'Gifts & Donations',      val: bd.variable.gifts },
+                            { label: 'Other Variable',         val: bd.variable.otherVariable },
+                          ]} />
+                          {/* Income */}
+                          <BreakdownSection title="Income Breakdown" color="var(--green)" items={[
+                            { label: 'Salary / Employment', val: bd.income.salary },
+                            { label: 'Business Income',     val: bd.income.business },
+                            { label: 'Rental Income',       val: bd.income.rental },
+                            { label: 'Investment Returns',  val: bd.income.investment },
+                            { label: 'Other Income',        val: bd.income.otherIncome },
+                          ]} />
+                          {/* EPF */}
+                          <BreakdownSection title="EPF & Savings" color="var(--blue)" items={[
+                            { label: 'EPF Employee (deducted)',    val: bd.epf.epfEmployee },
+                            { label: 'EPF Employer (not deducted)',val: bd.epf.epfEmployer },
+                            { label: 'Other Savings',              val: bd.epf.otherSavings },
+                          ]} />
+                          {/* Notes */}
+                          {bd.advisorNotes && (
+                            <div style={{ gridColumn: '1 / -1', marginTop: 4, padding: '10px 14px', background: 'var(--surface)', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 8 }}>Notes</span>
+                              {bd.advisorNotes}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, color: 'var(--text3)', fontStyle: 'italic' }}>
+                          No detailed breakdown available — client submitted before detailed tracking was enabled.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div><span className="cf-val cf-neutral">{fmt(row.income)}</span></div>
-                <div><span className="cf-val cf-neg">{fmt(row.fixed)}</span></div>
-                <div><span className="cf-val cf-neg">{fmt(row.variable)}</span></div>
-                <div><span className="cf-val cf-neutral">{fmt(row.epf)}</span></div>
-                <div>
-                  <span className={`cf-val ${row.surplus >= 0 ? 'cf-pos' : 'cf-neg'}`}>
-                    {row.surplus >= 0 ? '+' : ''}{fmt(row.surplus)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -64,8 +64,47 @@ export async function POST(req: NextRequest) {
   const totalEPF      = (body.epfEmployee ?? 0) + (body.otherSavings ?? 0);
   const employerEPF   = (body.epfEmployer ?? 0);
 
-  // 4. Build detailed notes as formatted text
+  // 4. Build breakdown — JSON for machine-reading + text for human notes
   const monthLabel = new Date(payload.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' });
+
+  // Structured breakdown stored as JSON (parsed back by the dashboard)
+  const breakdown = {
+    fixed: {
+      housing:          body.housing          ?? 0,
+      carLoan:          body.carLoan          ?? 0,
+      insurancePremium: body.insurancePremium ?? 0,
+      education:        body.education        ?? 0,
+      internet:         body.internet         ?? 0,
+      subscriptions:    body.subscriptions    ?? 0,
+      otherFixed:       body.otherFixed       ?? 0,
+    },
+    variable: {
+      food:            body.food            ?? 0,
+      diningOut:       body.diningOut       ?? 0,
+      transport:       body.transport       ?? 0,
+      entertainment:   body.entertainment   ?? 0,
+      healthcare:      body.healthcare      ?? 0,
+      clothing:        body.clothing        ?? 0,
+      selfDevelopment: body.selfDevelopment ?? 0,
+      travel:          body.travel          ?? 0,
+      gifts:           body.gifts           ?? 0,
+      otherVariable:   body.otherVariable   ?? 0,
+    },
+    income: {
+      salary:      body.salary      ?? 0,
+      business:    body.business    ?? 0,
+      rental:      body.rental      ?? 0,
+      investment:  body.investment  ?? 0,
+      otherIncome: body.otherIncome ?? 0,
+    },
+    epf: {
+      epfEmployee:  body.epfEmployee  ?? 0,
+      epfEmployer:  body.epfEmployer  ?? 0,
+      otherSavings: body.otherSavings ?? 0,
+    },
+    advisorNotes: body.notes ?? '',
+  };
+
   const details = [
     `=== INCOME (RM ${totalIncome.toLocaleString()}) ===`,
     body.salary          ? `Salary: RM ${body.salary.toLocaleString()}`                   : '',
@@ -159,10 +198,13 @@ export async function POST(req: NextRequest) {
     // Optional enrichment fields — each in its own try/catch so one missing
     // property never breaks the whole submission
     try {
+      // Store JSON breakdown so the dashboard can parse individual line items.
+      // Falls back gracefully if the Notes column doesn't exist in this DB.
+      const breakdownJson = JSON.stringify(breakdown);
       await notion.pages.update({
         page_id: pageId,
         properties: {
-          'Notes': { rich_text: [{ text: { content: details.substring(0, 2000) } }] },
+          'Notes': { rich_text: [{ text: { content: breakdownJson.substring(0, 2000) } }] },
         } as never,
       });
     } catch { /* Notes column may not exist in this DB */ }
