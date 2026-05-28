@@ -43,9 +43,9 @@ function BreakdownSection({ title, color, items }: {
         {title}
       </div>
       {active.map(item => (
-        <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+        <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border)', gap: 8 }}>
           <span style={{ fontSize: 13, color: 'var(--text2)' }}>{item.label}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap' }}>
             RM {(item.val ?? 0).toLocaleString()}
           </span>
         </div>

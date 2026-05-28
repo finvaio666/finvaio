@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
 interface Client {
@@ -172,14 +173,21 @@ function LogMeetingModal({
 
 // ── Main Reviews Page ─────────────────────────────────────────────────────────
 export default function ReviewsPage() {
+  const searchParams = useSearchParams();
   const [clients,      setClients]      = useState<Client[]>([]);
   const [meetings,     setMeetings]     = useState<Meeting[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [showModal,    setShowModal]    = useState(false);
   const [preselected,  setPreselected]  = useState<Client | null>(null);
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
-  const [filterClientId, setFilterClientId] = useState(''); // '' = All
+  const [filterClientId, setFilterClientId] = useState(searchParams?.get('client') ?? '');
   const [logDays,      setLogDays]      = useState(90); // 0 = All time
+
+  // Sync filter when ?client= param changes (e.g. navigating from Dashboard)
+  useEffect(() => {
+    const id = searchParams?.get('client');
+    if (id) setFilterClientId(id);
+  }, [searchParams]);
 
   function loadAll() {
     setLoading(true);

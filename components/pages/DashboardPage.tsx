@@ -12,7 +12,7 @@ interface InsurancePolicy {
   maturityDate: string; annualPremium: number;
 }
 interface Meeting {
-  id: string; clientName: string; meetingDate: string;
+  id: string; clientId: string; clientName: string; meetingDate: string;
   meetingType: string; notes: string; actionItems: string;
 }
 
@@ -260,7 +260,18 @@ export default function DashboardPage() {
           ) : (
             <div style={{ padding: '8px 0' }}>
               {recentMeetings.map((m, idx) => (
-                <div key={m.id} style={{ display: 'flex', gap: 14, padding: '10px 24px' }}>
+                <div
+                  key={m.id}
+                  style={{ display: 'flex', gap: 14, padding: '10px 24px', cursor: 'pointer', transition: 'background 0.12s' }}
+                  onClick={() => {
+                    const target = m.clientId
+                      ? `/reviews?client=${encodeURIComponent(m.clientId)}`
+                      : `/reviews?clientName=${encodeURIComponent(m.clientName)}`;
+                    router.push(target);
+                  }}
+                  onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
+                  onMouseOut={e  => (e.currentTarget.style.background = '')}
+                >
                   {/* Timeline */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 14, flexShrink: 0 }}>
                     <div style={{
