@@ -29,10 +29,13 @@ export async function POST(req: NextRequest) {
     month:      body.month,
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
-    ?? process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'https://aria-app-liart.vercel.app';
+  // VERCEL_URL changes per-deployment (preview URLs) — use VERCEL_PROJECT_PRODUCTION_URL
+  // which is always the stable production domain, or NEXT_PUBLIC_BASE_URL if set manually.
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL
+    ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : 'https://aria-app-liart.vercel.app');
 
   const formUrl = `${baseUrl}/form/cashflow/${token}`;
 
