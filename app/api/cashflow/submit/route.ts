@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
 
   const entryTitle = `${payload.clientName} — ${monthLabel}`;
 
-  // 5. Write to Notion
+  // 5. Write to Notion (upsert: update existing entry for same client+month, or create new)
   const notion = new Client({ auth: config.notionApiKey });
 
   try {
@@ -129,16 +129,38 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    const page = await notion.pages.create({
-      parent: { database_id: config.cashflowDbId },
-      properties: properties as never,
+    // Check for an existing entry with the same title (client + month)
+    const existing = await notion.databases.query({
+      database_id: config.cashflowDbId,
+      filter: {
+        property: 'Entry',
+        title: { equals: entryTitle },
+      },
+      page_size: 1,
     });
+
+    let pageId: string;
+    if (existing.results.length > 0) {
+      // Overwrite the existing record
+      pageId = existing.results[0].id;
+      await notion.pages.update({
+        page_id: pageId,
+        properties: properties as never,
+      });
+    } else {
+      // Create a new record
+      const page = await notion.pages.create({
+        parent: { database_id: config.cashflowDbId },
+        properties: properties as never,
+      });
+      pageId = page.id;
+    }
 
     // Optional enrichment fields — each in its own try/catch so one missing
     // property never breaks the whole submission
     try {
       await notion.pages.update({
-        page_id: page.id,
+        page_id: pageId,
         properties: {
           'Notes': { rich_text: [{ text: { content: details.substring(0, 2000) } }] },
         } as never,
@@ -147,7 +169,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await notion.pages.update({
-        page_id: page.id,
+        page_id: pageId,
         properties: {
           'Submitted Via Form': { checkbox: true },
           'Submission Date': { date: { start: new Date().toISOString().split('T')[0] } },
@@ -159,7 +181,7 @@ export async function POST(req: NextRequest) {
     if (payload.clientId) {
       try {
         await notion.pages.update({
-          page_id: page.id,
+          page_id: pageId,
           properties: {
             '👥 Client': { relation: [{ id: payload.clientId }] },
           } as never,
