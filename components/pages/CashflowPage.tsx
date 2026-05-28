@@ -298,7 +298,11 @@ export default function CashflowPage() {
                 <div><span className="cf-val cf-neg">{fmt(row.fixed)}</span></div>
                 <div><span className="cf-val cf-neg">{fmt(row.variable)}</span></div>
                 <div><span className="cf-val cf-neutral">{fmt(row.epf)}</span></div>
-                <div><span className="cf-val cf-pos">+{fmt(row.surplus)}</span></div>
+                <div>
+                  <span className={`cf-val ${row.surplus >= 0 ? 'cf-pos' : 'cf-neg'}`}>
+                    {row.surplus >= 0 ? '+' : ''}{fmt(row.surplus)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
