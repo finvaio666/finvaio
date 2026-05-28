@@ -206,10 +206,12 @@ export default function CashflowPage() {
             <div className="stat-value">{loading ? '…' : fmtK(clientEpf)}</div>
             <div className="stat-sub">Monthly deduction</div>
           </div>
-          <div className="stat-card green">
-            <div className="stat-icon green">📈</div>
-            <div className="stat-label">Monthly Surplus</div>
-            <div className="stat-value">{loading ? '…' : fmtK(clientSurplus)}</div>
+          <div className={`stat-card ${clientSurplus >= 0 ? 'green' : 'red'}`}>
+            <div className={`stat-icon ${clientSurplus >= 0 ? 'green' : 'red'}`}>{clientSurplus >= 0 ? '📈' : '📉'}</div>
+            <div className="stat-label">{clientSurplus >= 0 ? 'Monthly Surplus' : 'Monthly Deficit'}</div>
+            <div className="stat-value" style={{ color: clientSurplus >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {loading ? '…' : fmtK(Math.abs(clientSurplus))}
+            </div>
             <div className="stat-sub">{loading ? '…' : `${clientRate}% savings rate`} {clientRate >= 30 ? '✅' : '⚠️'}</div>
           </div>
         </div>
