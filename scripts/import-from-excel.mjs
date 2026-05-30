@@ -10,14 +10,29 @@
 import { Client, isFullPage } from '@notionhq/client';
 import xlsx from 'xlsx';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const DRY_RUN = process.argv.includes('--dry-run');
 
-// ── Config (skysiew) ─────────────────────────────────────────────────────────
-const NOTION_KEY = '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';
+// ── Load .env.local (Node 20.6+ supports --env-file; this is the fallback) ──
+const envPath = path.join(ROOT, '.env.local');
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+    const m = line.match(/^([^#=]+)=(.*)$/);
+    if (m) process.env[m[1].trim()] ??= m[2].trim();
+  });
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const NOTION_KEY = process.env.NOTION_API_KEY;
+if (!NOTION_KEY) {
+  console.error('❌ NOTION_API_KEY not set. Add it to .env.local');
+  process.exit(1);
+}
+
 const DB = {
   clients:   '362de6dd1dfe80e59275e4ce2fc046b2',
   portfolio: '363de6dd1dfe8058b73ec7fa8bb431fb',

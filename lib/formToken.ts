@@ -1,8 +1,10 @@
 import crypto from 'crypto';
 
-// Uses AUTH_SECRET as the signing key (already set in Vercel env)
-function getSecret() {
-  return process.env.AUTH_SECRET ?? 'dev-fallback-secret';
+// Uses AUTH_SECRET as the signing key (must be set in Vercel env)
+function getSecret(): string {
+  const s = process.env.AUTH_SECRET;
+  if (!s) throw new Error('AUTH_SECRET environment variable is not set');
+  return s;
 }
 
 export interface FormTokenPayload {

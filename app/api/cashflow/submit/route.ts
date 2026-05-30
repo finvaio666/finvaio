@@ -41,8 +41,58 @@ export interface CashflowFormData {
   notes:            string;
 }
 
+/** Clamp a value to a non-negative number within a reasonable financial range. */
+function sanitizeNum(v: unknown, max = 10_000_000): number {
+  const n = Number(v);
+  if (!isFinite(n)) return 0;
+  return Math.max(0, Math.min(Math.round(n * 100) / 100, max));
+}
+
+/** Strip control characters from free-text fields. */
+function sanitizeText(v: unknown, maxLen = 2000): string {
+  return String(v ?? '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, maxLen);
+}
+
 export async function POST(req: NextRequest) {
-  const body = await req.json() as CashflowFormData;
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+  }
+  const raw = rawBody as Record<string, unknown>;
+
+  // Sanitize all fields before processing
+  const body: CashflowFormData = {
+    token:            sanitizeText(raw.token, 500),
+    salary:           sanitizeNum(raw.salary),
+    business:         sanitizeNum(raw.business),
+    rental:           sanitizeNum(raw.rental),
+    investment:       sanitizeNum(raw.investment),
+    otherIncome:      sanitizeNum(raw.otherIncome),
+    housing:          sanitizeNum(raw.housing),
+    carLoan:          sanitizeNum(raw.carLoan),
+    insurancePremium: sanitizeNum(raw.insurancePremium),
+    education:        sanitizeNum(raw.education),
+    internet:         sanitizeNum(raw.internet),
+    subscriptions:    sanitizeNum(raw.subscriptions),
+    otherFixed:       sanitizeNum(raw.otherFixed),
+    food:             sanitizeNum(raw.food),
+    diningOut:        sanitizeNum(raw.diningOut),
+    transport:        sanitizeNum(raw.transport),
+    entertainment:    sanitizeNum(raw.entertainment),
+    lifestyle:        sanitizeNum(raw.lifestyle),
+    healthcare:       sanitizeNum(raw.healthcare),
+    clothing:         sanitizeNum(raw.clothing),
+    selfDevelopment:  sanitizeNum(raw.selfDevelopment),
+    travel:           sanitizeNum(raw.travel),
+    gifts:            sanitizeNum(raw.gifts),
+    otherVariable:    sanitizeNum(raw.otherVariable),
+    epfEmployee:      sanitizeNum(raw.epfEmployee),
+    epfEmployer:      sanitizeNum(raw.epfEmployer),
+    otherSavings:     sanitizeNum(raw.otherSavings),
+    notes:            sanitizeText(raw.notes),
+  };
 
   // 1. Verify token
   const payload = verifyFormToken(body.token);

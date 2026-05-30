@@ -3,8 +3,52 @@ import { SignJWT } from 'jose';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
 
+// ── Simple in-memory rate limiter ─────────────────────────────────────────────
+// Limits login attempts per IP: 5 attempts per 5-minute window.
+// Note: resets on cold start. For multi-instance production scale,
+// replace with a Redis-backed store (e.g. Upstash).
+const loginAttempts = new Map<string, { count: number; windowStart: number }>();
+const RATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_ATTEMPTS   = 5;
+
+function checkRateLimit(ip: string): boolean {
+  const now  = Date.now();
+  const prev = loginAttempts.get(ip);
+  if (!prev || now - prev.windowStart > RATE_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, windowStart: now });
+    return true; // allowed
+  }
+  if (prev.count >= MAX_ATTEMPTS) return false; // blocked
+  prev.count++;
+  return true; // allowed
+}
+
+function clearRateLimit(ip: string) {
+  loginAttempts.delete(ip);
+}
+
 export async function POST(req: NextRequest) {
-  const { username, password } = await req.json();
+  // Rate-limit by IP before doing anything else
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
+           ?? req.headers.get('x-real-ip')
+           ?? 'unknown';
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please wait 5 minutes and try again.' },
+      { status: 429 }
+    );
+  }
+
+  let username: string, password: string;
+  try {
+    ({ username, password } = await req.json());
+  } catch {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
+  }
+
+  if (!username || !password) {
+    return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 });
+  }
 
   const usersDbId  = process.env.NOTION_USERS_DB_ID;
   const hostKey    = process.env.NOTION_API_KEY;
@@ -63,6 +107,9 @@ export async function POST(req: NextRequest) {
     .setIssuedAt()
     .setExpirationTime('7d')
     .sign(secret);
+
+  // Successful login — clear the rate-limit counter for this IP
+  clearRateLimit(ip);
 
   const res = NextResponse.json({ success: true });
   res.cookies.set('aria-session', token, {
