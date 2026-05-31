@@ -65,8 +65,8 @@ function ConnectGmailPanel({ onConnect }: { onConnect: () => void }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 20, textAlign: 'center', padding: 40 }}>
-      <div style={{ width: 64, height: 64, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" strokeWidth="1.5">
+      <div style={{ width: 72, height: 72, borderRadius: 18, background: 'rgba(243,115,56,0.1)', border: '1.5px solid rgba(243,115,56,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F37338" strokeWidth="1.5">
           <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
           <polyline points="22,6 12,13 2,6"/>
         </svg>
@@ -82,13 +82,15 @@ function ConnectGmailPanel({ onConnect }: { onConnect: () => void }) {
         onClick={handleConnect}
         disabled={loading}
         style={{
-          background: 'var(--orange)', color: '#fff',
-          border: 'none', borderRadius: 'var(--r-pill)',
-          padding: '10px 24px', fontSize: 14, fontWeight: 600,
+          background: '#F37338', color: '#fff',
+          border: 'none', borderRadius: 99,
+          padding: '12px 28px', fontSize: 14, fontWeight: 700,
           cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1,
+          boxShadow: '0 2px 12px rgba(243,115,56,0.35)',
+          letterSpacing: '0.01em',
         }}
       >
-        {loading ? 'Redirecting…' : 'Connect Gmail'}
+        {loading ? 'Redirecting…' : '📧 Connect Gmail'}
       </button>
       <div style={{ fontSize: 12, color: 'var(--text3)', maxWidth: 340 }}>
         ARIA only reads emails from whitelisted domains you configure. Your email stays private.
