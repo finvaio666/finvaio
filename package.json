@@ -14,6 +14,7 @@
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
+    "googleapis": "^173.0.0",
     "jose": "^6.2.3",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
@@ -30,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "exceljs": "^4.4.0",
+    "puppeteer": "^25.1.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

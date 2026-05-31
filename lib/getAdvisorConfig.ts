@@ -12,6 +12,10 @@ export interface AdvisorConfig {
   features:           string[]; // enabled feature flags, e.g. ['products', 'rules']
   role:               string;
   name:               string;
+  // ── Email Hub ──────────────────────────────────────────────────────────────
+  gmailRefreshToken:  string;  // OAuth2 refresh token for this advisor's Gmail
+  gmailAddress:       string;  // advisor's Gmail address (e.g. sky@gmail.com)
+  institutionsJson:   string;  // JSON array of institution contacts
 }
 
 // In-process cache — survives warm function re-use, cleared on cold start
@@ -50,6 +54,10 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       features:           rt(p, 'Features').split(',').map(f => f.trim().toLowerCase()).filter(Boolean),
       role: (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor',
       name: (p['Name']  as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '',
+      // Email Hub fields
+      gmailRefreshToken:  rt(p, 'Gmail Refresh Token'),
+      gmailAddress:       rt(p, 'Gmail Address'),
+      institutionsJson:   rt(p, 'Institutions JSON'),
     };
 
     cache.set(advisorId, { config, ts: Date.now() });
@@ -62,4 +70,55 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
 /** Call this after a password reset so the cached config is immediately invalidated. */
 export function clearAdvisorCache(advisorId: string) {
   cache.delete(advisorId);
+}
+
+/**
+ * Persist the Gmail OAuth refresh token and address back to the advisor's Notion user page.
+ * Uses the host Notion API key (same integration that reads the Users DB).
+ */
+export async function saveGmailToken(
+  advisorId:    string,
+  refreshToken: string,
+  gmailAddress: string,
+): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+
+  const notion = new Client({ auth: hostKey });
+  try {
+    await notion.pages.update({
+      page_id:    advisorId,
+      properties: {
+        'Gmail Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Gmail Address':       { rich_text: [{ text: { content: gmailAddress } }] },
+      } as never,
+    });
+    clearAdvisorCache(advisorId); // force re-read on next request
+  } catch (e) {
+    console.error('saveGmailToken failed:', e);
+  }
+}
+
+/**
+ * Persist the institutions JSON list back to Notion.
+ */
+export async function saveInstitutions(
+  advisorId: string,
+  json:      string,
+): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+
+  const notion = new Client({ auth: hostKey });
+  try {
+    await notion.pages.update({
+      page_id:    advisorId,
+      properties: {
+        'Institutions JSON': { rich_text: [{ text: { content: json.slice(0, 2000) } }] },
+      } as never,
+    });
+    clearAdvisorCache(advisorId);
+  } catch (e) {
+    console.error('saveInstitutions failed:', e);
+  }
 }
