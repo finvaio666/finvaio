@@ -546,10 +546,21 @@ export async function sendEmail(
 ): Promise<string> { // returns messageId
   const gmail = getGmailClient(refreshToken);
 
+  // Resolve the REAL authenticated Gmail address directly from the API.
+  // This is critical: without an explicit From header, Gmail falls back to the
+  // account's default "Send mail as" alias — which may be a misconfigured custom
+  // domain that bounces ("553 Relaying disallowed"). Forcing From to the real
+  // address sends from the primary account and bypasses the broken alias.
+  let fromAddr = opts.from;
+  if (!fromAddr) {
+    try {
+      const profile = await gmail.users.getProfile({ userId: 'me' });
+      fromAddr = profile.data.emailAddress ?? undefined;
+    } catch { /* fall through — send without explicit From as last resort */ }
+  }
+
   const lines: string[] = [];
-  // Explicit From forces the real Gmail address, bypassing any misconfigured
-  // "Send mail as" alias that would otherwise cause delivery to bounce.
-  if (opts.from) lines.push(`From: ${opts.from}`);
+  if (fromAddr) lines.push(`From: ${fromAddr}`);
   lines.push(
     `To: ${opts.to}`,
     `Subject: ${opts.subject}`,

@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Get the advisor's Gmail address using the access token
+    // Use the Gmail API's getProfile (works with the gmail.modify scope we already
+    // have) instead of the userinfo endpoint (which needs an extra email scope).
     let gmailAddress = '';
     try {
       const auth = new google.auth.OAuth2(
@@ -35,11 +37,11 @@ export async function GET(req: NextRequest) {
         process.env.GOOGLE_REDIRECT_URI,
       );
       auth.setCredentials({ access_token: accessToken });
-      const oauth2 = google.oauth2({ version: 'v2', auth });
-      const info = await oauth2.userinfo.get();
-      gmailAddress = info.data.email ?? '';
+      const gmail = google.gmail({ version: 'v1', auth });
+      const profile = await gmail.users.getProfile({ userId: 'me' });
+      gmailAddress = profile.data.emailAddress ?? '';
     } catch {
-      // Non-critical — advisor can set it manually
+      // Non-critical — sendEmail resolves the address again at send time
     }
 
     // Save refresh token to advisor's Notion user page
