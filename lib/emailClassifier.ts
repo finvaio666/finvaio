@@ -63,6 +63,21 @@ export interface SummaryResult {
   clientHint: string;   // any client name or policy number mentioned
 }
 
+/** Strip HTML tags, image references, encoded URLs and boilerplate from email body. */
+function cleanEmailBody(raw: string): string {
+  return raw
+    .replace(/<[^>]+>/g, ' ')                          // strip HTML tags
+    .replace(/cid:[^\s<>"]+/gi, '')                    // remove inline image CIDs
+    .replace(/https?:\/\/[^\s]{60,}/g, '[link]')       // collapse long URLs
+    .replace(/https?:\/\/[^\s]+/g, '[link]')           // collapse remaining URLs
+    .replace(/=[0-9A-F]{2}/g, '')                      // quoted-printable encoding
+    .replace(/&[a-z]+;/gi, ' ')                        // HTML entities
+    .replace(/\s{3,}/g, '\n')                          // collapse whitespace
+    .replace(/(\n\s*){3,}/g, '\n\n')                   // collapse blank lines
+    .trim()
+    .slice(0, 3000);
+}
+
 export async function summarizeEmail(
   from:    string,
   subject: string,
@@ -70,7 +85,7 @@ export async function summarizeEmail(
 ): Promise<SummaryResult> {
   const model = getGemini();
 
-  const truncatedBody = body.slice(0, 3000); // Gemini token safety
+  const truncatedBody = cleanEmailBody(body); // Clean HTML before sending to AI
 
   const prompt = `You are an assistant for a Malaysian licensed financial advisor. Analyse this email and extract key information.
 

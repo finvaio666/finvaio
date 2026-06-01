@@ -27,10 +27,11 @@ export async function GET(req: NextRequest) {
     const inboundMsg = thread.messages.find(m => !m.isFromAdvisor) ?? thread.messages[0];
     let aiSummary = null;
     if (inboundMsg) {
-      aiSummary = await summarizeEmail(
+      const rawBody = inboundMsg.body || inboundMsg.bodyHtml;
+    aiSummary = await summarizeEmail(
         inboundMsg.from,
         thread.subject,
-        inboundMsg.body || inboundMsg.bodyHtml.replace(/<[^>]+>/g, ' ').slice(0, 3000),
+        rawBody,
       ).catch(() => null);
     }
 
