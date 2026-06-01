@@ -11,15 +11,17 @@ export async function GET(req: NextRequest) {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
     const advisorId   = (payload.advisorId as string) ?? '';
     const username    = (payload.username  as string) ?? '';
-    const role        = (payload.role      as string) ?? 'Advisor';
+    let   role        = (payload.role      as string) ?? 'Advisor';
 
-    // Try to get display name + features from config
+    // Prefer the LIVE role/name/features from Notion so changes (e.g. role
+    // downgrade) take effect immediately without requiring re-login.
     let displayName = username;
     let features: string[] = [];
     if (advisorId) {
       const config = await getAdvisorConfig(advisorId);
       if (config?.name)     displayName = config.name;
       if (config?.features) features    = config.features;
+      if (config?.role)     role        = config.role; // live role overrides stale token
     }
 
     // Build initials from display name
