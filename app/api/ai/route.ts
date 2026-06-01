@@ -129,15 +129,44 @@ async function buildClientContext(
   let portfolioRes: QueryResult = emptyQuery;
   if (config.portfolioDbId) {
     try {
+      // Primary: filter by client relation
       portfolioRes = await notion.databases.query({
         database_id: config.portfolioDbId,
         filter: { property: '👥 Clients', relation: { contains: clientPage.id } },
       });
-    } catch (e) { console.error('Portfolio fetch failed:', e); }
+    } catch (e) { console.error('Portfolio relation fetch failed:', e); }
+
+    // Fallback: if no results, search all holdings and match by client name in title or notes
+    if (portfolioRes.results.length === 0) {
+      try {
+        const firstName = name.split(' ')[0];
+        const allHoldings = await notion.databases.query({
+          database_id: config.portfolioDbId,
+          page_size: 100,
+        });
+        // Match if any text property contains the client's name
+        portfolioRes = {
+          ...allHoldings,
+          results: allHoldings.results.filter(p => {
+            if (!isFullPage(p)) return false;
+            return Object.values(p.properties).some(prop => {
+              if (prop.type === 'title')     return prop.title.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
+              if (prop.type === 'rich_text') return prop.rich_text.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
+              return false;
+            });
+          }),
+        };
+      } catch (e) { console.error('Portfolio fallback fetch failed:', e); }
+    }
   }
 
   const holdings = portfolioRes.results.filter(isFullPage)
-    .filter(p => (p.properties['Status']?.type === 'select' ? p.properties['Status'].select?.name : '') === 'Active')
+    .filter(p => {
+      const statusProp = p.properties['Status'];
+      if (!statusProp || statusProp.type !== 'select') return true; // no status field = include
+      const statusVal = statusProp.select?.name?.toLowerCase() ?? '';
+      return statusVal === 'active' || statusVal === ''; // case-insensitive
+    })
     .map(p => {
       const pr          = p.properties;
       const holdName    = pr['Holding Name']?.type === 'title'      ? pr['Holding Name'].title[0]?.plain_text ?? ''         : '';
@@ -165,7 +194,29 @@ async function buildClientContext(
         database_id: config.insuranceDbId,
         filter: { property: 'Clients', relation: { contains: clientPage.id } },
       });
-    } catch (e) { console.error('Insurance fetch failed:', e); }
+    } catch (e) { console.error('Insurance relation fetch failed:', e); }
+
+    // Fallback: search by client name if relation returns nothing
+    if (insurRes.results.length === 0) {
+      try {
+        const firstName = name.split(' ')[0];
+        const allPolicies = await notion.databases.query({
+          database_id: config.insuranceDbId,
+          page_size: 100,
+        });
+        insurRes = {
+          ...allPolicies,
+          results: allPolicies.results.filter(p => {
+            if (!isFullPage(p)) return false;
+            return Object.values(p.properties).some(prop => {
+              if (prop.type === 'title')     return prop.title.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
+              if (prop.type === 'rich_text') return prop.rich_text.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
+              return false;
+            });
+          }),
+        };
+      } catch (e) { console.error('Insurance fallback fetch failed:', e); }
+    }
     policies = insurRes.results.filter(isFullPage).map(p => {
       const pr = p.properties;
       return {
