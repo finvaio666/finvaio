@@ -10,8 +10,16 @@ import ComposeEmailModal from '@/components/pages/ComposeEmailModal';
 
 function threadStatus(thread: EmailThread | null, email: EmailSummary): 'pending' | 'replied' | 'monitoring' | 'closed' {
   if (!thread) return email.status === 'monitoring' ? 'monitoring' : 'pending';
-  const last = thread.messages[thread.messages.length - 1];
-  if (!last) return 'pending';
+  const msgs = thread.messages;
+  if (msgs.length === 0) return 'pending';
+
+  const last       = msgs[msgs.length - 1];
+  const hasInbound = msgs.some(m => !m.isFromAdvisor); // at least one external message
+
+  // Purely outbound thread (forwarded email, new email sent by advisor) → Monitoring
+  if (!hasInbound) return 'monitoring';
+
+  // Has inbound → Replied if advisor sent last message, Pending otherwise
   return last.isFromAdvisor ? 'replied' : 'pending';
 }
 

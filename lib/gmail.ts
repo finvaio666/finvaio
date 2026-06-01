@@ -107,6 +107,29 @@ function parseName(fromHeader: string): { name: string; email: string } {
   return { name: fromHeader, email: fromHeader };
 }
 
+/**
+ * Clean email body text for display — strip HTML, image references,
+ * encoded tracking URLs and boilerplate clutter.
+ */
+export function cleanBodyForDisplay(raw: string): string {
+  return raw
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')    // remove CSS blocks
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')  // remove scripts
+    .replace(/<[^>]+>/g, ' ')                           // strip HTML tags
+    .replace(/\[cid:[^\]]+\]/gi, '')                    // [cid:...] image refs
+    .replace(/cid:[^\s<>"]+/gi, '')                     // bare cid: refs
+    .replace(/https?:\/\/[^\s]{80,}/g, '[link]')        // collapse very long URLs
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&[a-z]+;/gi, ' ')                         // other HTML entities
+    .replace(/=[0-9A-F]{2}/g, '')                       // quoted-printable
+    .replace(/[ \t]{2,}/g, ' ')                         // collapse spaces
+    .replace(/(\n\s*){3,}/g, '\n\n')                    // collapse blank lines
+    .trim();
+}
+
 /** Recursively extract plain text and HTML body from MIME parts. */
 function extractBody(payload: {
   mimeType?: string | null;
@@ -260,14 +283,18 @@ export async function getThread(
     const dateRaw = headerVal(headers, 'Date');
     const { text, html } = extractBody(msg.payload as Parameters<typeof extractBody>[0]);
 
+    // Use plain text if available; fall back to cleaned HTML
+    const rawBody = text || html;
+    const cleanBody = cleanBodyForDisplay(rawBody);
+
     return {
       id:            msg.id ?? '',
       from,
       fromName:      fromName || fromEmail,
       to:            headerVal(headers, 'To'),
       date:          dateRaw ? new Date(dateRaw).toISOString() : new Date().toISOString(),
-      body:          text,
-      bodyHtml:      html,
+      body:          cleanBody,
+      bodyHtml:      '',   // already cleaned into body — no raw HTML needed client-side
       isFromAdvisor: fromEmail.toLowerCase().includes(advisorEmail.toLowerCase()),
     } as EmailMessage;
   });
