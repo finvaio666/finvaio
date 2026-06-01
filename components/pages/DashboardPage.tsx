@@ -20,6 +20,11 @@ interface FollowUp {
   to: string; toName: string; sentDate: string;
   daysWaiting: number; isOverdue: boolean;
 }
+interface ClientAlert {
+  clientId: string; clientName: string; threadId: string;
+  subject: string; snippet: string; from: string; fromName: string;
+  date: string; isRead: boolean;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function daysUntil(dateStr: string): number | null {
@@ -61,6 +66,7 @@ export default function DashboardPage() {
   const [insurance,    setInsurance]    = useState<InsurancePolicy[]>([]);
   const [meetings,     setMeetings]     = useState<Meeting[]>([]);
   const [followUps,    setFollowUps]    = useState<FollowUp[]>([]);
+  const [clientAlerts, setClientAlerts] = useState<ClientAlert[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
 
   useEffect(() => {
@@ -72,10 +78,15 @@ export default function DashboardPage() {
       if (mtg.data) setMeetings(mtg.data);
     }).finally(() => setDataLoading(false));
 
-    // Follow-ups load separately (Gmail call can be slower) — non-blocking
+    // Follow-ups + client alerts load separately (Gmail calls can be slower) — non-blocking
     fetch('/api/email/followups', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (d.followUps) setFollowUps(d.followUps); })
+      .catch(() => {});
+
+    fetch('/api/email/client-alerts', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (d.alerts) setClientAlerts(d.alerts); })
       .catch(() => {});
   }, []);
 
@@ -156,6 +167,49 @@ export default function DashboardPage() {
           <div className="stat-sub">{pendingActions === 0 ? 'All clear' : `${pendingActions} with open items`}</div>
         </div>
       </div>
+
+      {/* ── New Client Correspondence — inbound institution emails matched to clients ── */}
+      {clientAlerts.length > 0 && (
+        <div className="section" style={{ marginBottom: 20, border: '1px solid var(--accent)', borderLeft: '3px solid var(--accent2)' }}>
+          <div className="section-header">
+            <div className="section-title">
+              <span className="section-dot" style={{ background: 'var(--accent2)' }} />
+              New Client Correspondence
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+                institution emails about your clients · last 14 days
+              </span>
+            </div>
+            <Link href="/emails" className="section-action">Email Hub →</Link>
+          </div>
+          {clientAlerts.map(a => (
+            <div
+              key={a.threadId}
+              style={rowStyle}
+              onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
+              onMouseOut={e  => (e.currentTarget.style.background = '')}
+              onClick={() => router.push(`/clients/${encodeURIComponent(a.clientId)}?tab=correspondence`)}
+            >
+              <div className="client-avatar" style={{ width: 36, height: 36, fontSize: 13, flexShrink: 0 }}>
+                {initials(a.clientName)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{a.clientName}</span>
+                  {!a.isRead && (
+                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--accent2)', background: 'var(--accent-dim)', padding: '1px 6px', borderRadius: 99, letterSpacing: '0.04em' }}>NEW</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.fromName}: {a.subject}
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                {fmtShort(a.date)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Follow-up Tracker — institutional emails awaiting reply ── */}
       {followUps.length > 0 && (

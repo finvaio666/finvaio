@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   useClients,
@@ -651,8 +651,10 @@ type Tab = 'overview' | 'portfolio' | 'insurance' | 'cashflow' | 'correspondence
 
 export default function ClientDetailPage({ clientId }: { clientId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { clients, loading } = useClients();
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const initialTab = (searchParams?.get('tab') as Tab) ?? 'overview';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   const client = clients.find(c => c.id === clientId);
 

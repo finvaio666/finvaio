@@ -379,6 +379,69 @@ export async function searchClientEmails(
   return summaries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
+/**
+ * Fetch recent INBOUND emails from whitelisted institution domains.
+ * Used to detect new correspondence and match it to clients.
+ */
+export async function getRecentInbound(
+  refreshToken: string,
+  domains:      string[],
+  days = 14,
+  maxResults = 40,
+): Promise<EmailSummary[]> {
+  if (domains.length === 0) return [];
+  const gmail = getGmailClient(refreshToken);
+
+  const domainQ = domains.map(d => `@${d}`).join(' OR ');
+  const q = `from:(${domainQ}) newer_than:${days}d -label:ARIA/Closed`;
+
+  const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults });
+  const ids = (listRes.data.messages ?? []).map(m => m.id!);
+  if (ids.length === 0) return [];
+
+  const seenThreads = new Set<string>();
+  const summaries: EmailSummary[] = [];
+
+  const msgs = await Promise.all(
+    ids.map(id =>
+      gmail.users.messages.get({
+        userId: 'me', id, format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Subject', 'Date'],
+      }).catch(() => null)
+    )
+  );
+
+  for (const msg of msgs) {
+    if (!msg) continue;
+    const d = msg.data;
+    const headers = d.payload?.headers ?? [];
+    const threadId = d.threadId ?? d.id ?? '';
+    if (seenThreads.has(threadId)) continue;
+    seenThreads.add(threadId);
+
+    const from = headerVal(headers, 'From');
+    const { name: fromName, email: fromEmail } = parseName(from);
+    const dateRaw = headerVal(headers, 'Date');
+
+    summaries.push({
+      id:        d.id ?? '',
+      threadId,
+      from,
+      fromName:  fromName || fromEmail,
+      to:        headerVal(headers, 'To'),
+      subject:   headerVal(headers, 'Subject') || '(No subject)',
+      snippet:   d.snippet ?? '',
+      date:      dateRaw ? new Date(dateRaw).toISOString() : new Date().toISOString(),
+      isRead:    !(d.labelIds ?? []).includes('UNREAD'),
+      direction: 'inbound',
+      status:    'pending',
+      labelIds:  d.labelIds ?? [],
+    });
+  }
+
+  return summaries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
 export interface FollowUp {
   threadId:    string;
   messageId:   string;
