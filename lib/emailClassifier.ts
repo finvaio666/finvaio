@@ -5,10 +5,30 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-function getGemini() {
+// Current models with fallback — newest first. Older models (1.5) are being
+// retired, so we try modern ones and fall back if a model is unavailable/overloaded.
+const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
+
+/**
+ * Generate text with automatic model fallback. Throws only if ALL models fail.
+ */
+async function generateText(prompt: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY not set');
-  return new GoogleGenerativeAI(key).getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const genAI = new GoogleGenerativeAI(key);
+
+  let lastErr: unknown;
+  for (const modelId of MODEL_FALLBACKS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelId });
+      const res   = await model.generateContent(prompt);
+      return res.response.text();
+    } catch (err) {
+      lastErr = err;
+      continue; // try next model
+    }
+  }
+  throw lastErr ?? new Error('All Gemini models failed');
 }
 
 // ── Classification ────────────────────────────────────────────────────────────
@@ -25,8 +45,6 @@ export async function classifyEmail(
   subject: string,
   snippet: string,
 ): Promise<ClassifyResult> {
-  const model = getGemini();
-
   const prompt = `You are an assistant for a Malaysian licensed financial advisor.
 Determine if the following email is work-related — meaning it is from an insurance company, unit trust / investment fund house, or financial regulator, and relates to client policies, funds, transactions, or compliance.
 
@@ -45,8 +63,7 @@ Respond ONLY in this exact JSON format (no markdown, no explanation):
 Categories: policy_renewal, policy_lapse, fund_statement, fund_update, transaction_confirmation, client_document, compliance, general_work, spam, personal`;
 
   try {
-    const res  = await model.generateContent(prompt);
-    const text = res.response.text().trim();
+    const text = (await generateText(prompt)).trim();
     const json = text.replace(/^```json\s*|```$/g, '').trim();
     return JSON.parse(json) as ClassifyResult;
   } catch {
@@ -83,8 +100,6 @@ export async function summarizeEmail(
   subject: string,
   body:    string,
 ): Promise<SummaryResult> {
-  const model = getGemini();
-
   const truncatedBody = cleanEmailBody(body); // Clean HTML before sending to AI
 
   const prompt = `You are an assistant for a Malaysian licensed financial advisor. Analyse this email and extract key information.
@@ -103,8 +118,7 @@ Respond ONLY in this exact JSON format (no markdown):
 }`;
 
   try {
-    const res  = await model.generateContent(prompt);
-    const text = res.response.text().trim();
+    const text = (await generateText(prompt)).trim();
     const json = text.replace(/^```json\s*|```$/g, '').trim();
     return JSON.parse(json) as SummaryResult;
   } catch {
@@ -131,33 +145,41 @@ export async function draftReply(opts: {
   clientName?: string;
   instruction?: string; // optional specific guidance from advisor
 }): Promise<string> {
-  const model = getGemini();
+  const truncatedBody = cleanEmailBody(opts.body).slice(0, 3000);
 
-  const truncatedBody = opts.body.slice(0, 3000);
+  const prompt = `You are drafting an email on behalf of ${opts.advisorName}, a licensed financial advisor in Malaysia, who is corresponding with an insurance company or fund house (the recipient).
 
-  const prompt = `You are drafting a professional reply on behalf of ${opts.advisorName}, a licensed financial advisor in Malaysia.
+IMPORTANT CONTEXT:
+- The recipient is the INSTITUTION (insurance company / fund house), NOT ${opts.advisorName}.
+- Do NOT address the email to ${opts.advisorName}. Do NOT write "Dear ${opts.advisorName}".
+- Address the recipient as "Dear Team," unless a specific contact person's name is clearly identifiable.
+- This is part of an existing case thread.
 
-Original email:
-From: ${opts.from}
-Subject: ${opts.subject}
-Body:
+Case / email subject: ${opts.subject}
+${opts.clientName ? `Client concerned: ${opts.clientName}` : ''}
+Reference content from the thread:
 ${truncatedBody}
-${opts.clientName ? `\nThis email relates to client: ${opts.clientName}` : ''}
-${opts.instruction ? `\nAdvisor's instruction: ${opts.instruction}` : ''}
 
-Write a professional, concise reply email.
-- Use a polite Malaysian business tone
-- Be specific about the subject matter
-- Keep it under 200 words
+${opts.instruction
+  ? `THE ADVISOR'S INSTRUCTION (this is the MOST IMPORTANT part — the email must accomplish exactly this):\n"${opts.instruction}"`
+  : 'Write a polite, professional follow-up on the matter in the subject.'}
+
+Write a professional, concise email that fulfils the advisor's instruction above.
+- Polite Malaysian business tone
+- Reference the case/policy/submission number from the subject naturally
+- Keep it under 150 words
+- Start with "Dear Team," (or a specific contact if obvious)
 - End with: "Best regards,\n${opts.advisorName}"
-- Do NOT include a Subject line in the output — only write the email body
-- Do NOT wrap in markdown code blocks`;
+- Output ONLY the email body — no subject line, no markdown.`;
 
   try {
-    const res  = await model.generateContent(prompt);
-    return res.response.text().trim();
+    return (await generateText(prompt)).trim();
   } catch {
-    return `Dear ${opts.from.split('<')[0].trim() || 'Team'},\n\nThank you for your email regarding "${opts.subject}". I will review this and get back to you shortly.\n\nBest regards,\n${opts.advisorName}`;
+    // Fallback still honours the instruction if the AI is unavailable
+    const intent = opts.instruction
+      ? opts.instruction.replace(/\.$/, '')
+      : `follow up on "${opts.subject}"`;
+    return `Dear Team,\n\nI am writing in reference to ${opts.subject}.\n\nKindly ${intent.charAt(0).toLowerCase() + intent.slice(1)}. Your assistance is much appreciated.\n\nBest regards,\n${opts.advisorName}`;
   }
 }
 
@@ -172,8 +194,6 @@ export async function draftNewEmail(opts: {
   advisorName: string;
   clientName?: string;
 }): Promise<{ subject: string; body: string }> {
-  const model = getGemini();
-
   const prompt = `You are drafting a professional outbound email on behalf of ${opts.advisorName}, a licensed financial advisor in Malaysia.
 
 Send to: ${opts.toName}
@@ -194,8 +214,7 @@ Respond ONLY in this exact JSON format (no markdown):
 }`;
 
   try {
-    const res  = await model.generateContent(prompt);
-    const text = res.response.text().trim();
+    const text = (await generateText(prompt)).trim();
     const json = text.replace(/^```json\s*|```$/g, '').trim();
     return JSON.parse(json) as { subject: string; body: string };
   } catch {
