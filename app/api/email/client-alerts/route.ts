@@ -60,9 +60,12 @@ export async function GET(req: NextRequest) {
     // 2. Fetch recent inbound institution emails
     const emails = await getRecentInbound(config.gmailRefreshToken, domains, 14, 40);
 
-    // 3. Match each email to a client by name in subject + snippet
+    // 3. Match each email to a client by name in subject + snippet.
+    //    Only UNREAD emails count as "new" — once the FA opens it, it's marked
+    //    read and drops off this list automatically.
     const alerts: ClientAlert[] = [];
     for (const email of emails) {
+      if (email.isRead) continue; // already seen — not "new" anymore
       const haystack = `${email.subject} ${email.snippet}`.toLowerCase();
       // Match if full name OR (first AND last) appears
       const match = clientNames.find(c => {

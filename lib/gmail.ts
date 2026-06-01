@@ -616,6 +616,19 @@ export async function closeThread(refreshToken: string, messageId: string): Prom
   }).catch(() => {});
 }
 
+/**
+ * Mark all messages in a thread as read (removes the UNREAD label).
+ * Called when the advisor opens a thread so it drops off the "new" list.
+ */
+export async function markThreadRead(refreshToken: string, threadId: string): Promise<void> {
+  const gmail = getGmailClient(refreshToken);
+  await gmail.users.threads.modify({
+    userId: 'me',
+    id:     threadId,
+    requestBody: { removeLabelIds: ['UNREAD'] },
+  }).catch(() => {}); // non-critical
+}
+
 // ── Label Helpers ─────────────────────────────────────────────────────────────
 
 type GmailClientType = ReturnType<typeof google.gmail>;

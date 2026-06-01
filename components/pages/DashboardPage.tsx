@@ -187,7 +187,7 @@ export default function DashboardPage() {
               style={rowStyle}
               onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
               onMouseOut={e  => (e.currentTarget.style.background = '')}
-              onClick={() => router.push(`/clients/${encodeURIComponent(a.clientId)}?tab=correspondence`)}
+              onClick={() => router.push(`/emails?thread=${encodeURIComponent(a.threadId)}`)}
             >
               <div className="client-avatar" style={{ width: 36, height: 36, fontSize: 13, flexShrink: 0 }}>
                 {initials(a.clientName)}

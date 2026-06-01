@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { EmailSummary, EmailThread } from '@/lib/gmail';
 import type { SummaryResult } from '@/lib/emailClassifier';
 import type { Institution } from '@/app/api/email/institutions/route';
@@ -365,38 +366,54 @@ function EmailDetailPanel({
         )}
       </div>
 
-      {/* Footer actions */}
+      {/* Footer actions — "What do you want to do with this?" */}
       {!replyMode && !sent && (
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0 }}>
-          {/* Instruction hint */}
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+            Choose an action
+          </div>
+          {/* AI instruction (optional) */}
           <input
             value={instruction}
             onChange={e => setInstruction(e.target.value)}
-            placeholder="Optional: tell AI what to focus on…"
+            placeholder="Optional: tell AI what the reply should say…"
             style={{
-              flex: 1, padding: '8px 12px', fontSize: 12,
+              width: '100%', padding: '8px 12px', fontSize: 12, marginBottom: 8,
               background: 'var(--surface)', border: '1px solid var(--border)',
               borderRadius: 8, color: 'var(--text)', fontFamily: 'var(--font-sans)',
+              boxSizing: 'border-box',
             }}
           />
-          <button
-            onClick={loadDraft}
-            style={{
-              background: 'rgba(243,115,56,0.12)', color: 'var(--orange)',
-              border: 'none', borderRadius: 'var(--r-pill)',
-              padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >🤖 AI Draft</button>
-          <button
-            onClick={() => openReply(false)}
-            style={{
-              background: 'var(--orange)', color: '#fff',
-              border: 'none', borderRadius: 'var(--r-pill)',
-              padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >✉ Reply</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={loadDraft}
+              style={{
+                background: 'rgba(243,115,56,0.12)', color: 'var(--orange)',
+                border: 'none', borderRadius: 'var(--r-pill)',
+                padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >🤖 AI Draft Reply</button>
+            <button
+              onClick={() => openReply(false)}
+              style={{
+                background: 'var(--orange)', color: '#fff',
+                border: 'none', borderRadius: 'var(--r-pill)',
+                padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >✉ Write Reply</button>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(34,197,94,0.12)', color: '#22c55e',
+                border: 'none', borderRadius: 'var(--r-pill)',
+                padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >✓ Mark Done</button>
+          </div>
         </div>
       )}
     </div>
@@ -408,6 +425,9 @@ function EmailDetailPanel({
 type FilterTab = 'all' | 'pending' | 'replied' | 'monitoring';
 
 export default function EmailHubPage() {
+  const searchParams = useSearchParams();
+  const threadParam  = searchParams?.get('thread') ?? '';
+  const [autoOpened, setAutoOpened] = useState(false);
   const [connected,       setConnected]       = useState<boolean | null>(null);
   const [emails,          setEmails]          = useState<EmailSummary[]>([]);
   const [institutions,    setInstitutions]    = useState<Institution[]>([]);
@@ -467,6 +487,17 @@ export default function EmailHubPage() {
   }, []);
 
   useEffect(() => { loadEmails(); }, [loadEmails]);
+
+  // Deep link: /emails?thread=<id> — auto-open that thread once emails are loaded
+  useEffect(() => {
+    if (!threadParam || autoOpened || emails.length === 0) return;
+    const match = emails.find(e => e.threadId === threadParam);
+    if (match) {
+      loadThread(match);
+      setAutoOpened(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadParam, emails, autoOpened]);
 
   async function loadThread(email: EmailSummary) {
     setSelectedId(email.threadId);
