@@ -170,15 +170,34 @@ function EmailDetailPanel({
   const status = threadStatus(thread, email);
   const lastMsg = thread?.messages[thread.messages.length - 1];
 
-  // Best-guess recipient: the last message NOT from the advisor (the institution).
-  // For purely forwarded threads there may be none — advisor fills it in.
+  // Best-guess recipient: the original institution sender.
   const suggestedTo = (() => {
     const msgs = thread?.messages ?? [];
+    const advisorAddr = (msgs.find(m => m.isFromAdvisor)?.fromEmail ?? '').toLowerCase();
+
+    // 1. Real inbound reply — the sender of the last non-advisor message
     const lastInbound = [...msgs].reverse().find(m => !m.isFromAdvisor);
     if (lastInbound?.fromEmail) return lastInbound.fromEmail;
-    // Fallback: original recipient of advisor's message (if not self)
-    const advisorMsg = msgs.find(m => m.isFromAdvisor && m.toEmail);
-    return advisorMsg?.toEmail ?? '';
+
+    // 2. Forwarded email — the original sender is inside the body's "From:" line.
+    //    Extract the first email address on a "From:" line that isn't the advisor.
+    for (const m of msgs) {
+      const fromLine = m.body.match(/From:\s*[^\n]*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+      const candidate = fromLine?.[1] ?? '';
+      if (candidate && candidate.toLowerCase() !== advisorAddr) return candidate;
+    }
+
+    // 3. Any institution email in the body that isn't the advisor's own
+    for (const m of msgs) {
+      const all = m.body.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? [];
+      const inst = all.find(e => {
+        const lo = e.toLowerCase();
+        return lo !== advisorAddr && !lo.endsWith('gmail.com');
+      });
+      if (inst) return inst;
+    }
+
+    return '';
   })();
 
   function openReply(prefillDraft = false) {
