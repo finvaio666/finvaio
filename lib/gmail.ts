@@ -148,18 +148,13 @@ export async function listEmails(
 ): Promise<EmailSummary[]> {
   const gmail = getGmailClient(refreshToken);
 
-  // Build Gmail search query — inbound from domains OR outbound (sent) to domains
-  let inboundQ = '';
-  let outboundQ = '';
-  if (domains.length > 0) {
-    const domainQ = domains.map(d => `@${d}`).join(' OR ');
-    inboundQ  = `from:(${domainQ})`;
-    outboundQ = `from:me to:(${domainQ})`;
-  } else {
-    // No whitelist yet — show all inbox items
-    inboundQ  = 'in:inbox';
-    outboundQ = 'from:me label:ARIA/Sent';
-  }
+  // Strict whitelist — only fetch emails from configured domains
+  // Caller must ensure domains.length > 0 before calling this function
+  if (domains.length === 0) return [];
+
+  const domainQ  = domains.map(d => `@${d}`).join(' OR ');
+  const inboundQ  = `from:(${domainQ})`;
+  const outboundQ = `from:me to:(${domainQ})`;
 
   // Fetch both inbound and outbound in parallel
   const [inRes, outRes] = await Promise.all([

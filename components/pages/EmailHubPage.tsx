@@ -386,6 +386,7 @@ export default function EmailHubPage() {
       setEmails(data.emails ?? []);
       setInstitutions(data.institutions ?? []);
       setAdvisorEmail(data.advisorEmail ?? '');
+      if (data.noWhitelist) setError('no_whitelist');
     } catch {
       setError('Failed to load emails.');
     } finally {
@@ -558,10 +559,26 @@ export default function EmailHubPage() {
         )}
 
         {/* Error */}
-        {!loading && error && (
+        {!loading && error && error !== 'no_whitelist' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
             <div style={{ color: 'var(--red)', fontSize: 14 }}>{error}</div>
             <button onClick={() => loadEmails()} style={{ padding: '8px 16px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer', fontSize: 13 }}>Retry</button>
+          </div>
+        )}
+
+        {/* No whitelist configured */}
+        {!loading && connected && error === 'no_whitelist' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40, textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: 'rgba(243,115,56,0.1)', border: '1.5px solid rgba(243,115,56,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🏢</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No Institutions Configured</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 380, lineHeight: 1.6 }}>
+                ARIA only shows emails from your approved institution whitelist. Add your insurance companies and fund houses to start monitoring their emails.
+              </div>
+            </div>
+            <a href="/settings" style={{ padding: '10px 22px', background: '#F37338', color: '#fff', borderRadius: 99, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
+              ⚙️ Go to Settings → Email Hub
+            </a>
           </div>
         )}
 

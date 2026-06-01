@@ -30,6 +30,17 @@ export async function GET(req: NextRequest) {
   const domains = [...new Set(institutions.map(i => i.domain).filter(Boolean))];
   const advisorEmail = config.gmailAddress || '';
 
+  // Strict whitelist: if no institutions configured, return empty — never pull all inbox
+  if (domains.length === 0) {
+    return NextResponse.json({
+      connected:    true,
+      emails:       [],
+      institutions: [],
+      advisorEmail,
+      noWhitelist:  true,
+    });
+  }
+
   try {
     let emails = await listEmails(config.gmailRefreshToken, domains, advisorEmail, 60);
 
