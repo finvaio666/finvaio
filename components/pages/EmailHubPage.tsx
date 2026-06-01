@@ -489,65 +489,62 @@ export default function EmailHubPage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Page header */}
-      <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div>
-            <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Email Hub</h1>
-            {connected && advisorEmail && (
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{advisorEmail}</div>
-            )}
-          </div>
-          {connected && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => loadEmails(true)}
-                disabled={refreshing}
-                style={{
-                  padding: '8px 14px', fontSize: 13, fontWeight: 600,
-                  border: '1px solid var(--border)', borderRadius: 'var(--r-pill)',
-                  background: 'none', color: 'var(--text2)', cursor: 'pointer',
-                }}
-              >{refreshing ? '…' : '⟳ Refresh'}</button>
-              <button
-                onClick={() => setComposeOpen(true)}
-                style={{
-                  padding: '8px 16px', fontSize: 13, fontWeight: 600,
-                  background: 'var(--orange)', color: '#fff',
-                  border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer',
-                }}
-              >+ New Email</button>
-            </div>
-          )}
-        </div>
-
-        {/* Filter tabs */}
-        {connected && (
-          <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
-            {(['all', 'pending', 'replied', 'monitoring'] as FilterTab[]).map(tab => (
+      {/* Filter tabs + action buttons — always in one visible row */}
+      <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>
+        {connected && advisorEmail && (
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>📧 {advisorEmail}</div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+          {/* Filter tabs */}
+          <div style={{ display: 'flex', gap: 2 }}>
+            {connected ? (['all', 'pending', 'replied', 'monitoring'] as FilterTab[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
                 style={{
-                  padding: '7px 14px', fontSize: 13, fontWeight: 600,
+                  padding: '7px 12px', fontSize: 13, fontWeight: 600,
                   border: 'none', background: 'none',
-                  color: filter === tab ? 'var(--orange)' : 'var(--text3)',
-                  borderBottom: filter === tab ? '2px solid var(--orange)' : '2px solid transparent',
+                  color: filter === tab ? '#F37338' : 'var(--text3)',
+                  borderBottom: filter === tab ? '2px solid #F37338' : '2px solid transparent',
                   cursor: 'pointer', marginBottom: -1,
                   textTransform: 'capitalize',
                 }}
               >
-                {tab} {counts[tab] > 0 && (
+                {tab}{counts[tab] > 0 && (
                   <span style={{
-                    background: filter === tab ? 'var(--orange)' : 'var(--surface)',
+                    background: filter === tab ? '#F37338' : 'var(--surface)',
                     color: filter === tab ? '#fff' : 'var(--text3)',
                     borderRadius: 99, fontSize: 11, padding: '1px 6px', marginLeft: 4,
                   }}>{counts[tab]}</span>
                 )}
               </button>
-            ))}
+            )) : <div />}
           </div>
-        )}
+
+          {/* Action buttons — always visible */}
+          <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
+            {connected && (
+              <button
+                onClick={() => loadEmails(true)}
+                disabled={refreshing}
+                style={{
+                  padding: '7px 12px', fontSize: 12, fontWeight: 600,
+                  border: '1px solid var(--border)', borderRadius: 99,
+                  background: 'none', color: 'var(--text2)', cursor: 'pointer',
+                }}
+              >{refreshing ? '…' : '⟳'}</button>
+            )}
+            <button
+              onClick={() => setComposeOpen(true)}
+              style={{
+                padding: '7px 16px', fontSize: 13, fontWeight: 700,
+                background: '#F37338', color: '#fff',
+                border: 'none', borderRadius: 99, cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(243,115,56,0.3)',
+              }}
+            >+ New Email</button>
+          </div>
+        </div>
       </div>
 
       {/* Body */}

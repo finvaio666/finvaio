@@ -9,9 +9,15 @@ const pageTitles: Record<string, string> = {
   '/portfolio': 'Portfolio',
   '/reviews': 'Reviews',
   '/cashflow': 'Cash Flow',
+  '/insurance': 'Insurance',
   '/templates': 'Templates',
   '/knowledge': 'Knowledge Base',
+  '/planning': 'Planning',
   '/ai': 'AI Assistant',
+  '/emails': 'Email Hub',
+  '/settings': 'Settings',
+  '/admin': 'Admin Dashboard',
+  '/products': 'Products',
 };
 
 interface TopbarProps {
