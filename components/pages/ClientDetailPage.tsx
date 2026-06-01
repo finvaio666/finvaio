@@ -544,9 +544,110 @@ function CashflowTab({ clientId, clientName }: { clientId: string; clientName: s
   );
 }
 
+// ── Correspondence Tab ─────────────────────────────────────────────────────────
+
+interface TimelineEmail {
+  id: string; threadId: string; from: string; fromName: string; to: string;
+  subject: string; snippet: string; date: string; direction: 'inbound' | 'outbound';
+}
+
+function CorrespondenceTab({ clientName }: { clientName: string }) {
+  const [emails,  setEmails]  = useState<TimelineEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [state,   setState]   = useState<'ok' | 'disconnected' | 'no_whitelist' | 'error'>('ok');
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/email/client-timeline?clientName=${encodeURIComponent(clientName)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.connected === false)  { setState('disconnected'); return; }
+        if (d.noWhitelist)          { setState('no_whitelist'); return; }
+        if (d.error)                { setState('error'); return; }
+        setEmails(d.emails ?? []);
+        setState('ok');
+      })
+      .catch(() => setState('error'))
+      .finally(() => setLoading(false));
+  }, [clientName]);
+
+  const fmtWhen = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) +
+      ' · ' + d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="section">
+      <SectionHeader dot="#60A5FA" title="Correspondence" sub={`Emails with institutions mentioning ${clientName.split(' ')[0]}`} />
+
+      {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading correspondence…</div>}
+
+      {!loading && state === 'disconnected' && (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+          Gmail not connected. <Link href="/settings" style={{ color: 'var(--accent2)' }}>Connect in Settings</Link> to see client correspondence.
+        </div>
+      )}
+      {!loading && state === 'no_whitelist' && (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+          No institutions configured. <Link href="/settings" style={{ color: 'var(--accent2)' }}>Add them in Settings → Email Hub</Link>.
+        </div>
+      )}
+      {!loading && state === 'error' && (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--red)', fontSize: 13 }}>Failed to load correspondence.</div>
+      )}
+
+      {!loading && state === 'ok' && emails.length === 0 && (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+          No institutional emails found mentioning this client yet.
+        </div>
+      )}
+
+      {!loading && state === 'ok' && emails.length > 0 && (
+        <div style={{ position: 'relative', paddingLeft: 24 }}>
+          {/* Timeline line */}
+          <div style={{ position: 'absolute', left: 7, top: 8, bottom: 8, width: 2, background: 'var(--border)' }} />
+          {emails.map(email => (
+            <a
+              key={email.id}
+              href="/emails"
+              style={{ display: 'block', position: 'relative', marginBottom: 14, textDecoration: 'none' }}
+            >
+              {/* Dot */}
+              <div style={{
+                position: 'absolute', left: -21, top: 4,
+                width: 12, height: 12, borderRadius: '50%',
+                background: email.direction === 'outbound' ? 'var(--accent2)' : '#60A5FA',
+                border: '2px solid var(--bg)',
+              }} />
+              <div style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 8, padding: '10px 14px',
+                transition: 'border-color 0.15s',
+              }}
+                onMouseOver={e => (e.currentTarget.style.borderColor = 'var(--accent2)')}
+                onMouseOut={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: email.direction === 'outbound' ? 'var(--accent2)' : 'var(--text)' }}>
+                    {email.direction === 'outbound' ? `→ ${email.to.split('@')[0] || 'Institution'}` : email.fromName}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>{fmtWhen(email.date)}</span>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{email.subject}</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.snippet}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'portfolio' | 'insurance' | 'cashflow';
+type Tab = 'overview' | 'portfolio' | 'insurance' | 'cashflow' | 'correspondence';
 
 export default function ClientDetailPage({ clientId }: { clientId: string }) {
   const router = useRouter();
@@ -579,10 +680,11 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
   }
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'overview',  label: 'Overview',  icon: '👤' },
-    { id: 'portfolio', label: 'Portfolio', icon: '📈' },
-    { id: 'insurance', label: 'Insurance', icon: '🛡️' },
-    { id: 'cashflow',  label: 'Cash Flow', icon: '💸' },
+    { id: 'overview',       label: 'Overview',       icon: '👤' },
+    { id: 'portfolio',      label: 'Portfolio',      icon: '📈' },
+    { id: 'insurance',      label: 'Insurance',      icon: '🛡️' },
+    { id: 'cashflow',       label: 'Cash Flow',      icon: '💸' },
+    { id: 'correspondence', label: 'Correspondence', icon: '✉️' },
   ];
 
   return (
@@ -647,10 +749,11 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
       </div>
 
       {/* ── Tab content ── */}
-      {activeTab === 'overview'  && <OverviewTab  client={client} />}
-      {activeTab === 'portfolio' && <PortfolioTab clientId={client.id} clientName={client.name} />}
-      {activeTab === 'insurance' && <InsuranceTab clientName={client.name} />}
-      {activeTab === 'cashflow'  && <CashflowTab  clientId={client.id} clientName={client.name} />}
+      {activeTab === 'overview'       && <OverviewTab       client={client} />}
+      {activeTab === 'portfolio'      && <PortfolioTab      clientId={client.id} clientName={client.name} />}
+      {activeTab === 'insurance'      && <InsuranceTab      clientName={client.name} />}
+      {activeTab === 'cashflow'       && <CashflowTab       clientId={client.id} clientName={client.name} />}
+      {activeTab === 'correspondence' && <CorrespondenceTab clientName={client.name} />}
     </>
   );
 }

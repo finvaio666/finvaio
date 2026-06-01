@@ -15,6 +15,11 @@ interface Meeting {
   id: string; clientId: string; clientName: string; meetingDate: string;
   meetingType: string; notes: string; actionItems: string;
 }
+interface FollowUp {
+  threadId: string; messageId: string; subject: string;
+  to: string; toName: string; sentDate: string;
+  daysWaiting: number; isOverdue: boolean;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function daysUntil(dateStr: string): number | null {
@@ -55,6 +60,7 @@ export default function DashboardPage() {
 
   const [insurance,    setInsurance]    = useState<InsurancePolicy[]>([]);
   const [meetings,     setMeetings]     = useState<Meeting[]>([]);
+  const [followUps,    setFollowUps]    = useState<FollowUp[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
 
   useEffect(() => {
@@ -65,6 +71,12 @@ export default function DashboardPage() {
       if (ins.data) setInsurance(ins.data);
       if (mtg.data) setMeetings(mtg.data);
     }).finally(() => setDataLoading(false));
+
+    // Follow-ups load separately (Gmail call can be slower) — non-blocking
+    fetch('/api/email/followups', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (d.followUps) setFollowUps(d.followUps); })
+      .catch(() => {});
   }, []);
 
   // ── Derived data ────────────────────────────────────────────────────────────
@@ -144,6 +156,51 @@ export default function DashboardPage() {
           <div className="stat-sub">{pendingActions === 0 ? 'All clear' : `${pendingActions} with open items`}</div>
         </div>
       </div>
+
+      {/* ── Follow-up Tracker — institutional emails awaiting reply ── */}
+      {followUps.length > 0 && (
+        <div className="section" style={{ marginBottom: 20 }}>
+          <div className="section-header">
+            <div className="section-title">
+              <span className="section-dot" style={{ background: 'var(--accent2)' }} />
+              Pending Follow-ups
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+                emails to institutions awaiting a reply
+              </span>
+            </div>
+            <Link href="/emails" className="section-action">Email Hub →</Link>
+          </div>
+          {followUps.map(f => (
+            <div
+              key={f.threadId}
+              style={rowStyle}
+              onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
+              onMouseOut={e  => (e.currentTarget.style.background = '')}
+              onClick={() => router.push('/emails')}
+            >
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: f.isOverdue ? 'var(--red-dim)' : 'var(--accent-dim)',
+                fontSize: 16,
+              }}>
+                {f.isOverdue ? '🔴' : '⏳'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.subject}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                  To: {f.toName} · sent {fmtShort(f.sentDate)}
+                </div>
+              </div>
+              <div style={pillStyle(f.isOverdue, !f.isOverdue && f.daysWaiting >= 2)}>
+                {f.daysWaiting === 0 ? 'Today' : `${f.daysWaiting}d waiting`}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Row 1: Review Alerts + Birthday Reminders ── */}
       <div className="two-col">

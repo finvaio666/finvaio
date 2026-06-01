@@ -307,6 +307,165 @@ export async function getThread(
 }
 
 /**
+ * Search for emails related to a specific client (by name) within whitelisted domains.
+ * Gmail full-text search matches the name in subject AND body, server-side.
+ */
+export async function searchClientEmails(
+  refreshToken: string,
+  domains:      string[],
+  advisorEmail: string,
+  clientName:   string,
+  maxResults = 30,
+): Promise<EmailSummary[]> {
+  if (domains.length === 0 || !clientName.trim()) return [];
+  const gmail = getGmailClient(refreshToken);
+
+  // Build name variants: full name + first two words
+  const parts     = clientName.trim().split(/\s+/);
+  const firstTwo  = parts.slice(0, 2).join(' ');
+  const nameQuery = parts.length > 2
+    ? `("${clientName}" OR "${firstTwo}")`
+    : `"${clientName}"`;
+
+  const domainQ = domains.map(d => `@${d}`).join(' OR ');
+  // Emails to/from institutions that mention this client
+  const q = `(from:(${domainQ}) OR to:(${domainQ})) ${nameQuery}`;
+
+  const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults });
+  const ids = (listRes.data.messages ?? []).map(m => m.id!);
+  if (ids.length === 0) return [];
+
+  const seenThreads = new Set<string>();
+  const summaries: EmailSummary[] = [];
+
+  const msgs = await Promise.all(
+    ids.map(id =>
+      gmail.users.messages.get({
+        userId: 'me', id, format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Subject', 'Date'],
+      }).catch(() => null)
+    )
+  );
+
+  for (const msg of msgs) {
+    if (!msg) continue;
+    const d = msg.data;
+    const headers = d.payload?.headers ?? [];
+    const threadId = d.threadId ?? d.id ?? '';
+    if (seenThreads.has(threadId)) continue;
+    seenThreads.add(threadId);
+
+    const from = headerVal(headers, 'From');
+    const { name: fromName, email: fromEmail } = parseName(from);
+    const dateRaw = headerVal(headers, 'Date');
+    const isFromAdvisor = fromEmail.toLowerCase().includes(advisorEmail.toLowerCase());
+
+    summaries.push({
+      id:        d.id ?? '',
+      threadId,
+      from,
+      fromName:  isFromAdvisor ? 'You' : (fromName || fromEmail),
+      to:        headerVal(headers, 'To'),
+      subject:   headerVal(headers, 'Subject') || '(No subject)',
+      snippet:   d.snippet ?? '',
+      date:      dateRaw ? new Date(dateRaw).toISOString() : new Date().toISOString(),
+      isRead:    !(d.labelIds ?? []).includes('UNREAD'),
+      direction: isFromAdvisor ? 'outbound' : 'inbound',
+      status:    isFromAdvisor ? 'monitoring' : 'pending',
+      labelIds:  d.labelIds ?? [],
+    });
+  }
+
+  return summaries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export interface FollowUp {
+  threadId:    string;
+  messageId:   string;
+  subject:     string;
+  to:          string;
+  toName:      string;
+  sentDate:    string;     // ISO
+  daysWaiting: number;
+  isOverdue:   boolean;
+}
+
+/**
+ * Detect pending follow-ups: outbound emails to institutions awaiting a reply.
+ * A thread is "pending" if the LAST message was sent by the advisor (no reply yet).
+ */
+export async function getFollowUps(
+  refreshToken: string,
+  domains:      string[],
+  advisorEmail: string,
+  overdueDays = 3,
+): Promise<FollowUp[]> {
+  if (domains.length === 0) return [];
+  const gmail = getGmailClient(refreshToken);
+
+  const domainQ = domains.map(d => `@${d}`).join(' OR ');
+  // Outbound emails to institutions in the last 60 days, not closed
+  const q = `from:me to:(${domainQ}) newer_than:60d -label:ARIA/Closed`;
+
+  const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults: 40 });
+  const ids = (listRes.data.messages ?? []).map(m => m.id!);
+  if (ids.length === 0) return [];
+
+  // Collect unique thread IDs
+  const threadIds = new Set<string>();
+  const metas = await Promise.all(
+    ids.map(id => gmail.users.messages.get({ userId: 'me', id, format: 'minimal' }).catch(() => null))
+  );
+  for (const m of metas) {
+    if (m?.data.threadId) threadIds.add(m.data.threadId);
+  }
+
+  const followUps: FollowUp[] = [];
+  const now = Date.now();
+
+  // For each thread, check if the LAST message is from the advisor (awaiting reply)
+  await Promise.all([...threadIds].slice(0, 30).map(async (threadId) => {
+    try {
+      const thread = await gmail.users.threads.get({
+        userId: 'me', id: threadId, format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Subject', 'Date'],
+      });
+      const msgs = thread.data.messages ?? [];
+      if (msgs.length === 0) return;
+
+      const lastMsg  = msgs[msgs.length - 1];
+      const headers  = lastMsg.payload?.headers ?? [];
+      const from     = headerVal(headers, 'From');
+      const { email: fromEmail } = parseName(from);
+      const isLastFromAdvisor = fromEmail.toLowerCase().includes(advisorEmail.toLowerCase());
+
+      // Only a follow-up if advisor sent the last message (no reply received)
+      if (!isLastFromAdvisor) return;
+
+      const dateRaw  = headerVal(headers, 'Date');
+      const sentDate = dateRaw ? new Date(dateRaw) : new Date();
+      const daysWaiting = Math.floor((now - sentDate.getTime()) / 86400000);
+
+      const toHeader = headerVal(headers, 'To');
+      const { name: toName, email: toEmail } = parseName(toHeader);
+
+      followUps.push({
+        threadId,
+        messageId:   lastMsg.id ?? '',
+        subject:     headerVal(headers, 'Subject') || '(No subject)',
+        to:          toEmail,
+        toName:      toName || toEmail,
+        sentDate:    sentDate.toISOString(),
+        daysWaiting,
+        isOverdue:   daysWaiting >= overdueDays,
+      });
+    } catch { /* skip inaccessible thread */ }
+  }));
+
+  return followUps.sort((a, b) => b.daysWaiting - a.daysWaiting);
+}
+
+/**
  * Send a new email or reply to an existing thread.
  */
 export async function sendEmail(
