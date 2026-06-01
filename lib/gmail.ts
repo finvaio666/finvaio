@@ -30,14 +30,17 @@ export interface EmailThread {
 }
 
 export interface EmailMessage {
-  id:       string;
-  from:     string;
-  fromName: string;
-  to:       string;
-  date:     string;
-  body:     string;       // plain text
-  bodyHtml: string;       // HTML (may be empty)
+  id:        string;
+  from:      string;
+  fromName:  string;
+  fromEmail: string;      // bare sender email (no display name)
+  to:        string;
+  toEmail:   string;      // bare recipient email
+  date:      string;
+  body:      string;      // plain text
+  bodyHtml:  string;      // HTML (may be empty)
   isFromAdvisor: boolean; // true if sent by the advisor (me)
+  messageIdHeader: string; // RFC822 Message-ID header (for proper threading)
 }
 
 export interface SendOptions {
@@ -279,7 +282,9 @@ export async function getThread(
   const messages = (res.data.messages ?? []).map(msg => {
     const headers = msg.payload?.headers ?? [];
     const from = headerVal(headers, 'From');
+    const toHeader = headerVal(headers, 'To');
     const { name: fromName, email: fromEmail } = parseName(from);
+    const { email: toEmail } = parseName(toHeader);
     const dateRaw = headerVal(headers, 'Date');
     const { text, html } = extractBody(msg.payload as Parameters<typeof extractBody>[0]);
 
@@ -291,11 +296,14 @@ export async function getThread(
       id:            msg.id ?? '',
       from,
       fromName:      fromName || fromEmail,
-      to:            headerVal(headers, 'To'),
+      fromEmail,
+      to:            toHeader,
+      toEmail,
       date:          dateRaw ? new Date(dateRaw).toISOString() : new Date().toISOString(),
       body:          cleanBody,
       bodyHtml:      '',   // already cleaned into body — no raw HTML needed client-side
       isFromAdvisor: fromEmail.toLowerCase().includes(advisorEmail.toLowerCase()),
+      messageIdHeader: headerVal(headers, 'Message-ID'),
     } as EmailMessage;
   });
 

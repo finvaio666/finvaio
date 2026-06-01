@@ -155,22 +155,42 @@ function EmailDetailPanel({
   thread:        EmailThread | null;
   aiSummary:     SummaryResult | null;
   summaryLoading: boolean;
-  onSend:        (opts: { body: string; threadId?: string; inReplyTo?: string }) => Promise<void>;
+  onSend:        (opts: { to: string; body: string; threadId?: string; inReplyTo?: string }) => Promise<void>;
   onClose:       () => void;
 }) {
   const [replyMode,   setReplyMode]   = useState(false);
   const [replyText,   setReplyText]   = useState('');
+  const [replyTo,     setReplyTo]     = useState('');
   const [draftLoading, setDraftLoading] = useState(false);
   const [sending,     setSending]     = useState(false);
   const [sent,        setSent]        = useState(false);
+  const [sendError,   setSendError]   = useState('');
   const [instruction, setInstruction] = useState('');
 
   const status = threadStatus(thread, email);
   const lastMsg = thread?.messages[thread.messages.length - 1];
 
+  // Best-guess recipient: the last message NOT from the advisor (the institution).
+  // For purely forwarded threads there may be none — advisor fills it in.
+  const suggestedTo = (() => {
+    const msgs = thread?.messages ?? [];
+    const lastInbound = [...msgs].reverse().find(m => !m.isFromAdvisor);
+    if (lastInbound?.fromEmail) return lastInbound.fromEmail;
+    // Fallback: original recipient of advisor's message (if not self)
+    const advisorMsg = msgs.find(m => m.isFromAdvisor && m.toEmail);
+    return advisorMsg?.toEmail ?? '';
+  })();
+
+  function openReply(prefillDraft = false) {
+    setReplyTo(suggestedTo);
+    setSendError('');
+    setReplyMode(true);
+    if (!prefillDraft) setReplyText('');
+  }
+
   async function loadDraft() {
     setDraftLoading(true);
-    setReplyMode(true);
+    openReply(true);
     try {
       const inbound = thread?.messages.find(m => !m.isFromAdvisor) ?? thread?.messages[0];
       const res = await fetch('/api/email/draft', {
@@ -192,16 +212,21 @@ function EmailDetailPanel({
   }
 
   async function handleSend() {
-    if (!replyText.trim()) return;
+    setSendError('');
+    if (!replyText.trim()) { setSendError('Please write a reply first.'); return; }
+    if (!replyTo.trim() || !replyTo.includes('@')) { setSendError('Please enter a valid recipient email address.'); return; }
     setSending(true);
     try {
       await onSend({
+        to:        replyTo.trim(),
         body:      replyText,
         threadId:  email.threadId,
-        inReplyTo: lastMsg?.id,
+        inReplyTo: lastMsg?.messageIdHeader || undefined,
       });
       setSent(true);
       setReplyMode(false);
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : 'Failed to send. Please try again.');
     } finally {
       setSending(false);
     }
@@ -269,6 +294,22 @@ function EmailDetailPanel({
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>
               ✏️ Reply Draft {draftLoading && <span style={{ color: 'var(--text3)' }}>(AI writing…)</span>}
             </div>
+            {/* Editable recipient */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, flexShrink: 0 }}>To:</span>
+              <input
+                value={replyTo}
+                onChange={e => setReplyTo(e.target.value)}
+                placeholder="recipient@institution.com"
+                type="email"
+                style={{
+                  flex: 1, background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 6, padding: '6px 10px',
+                  fontSize: 12, color: 'var(--text)', fontFamily: 'var(--font-sans)',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
             <textarea
               value={replyText}
               onChange={e => setReplyText(e.target.value)}
@@ -282,6 +323,9 @@ function EmailDetailPanel({
               }}
               placeholder="Write your reply here…"
             />
+            {sendError && (
+              <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 6 }}>⚠ {sendError}</div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
               <button
                 onClick={handleSend}
@@ -294,7 +338,7 @@ function EmailDetailPanel({
                 }}
               >{sending ? 'Sending…' : '✉ Send'}</button>
               <button
-                onClick={() => setReplyMode(false)}
+                onClick={() => { setReplyMode(false); setSendError(''); }}
                 style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: '8px 14px', fontSize: 13, color: 'var(--text3)', cursor: 'pointer' }}
               >Cancel</button>
             </div>
@@ -326,7 +370,7 @@ function EmailDetailPanel({
             }}
           >🤖 AI Draft</button>
           <button
-            onClick={() => { setReplyMode(true); setReplyText(''); }}
+            onClick={() => openReply(false)}
             style={{
               background: 'var(--orange)', color: '#fff',
               border: 'none', borderRadius: 'var(--r-pill)',
@@ -422,24 +466,32 @@ export default function EmailHubPage() {
     setSummaryLoading(false);
   }
 
-  async function handleSend(opts: { body: string; threadId?: string; inReplyTo?: string }) {
+  async function handleSend(opts: { to: string; body: string; threadId?: string; inReplyTo?: string }) {
     const email = emails.find(e => e.threadId === selectedId);
-    if (!email) return;
+    if (!email) throw new Error('No email selected.');
 
-    await fetch('/api/email/send', {
+    const subject = email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`;
+
+    const res = await fetch('/api/email/send', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to:       email.from,
-        subject:  `Re: ${email.subject}`,
-        body:     opts.body,
-        threadId: opts.threadId,
+        to:        opts.to,
+        subject,
+        body:      opts.body,
+        threadId:  opts.threadId,
         inReplyTo: opts.inReplyTo,
-        isNew:    false,
+        references: opts.inReplyTo,
+        isNew:     false,
       }),
     });
 
-    // Update local status
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      throw new Error(data.error || `Send failed (HTTP ${res.status})`);
+    }
+
+    // Update local status only after confirmed success
     setEmails(prev => prev.map(e =>
       e.threadId === selectedId ? { ...e, status: 'replied' } : e
     ));
