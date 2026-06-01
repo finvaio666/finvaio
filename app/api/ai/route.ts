@@ -236,7 +236,53 @@ async function buildClientContext(
     });
   }
 
-  // ── 4. Assemble context string ─────────────────────────────────────────────
+  // ── 4. Fetch meeting notes for this client ─────────────────────────────────
+  type MeetingRow = { meetingDate: string; meetingType: string; notes: string; actionItems: string; nextReviewDate: string };
+  let meetings: MeetingRow[] = [];
+
+  if (config.meetingNotesDbId) {
+    try {
+      const firstName = name.split(' ')[0];
+      // Fetch recent meetings sorted newest-first
+      const meetRes = await notion.databases.query({
+        database_id: config.meetingNotesDbId,
+        sorts: [{ property: 'Meeting Date', direction: 'descending' }],
+        page_size: 10,
+      });
+
+      meetings = meetRes.results.filter(isFullPage)
+        .filter(p => {
+          const titleStr = p.properties['Name']?.type === 'title'
+            ? (p.properties['Name'] as { type: 'title'; title: { plain_text: string }[] }).title[0]?.plain_text ?? ''
+            : '';
+          const clientNameField = p.properties['Client Name']?.type === 'rich_text'
+            ? (p.properties['Client Name'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? ''
+            : '';
+          // Match by client name in title or Client Name field
+          const haystack = `${titleStr} ${clientNameField}`.toLowerCase();
+          return haystack.includes(firstName.toLowerCase()) || haystack.includes(name.toLowerCase());
+        })
+        .slice(0, 5) // last 5 meetings
+        .map(p => {
+          const pr = p.properties;
+          const getDate = (key: string) =>
+            pr[key]?.type === 'date' ? (pr[key] as { type: 'date'; date: { start: string } | null }).date?.start ?? '' : '';
+          const getText = (key: string) =>
+            pr[key]?.type === 'rich_text' ? (pr[key] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? '' : '';
+          const getSelect = (key: string) =>
+            pr[key]?.type === 'select' ? (pr[key] as { type: 'select'; select: { name: string } | null }).select?.name ?? '' : '';
+          return {
+            meetingDate:    getDate('Meeting Date'),
+            meetingType:    getSelect('Meeting Type'),
+            notes:          getText('Notes'),
+            actionItems:    getText('Action Items'),
+            nextReviewDate: getDate('Next Review Date'),
+          };
+        });
+    } catch (e) { console.error('Meeting notes fetch failed:', e); }
+  }
+
+  // ── 5. Assemble context string ─────────────────────────────────────────────
   const lines: string[] = [];
   lines.push(`Current client context: ${name}`);
   lines.push(`- Status: ${status || 'Active'}, Segment: ${segment || 'N/A'}, Risk profile: ${risk || 'N/A'}`);
@@ -268,6 +314,21 @@ async function buildClientContext(
   } else {
     lines.push('');
     lines.push('Portfolio: No active holdings on record.');
+  }
+
+  // Meeting notes
+  if (meetings.length > 0) {
+    lines.push('');
+    lines.push(`Meeting history (last ${meetings.length} meetings):`);
+    for (const m of meetings) {
+      lines.push(`\n[${m.meetingDate}${m.meetingType ? ' · ' + m.meetingType : ''}]`);
+      if (m.notes)          lines.push(`  Notes: ${m.notes}`);
+      if (m.actionItems)    lines.push(`  Action items: ${m.actionItems}`);
+      if (m.nextReviewDate) lines.push(`  Next review set: ${m.nextReviewDate}`);
+    }
+  } else {
+    lines.push('');
+    lines.push('Meeting history: No meeting notes recorded yet.');
   }
 
   const activePolicies = policies.filter(p => p.status === 'Active');
