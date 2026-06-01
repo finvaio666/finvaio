@@ -41,6 +41,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const [advisor, setAdvisor]   = useState({ name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' });
   const [features, setFeatures] = useState<string[]>([]);
+  const [isAdmin,  setIsAdmin]  = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -48,10 +49,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       .then(d => {
         if (d.name) setAdvisor({
           name:     d.name,
-          role:     d.role === 'Admin' ? 'Senior Consultant' : 'Financial Advisor',
+          role:     d.role === 'Admin' ? 'Administrator' : 'Financial Advisor',
           initials: d.initials || d.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
         });
         if (d.features) setFeatures(d.features);
+        if (d.role === 'Admin') setIsAdmin(true);
       })
       .catch(() => {});
   }, []);
@@ -108,6 +110,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </div>
             );
           })}
+          {/* Admin-only section */}
+          {isAdmin && (
+            <div>
+              <div className="nav-label">Admin</div>
+              <Link href="/admin" className={`nav-item ${isActive('/admin') ? 'active' : ''}`} onClick={onClose}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                Admin Dashboard
+              </Link>
+            </div>
+          )}
         </nav>
 
         <div className="sidebar-footer">
