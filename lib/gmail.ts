@@ -47,6 +47,7 @@ export interface SendOptions {
   to:        string;
   subject:   string;
   body:      string;       // plain text
+  from?:     string;       // explicit From — forces the real Gmail address, bypassing misconfigured send-as aliases
   threadId?: string;       // set when replying — Gmail groups into same thread
   inReplyTo?: string;      // Message-ID header of the message being replied to
   references?: string;     // References header chain
@@ -545,12 +546,16 @@ export async function sendEmail(
 ): Promise<string> { // returns messageId
   const gmail = getGmailClient(refreshToken);
 
-  const lines: string[] = [
+  const lines: string[] = [];
+  // Explicit From forces the real Gmail address, bypassing any misconfigured
+  // "Send mail as" alias that would otherwise cause delivery to bounce.
+  if (opts.from) lines.push(`From: ${opts.from}`);
+  lines.push(
     `To: ${opts.to}`,
     `Subject: ${opts.subject}`,
     'Content-Type: text/plain; charset=utf-8',
     'MIME-Version: 1.0',
-  ];
+  );
   if (opts.inReplyTo)  lines.push(`In-Reply-To: ${opts.inReplyTo}`);
   if (opts.references) lines.push(`References: ${opts.references}`);
   lines.push('', opts.body);

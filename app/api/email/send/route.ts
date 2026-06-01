@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       to:        body.to,
       subject:   body.subject,
       body:      body.body,
+      from:      config.gmailAddress || undefined, // force real Gmail address, bypass misconfigured alias
       threadId:  body.threadId,
       inReplyTo: body.inReplyTo,
       references: body.references,
