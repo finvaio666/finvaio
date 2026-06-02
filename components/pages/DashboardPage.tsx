@@ -3,7 +3,117 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
+
+// ─── Ask ARIA — dashboard daily co-pilot ─────────────────────────────────────
+function AskAria({ buildContext }: { buildContext: () => string }) {
+  const [question, setQuestion] = useState('');
+  const [answer,   setAnswer]   = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [asked,    setAsked]    = useState('');
+
+  async function ask(q: string) {
+    const query = q.trim();
+    if (!query || loading) return;
+    setLoading(true); setAnswer(''); setAsked(query); setQuestion('');
+    try {
+      const res = await fetch('/api/dashboard-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: query, context: buildContext() }),
+      });
+      const data = await res.json();
+      setAnswer(data.answer || data.error || 'No response.');
+    } catch {
+      setAnswer('Sorry, I could not reach the assistant. Please try again.');
+    }
+    setLoading(false);
+  }
+
+  const quick = [
+    "What should I focus on today?",
+    "What's urgent right now?",
+    "Who do I need to follow up with?",
+    "Any reviews or birthdays coming up?",
+  ];
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(243,115,56,0.08), rgba(243,115,56,0.02))',
+      border: '1px solid rgba(243,115,56,0.25)', borderRadius: 14,
+      padding: '16px 18px', marginBottom: 20,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <div style={{ width: 30, height: 30, borderRadius: 9, background: '#F37338', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>💬</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Ask ARIA</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>your daily co-pilot</div>
+      </div>
+
+      {/* Input */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <input
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') ask(question); }}
+          placeholder="Ask anything about your day — e.g. what's urgent today?"
+          style={{
+            flex: 1, padding: '10px 14px', fontSize: 13,
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 'var(--r-pill)', color: 'var(--text)', fontFamily: 'var(--font-sans)',
+          }}
+        />
+        <button
+          onClick={() => ask(question)}
+          disabled={loading || !question.trim()}
+          style={{
+            padding: '10px 20px', fontSize: 13, fontWeight: 700,
+            background: '#F37338', color: '#fff', border: 'none', borderRadius: 'var(--r-pill)',
+            cursor: loading || !question.trim() ? 'not-allowed' : 'pointer',
+            opacity: loading || !question.trim() ? 0.6 : 1, whiteSpace: 'nowrap',
+          }}
+        >{loading ? '…' : 'Ask'}</button>
+      </div>
+
+      {/* Quick buttons */}
+      {!answer && !loading && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {quick.map(q => (
+            <button
+              key={q}
+              onClick={() => ask(q)}
+              style={{
+                padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 'var(--r-pill)', color: 'var(--text2)', cursor: 'pointer',
+              }}
+            >{q}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Answer */}
+      {(loading || answer) && (
+        <div style={{ marginTop: 12, padding: '12px 16px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+          {asked && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8, fontStyle: 'italic' }}>“{asked}”</div>}
+          {loading ? (
+            <div style={{ fontSize: 13, color: 'var(--text3)' }}>🤖 Thinking…</div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }} className="aria-answer">
+              <ReactMarkdown>{answer}</ReactMarkdown>
+            </div>
+          )}
+          {answer && !loading && (
+            <button
+              onClick={() => { setAnswer(''); setAsked(''); }}
+              style={{ marginTop: 10, padding: '4px 12px', fontSize: 11, background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', color: 'var(--text3)', cursor: 'pointer' }}
+            >Clear</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface InsurancePolicy {
@@ -138,8 +248,48 @@ export default function DashboardPage() {
     cursor: 'pointer', transition: 'background 0.12s',
   };
 
+  // Build a live snapshot of everything actionable for the AI co-pilot
+  function buildContext(): string {
+    const L: string[] = [];
+    L.push(`Total clients: ${clients.length} (${activeCount} active, ${prospectCount} prospects). Combined AUM: ${formatAUM(totalAum)}.`);
+
+    L.push('\n# REVIEWS DUE (next 14 days)');
+    if (reviewAlerts.length === 0) L.push('None.');
+    else reviewAlerts.forEach(c => {
+      const d = daysUntil(c.nextReview) ?? 0;
+      L.push(`- ${c.name}: review ${fmt(c.nextReview)} (${d < 0 ? `${Math.abs(d)}d OVERDUE` : d === 0 ? 'TODAY' : `in ${d}d`}); AUM ${formatAUM(c.aum)}, ${c.risk || 'n/a'} risk`);
+    });
+
+    L.push('\n# PENDING FOLLOW-UPS (emails to institutions awaiting reply)');
+    if (followUps.length === 0) L.push('None.');
+    else followUps.forEach(f => L.push(`- "${f.subject}" to ${f.toName}: waiting ${f.daysWaiting}d${f.isOverdue ? ' (OVERDUE)' : ''}`));
+
+    L.push('\n# NEW CLIENT CORRESPONDENCE (unactioned institution emails)');
+    if (clientAlerts.length === 0) L.push('None.');
+    else clientAlerts.forEach(a => L.push(`- ${a.clientName}: "${a.subject}" from ${a.fromName} (${fmtShort(a.date)})${a.isRead ? '' : ' [NEW]'}`));
+
+    L.push('\n# UPCOMING BIRTHDAYS (next 30 days)');
+    if (upcomingBirthdays.length === 0) L.push('None.');
+    else upcomingBirthdays.forEach(c => { const d = daysUntilBirthday(c.dob); L.push(`- ${c.name}: in ${d}d`); });
+
+    L.push('\n# POLICIES EXPIRING (next 60 days)');
+    if (expiringPolicies.length === 0) L.push('None.');
+    else expiringPolicies.forEach(p => L.push(`- ${p.clientName}: ${p.policyName} (${p.insurer}) expires ${fmt(p.maturityDate)}`));
+
+    L.push('\n# RECENT MEETINGS & OPEN ACTION ITEMS');
+    if (recentMeetings.length === 0) L.push('None.');
+    else recentMeetings.forEach(m => {
+      L.push(`- ${m.clientName} (${m.meetingType}, ${fmt(m.meetingDate)})${m.actionItems?.trim() ? `: ACTION → ${m.actionItems.trim()}` : ''}`);
+    });
+
+    return L.join('\n');
+  }
+
   return (
     <>
+      {/* ── Ask ARIA — daily co-pilot ── */}
+      <AskAria buildContext={buildContext} />
+
       {/* ── Stat Cards ── */}
       <div className="stat-grid">
         <div className="stat-card green" onClick={() => router.push('/clients')} style={{ cursor: 'pointer' }}>
