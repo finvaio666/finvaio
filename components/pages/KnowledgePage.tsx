@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 const KB_ITEMS = [
   { tag: 'EPF / KWSP', title: 'EPF i-Saraan Guide', desc: 'Voluntary contribution scheme, eligibility, tax relief up to RM 4,000, how to advise clients.', date: 'Ask AI for full guide →', prompt: 'Explain EPF i-Saraan voluntary contribution scheme for a Malaysian financial consultant to advise clients on — include eligibility, contribution limits, tax relief, and how to apply' },
@@ -13,10 +14,22 @@ const KB_ITEMS = [
 
 export default function KnowledgePage() {
   const router = useRouter();
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.role === 'Admin') setAllowed(true);
+      else { setAllowed(false); router.replace('/'); }
+    }).catch(() => { setAllowed(false); router.replace('/'); });
+  }, [router]);
 
   function askAI(prompt: string) {
     sessionStorage.setItem('aiPreloadPrompt', prompt);
     router.push('/ai');
+  }
+
+  if (allowed !== true) {
+    return <div style={{ padding: '64px 32px', textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}>Loading…</div>;
   }
 
   return (

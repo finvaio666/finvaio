@@ -183,7 +183,7 @@ function SecurityTab() {
 
 const INST_TYPES = ['insurance', 'fund', 'other'] as const;
 
-function EmailTab() {
+function EmailTab({ isAdmin }: { isAdmin: boolean }) {
   const [gmailConnected,   setGmailConnected]   = useState(false);
   const [gmailAddr,        setGmailAddr]        = useState('');
   const [outlookConnected, setOutlookConnected] = useState(false);
@@ -301,7 +301,23 @@ function EmailTab() {
         </Row>
       </Section>
 
-      {/* Institution Directory */}
+      {/* Institution Directory — admin-only management */}
+      {!isAdmin ? (
+        <Section title="Institution Directory" desc="The list of monitored institutions is managed by your administrator.">
+          {institutions.length === 0 ? (
+            <div style={{ padding: '20px', color: 'var(--text3)', fontSize: 13 }}>No institutions configured yet. Ask your admin to add the insurance companies and fund houses you work with.</div>
+          ) : (
+            institutions.map(inst => (
+              <div key={inst.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{inst.name}</span>
+                <Badge label={inst.type} color={inst.type === 'insurance' ? '#818cf8' : inst.type === 'fund' ? '#F37338' : 'var(--text3)'} />
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>@{inst.domain}</span>
+              </div>
+            ))
+          )}
+          <div style={{ padding: '12px 20px', fontSize: 12, color: 'var(--text3)' }}>🔒 Only admins can add or remove institutions.</div>
+        </Section>
+      ) : (
       <Section title="Institution Directory" desc="Emails from these domains are automatically pulled into Email Hub. Add all insurance companies and fund houses you work with.">
         {/* Existing list */}
         {institutions.length === 0 ? (
@@ -361,6 +377,7 @@ function EmailTab() {
           </div>
         </div>
       </Section>
+      )}
     </div>
   );
 }
@@ -583,7 +600,7 @@ export default function SettingsPage() {
         <div style={{ maxWidth: 680 }}>
           {tab === 'profile'  && <ProfileTab  advisorId={advisorId} />}
           {tab === 'security' && <SecurityTab />}
-          {tab === 'email'    && <EmailTab />}
+          {tab === 'email'    && <EmailTab isAdmin={isAdmin} />}
           {tab === 'users'    && <UsersTab />}
           {tab === 'about'    && <AboutTab />}
         </div>

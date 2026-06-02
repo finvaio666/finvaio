@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Institution whitelist management is admin-only
+  const adminCfg = await getAdvisorConfig(advisorId);
+  if (adminCfg?.role !== 'Admin') {
+    return NextResponse.json({ error: 'Only admins can manage the institution whitelist.' }, { status: 403 });
+  }
+
   let body: { institutions: Institution[] };
   try {
     body = await req.json();

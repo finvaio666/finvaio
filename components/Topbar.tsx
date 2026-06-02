@@ -6,8 +6,8 @@ import { useEffect, useState } from 'react';
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/clients': 'Clients',
-  '/portfolio': 'Portfolio',
-  '/reviews': 'Reviews',
+  '/portfolio': 'Investment',
+  '/reviews': 'Meetings',
   '/cashflow': 'Cash Flow',
   '/insurance': 'Insurance',
   '/templates': 'Templates',
