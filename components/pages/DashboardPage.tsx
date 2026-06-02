@@ -32,7 +32,7 @@ function AskAria({ buildContext }: { buildContext: () => string }) {
   }
 
   const quick = [
-    "What should I focus on today?",
+    "Draft my morning plan",
     "What's urgent right now?",
     "Who do I need to follow up with?",
     "Any reviews or birthdays coming up?",
