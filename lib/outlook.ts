@@ -120,11 +120,17 @@ function stripHtml(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    // Preserve structure: convert block/line elements to newlines BEFORE stripping
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"')
     .replace(/&[a-z]+;/gi, ' ')
-    .replace(/[ \t]{2,}/g, ' ').replace(/(\n\s*){3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')      // collapse runs of spaces
+    .replace(/ *\n */g, '\n')        // trim spaces around newlines
+    .replace(/\n{3,}/g, '\n\n')      // cap blank lines
     .trim();
 }
 
@@ -186,8 +192,10 @@ export async function getThread(
   advisorEmail: string,
 ): Promise<EmailThread> {
   const token = await getAccessToken(refreshToken);
+  // conversationId contains +, /, = — encode the whole filter expression
+  const filter = encodeURIComponent(`conversationId eq '${threadId}'`);
   const res = await graph(token,
-    `/me/messages?$filter=conversationId eq '${threadId}'&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,internetMessageId&$orderby=receivedDateTime asc&$top=50`);
+    `/me/messages?$filter=${filter}&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,internetMessageId&$orderby=receivedDateTime asc&$top=50`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'Graph thread failed');
   const msgs: GraphMessage[] = data.value ?? [];
@@ -274,8 +282,9 @@ export async function getRecentInbound(
   if (domains.length === 0) return [];
   const token = await getAccessToken(refreshToken);
   const since = new Date(Date.now() - days * 86400000).toISOString();
+  const rfilter = encodeURIComponent(`receivedDateTime ge ${since}`);
   const res = await graph(token,
-    `/me/messages?$filter=receivedDateTime ge ${since}&$top=${maxResults}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients,categories&$orderby=receivedDateTime desc`);
+    `/me/messages?$filter=${rfilter}&$top=${maxResults}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients,categories&$orderby=receivedDateTime desc`);
   const data = await res.json();
   if (!res.ok) return [];
   const msgs: GraphMessage[] = data.value ?? [];
@@ -304,8 +313,9 @@ export async function getFollowUps(
   if (domains.length === 0) return [];
   const token = await getAccessToken(refreshToken);
   const since = new Date(Date.now() - 60 * 86400000).toISOString();
+  const sfilter = encodeURIComponent(`sentDateTime ge ${since}`);
   const res = await graph(token,
-    `/me/mailFolders/sentitems/messages?$filter=sentDateTime ge ${since}&$top=40&$select=id,conversationId,subject,toRecipients,sentDateTime,categories&$orderby=sentDateTime desc`);
+    `/me/mailFolders/sentitems/messages?$filter=${sfilter}&$top=40&$select=id,conversationId,subject,toRecipients,sentDateTime,categories&$orderby=sentDateTime desc`);
   const data = await res.json();
   if (!res.ok) return [];
   const msgs: GraphMessage[] = data.value ?? [];
@@ -353,7 +363,8 @@ async function addCategory(refreshToken: string, messageId: string, category: st
 export async function markThreadSeen(refreshToken: string, threadId: string): Promise<void> {
   // threadId is conversationId; tag the latest message in it
   const token = await getAccessToken(refreshToken);
-  const res = await graph(token, `/me/messages?$filter=conversationId eq '${threadId}'&$select=id&$top=1`);
+  const filter = encodeURIComponent(`conversationId eq '${threadId}'`);
+  const res = await graph(token, `/me/messages?$filter=${filter}&$select=id&$top=1`);
   const data = await res.json().catch(() => ({}));
   const id = data.value?.[0]?.id;
   if (id) await addCategory(refreshToken, id, 'ARIA/Seen');
@@ -362,7 +373,8 @@ export async function markThreadSeen(refreshToken: string, threadId: string): Pr
 export async function closeThread(refreshToken: string, threadId: string): Promise<void> {
   // threadId is conversationId — tag the latest message in it
   const token = await getAccessToken(refreshToken);
-  const res = await graph(token, `/me/messages?$filter=conversationId eq '${threadId}'&$select=id&$top=1`);
+  const filter = encodeURIComponent(`conversationId eq '${threadId}'`);
+  const res = await graph(token, `/me/messages?$filter=${filter}&$select=id&$top=1`);
   const data = await res.json().catch(() => ({}));
   const id = data.value?.[0]?.id;
   if (id) await addCategory(refreshToken, id, 'ARIA/Closed');
