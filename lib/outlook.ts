@@ -242,26 +242,21 @@ export async function searchClientEmails(
 ): Promise<EmailSummary[]> {
   if (domains.length === 0 || !clientName.trim()) return [];
   const token = await getAccessToken(refreshToken);
+  // Search the WHOLE mailbox by client name (not just recent mail) so older
+  // correspondence is found too. $search scans subject + body server-side.
   const res = await graph(token,
-    `/me/messages?$top=150&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients&$orderby=receivedDateTime desc`);
+    `/me/messages?$search="${encodeURIComponent(clientName.trim())}"&$top=100&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients`);
   const data = await res.json();
   if (!res.ok) return [];
   const msgs: GraphMessage[] = data.value ?? [];
-
-  const parts = clientName.trim().toLowerCase().split(/\s+/);
-  const first = parts[0] ?? '';
-  const last  = parts.length > 1 ? parts[parts.length - 1] : '';
-  const full  = clientName.trim().toLowerCase();
-  const wordIn = (h: string, w: string) => w.length > 0 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(h);
 
   const seen = new Set<string>();
   const out: EmailSummary[] = [];
   for (const m of msgs) {
     const fromAddr = m.from?.emailAddress?.address ?? '';
     const toAddr   = m.toRecipients?.[0]?.emailAddress?.address ?? '';
+    // Keep only emails involving a whitelisted institution
     if (!domainMatches(fromAddr, domains) && !domainMatches(toAddr, domains)) continue;
-    const hay = `${m.subject ?? ''} ${m.bodyPreview ?? ''}`.toLowerCase();
-    if (!(hay.includes(full) || (wordIn(hay, first) && wordIn(hay, last)))) continue;
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
     seen.add(cid);
