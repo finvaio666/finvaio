@@ -85,24 +85,30 @@ function Badge({ label, color }: { label: string; color: string }) {
 // ── Tab: Profile ──────────────────────────────────────────────────────────────
 
 function ProfileTab({ advisorId }: { advisorId: string }) {
-  const [name,    setName]    = useState('');
-  const [gmail,   setGmail]   = useState('');
-  const [role,    setRole]    = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
-  const [saved,   setSaved]   = useState(false);
-  const [err,     setErr]     = useState('');
+  const [name,     setName]     = useState('');
+  const [role,     setRole]     = useState('');
+  const [provider, setProvider] = useState('gmail');
+  const [gmailAddr,   setGmailAddr]   = useState('');
+  const [outlookAddr, setOutlookAddr] = useState('');
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+  const [err,      setErr]      = useState('');
 
   useEffect(() => {
     fetch('/api/settings/profile').then(r => r.json()).then(d => {
-      setName(d.name ?? ''); setGmail(d.gmailAddress ?? ''); setRole(d.role ?? 'Advisor');
+      setName(d.name ?? '');
+      setRole(d.role ?? 'Advisor');
+      setProvider(d.emailProvider ?? 'gmail');
+      setGmailAddr(d.gmailAddress ?? '');
+      setOutlookAddr(d.outlookAddress ?? '');
       setLoading(false);
     });
   }, []);
 
   async function save() {
     setSaving(true); setErr(''); setSaved(false);
-    const res  = await fetch('/api/settings/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, gmailAddress: gmail }) });
+    const res  = await fetch('/api/settings/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
     const data = await res.json();
     if (data.error) setErr(data.error);
     else { setSaved(true); setTimeout(() => setSaved(false), 2000); }
@@ -110,6 +116,10 @@ function ProfileTab({ advisorId }: { advisorId: string }) {
   }
 
   if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading…</div>;
+
+  // Show the address of whichever provider is active
+  const activeAddr = provider === 'outlook' ? outlookAddr : gmailAddr;
+  const providerLabel = provider === 'outlook' ? 'Microsoft 365 / Outlook' : 'Gmail';
 
   return (
     <div>
@@ -120,8 +130,16 @@ function ProfileTab({ advisorId }: { advisorId: string }) {
             <ErrMsg msg={err} />
           </div>
         </Row>
-        <Row label="Gmail Address" desc="Your connected Gmail (used for Email Hub)">
-          <Input value={gmail} onChange={setGmail} placeholder="e.g. sky@gmail.com" type="email" />
+        <Row label="Connected Email" desc="The mailbox powering your Email Hub — manage in Settings → Email">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {activeAddr
+              ? <>
+                  <span style={{ fontSize: 13, color: 'var(--text)' }}>{activeAddr}</span>
+                  <Badge label={providerLabel} color={provider === 'outlook' ? '#0078d4' : '#ea4335'} />
+                </>
+              : <Badge label="Not connected" color="var(--text3)" />
+            }
+          </div>
         </Row>
         <Row label="Role" desc="Your system role — contact admin to change">
           <Badge label={role} color={role === 'Admin' ? '#F37338' : '#818cf8'} />
