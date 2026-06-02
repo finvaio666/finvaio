@@ -130,6 +130,12 @@ function stripHtml(html: string): string {
 
 // ── List / search / threads ───────────────────────────────────────────────────
 
+/** True if an email address belongs to one of the whitelisted domains. */
+function domainMatches(addr: string, domains: string[]): boolean {
+  const d = (addr.match(/@([\w.-]+)/)?.[1] ?? addr).toLowerCase();
+  return domains.some(w => d === w.toLowerCase() || d.endsWith(`.${w.toLowerCase()}`));
+}
+
 export async function listEmails(
   refreshToken: string,
   domains: string[],
@@ -138,23 +144,27 @@ export async function listEmails(
 ): Promise<EmailSummary[]> {
   if (domains.length === 0) return [];
   const token = await getAccessToken(refreshToken);
-  // Graph $search over from/to using the domains
-  const searchTerms = domains.map(d => `"${d}"`).join(' OR ');
+  // Reliable approach: fetch recent messages, then filter by domain client-side.
+  // Graph $search is fuzzy and unreliable for matching sender-address domains.
   const res = await graph(token,
-    `/me/messages?$search=${encodeURIComponent(searchTerms)}&$top=${maxResults}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients,categories`);
+    `/me/messages?$top=150&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients,categories&$orderby=receivedDateTime desc`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'Graph list failed');
   const msgs: GraphMessage[] = data.value ?? [];
 
-  // Dedup by conversation
   const seen = new Set<string>();
   const out: EmailSummary[] = [];
   for (const m of msgs) {
+    if ((m.categories ?? []).includes('ARIA/Closed')) continue;
+    const fromAddr = m.from?.emailAddress?.address ?? m.sender?.emailAddress?.address ?? '';
+    const toAddr   = m.toRecipients?.[0]?.emailAddress?.address ?? '';
+    // Keep emails received FROM a whitelisted institution OR sent TO one
+    if (!domainMatches(fromAddr, domains) && !domainMatches(toAddr, domains)) continue;
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
-    if ((m.categories ?? []).includes('ARIA/Closed')) continue;
     seen.add(cid);
     out.push(toSummary(m, advisorEmail));
+    if (out.length >= maxResults) break;
   }
   return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
@@ -222,13 +232,25 @@ export async function searchClientEmails(
   if (domains.length === 0 || !clientName.trim()) return [];
   const token = await getAccessToken(refreshToken);
   const res = await graph(token,
-    `/me/messages?$search="${encodeURIComponent(clientName)}"&$top=30&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients`);
+    `/me/messages?$top=150&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients&$orderby=receivedDateTime desc`);
   const data = await res.json();
   if (!res.ok) return [];
   const msgs: GraphMessage[] = data.value ?? [];
+
+  const parts = clientName.trim().toLowerCase().split(/\s+/);
+  const first = parts[0] ?? '';
+  const last  = parts.length > 1 ? parts[parts.length - 1] : '';
+  const full  = clientName.trim().toLowerCase();
+  const wordIn = (h: string, w: string) => w.length > 0 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(h);
+
   const seen = new Set<string>();
   const out: EmailSummary[] = [];
   for (const m of msgs) {
+    const fromAddr = m.from?.emailAddress?.address ?? '';
+    const toAddr   = m.toRecipients?.[0]?.emailAddress?.address ?? '';
+    if (!domainMatches(fromAddr, domains) && !domainMatches(toAddr, domains)) continue;
+    const hay = `${m.subject ?? ''} ${m.bodyPreview ?? ''}`.toLowerCase();
+    if (!(hay.includes(full) || (wordIn(hay, first) && wordIn(hay, last)))) continue;
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
     seen.add(cid);
