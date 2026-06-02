@@ -402,8 +402,10 @@ export async function getRecentInbound(
   const gmail = getGmailClient(refreshToken);
 
   const domainQ = domains.map(d => `@${d}`).join(' OR ');
-  // Inbound institution emails not yet closed or seen in ARIA
-  const q = `from:(${domainQ}) newer_than:${days}d -label:ARIA/Closed -label:ARIA/Seen`;
+  // Institution emails (received from them, OR forwarded by the advisor to/about
+  // them) in the window, excluding closed/seen. Broadened so forwarded client
+  // correspondence also surfaces on the dashboard.
+  const q = `(from:(${domainQ}) OR (from:me to:(${domainQ}))) newer_than:${days}d -label:ARIA/Closed -label:ARIA/Seen`;
 
   const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults });
   const ids = (listRes.data.messages ?? []).map(m => m.id!);
