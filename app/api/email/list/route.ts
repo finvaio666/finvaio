@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, listEmails } from '@/lib/emailService';
-import { classifyEmail } from '@/lib/emailClassifier';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,24 +42,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    let emails = await listEmails(config, domains, 60);
-
-    // If domains are configured, do AI second-pass classification on borderline emails
-    // (skip if no domains — too expensive to classify everything)
-    if (domains.length > 0) {
-      const classified = await Promise.all(
-        emails.map(async email => {
-          // Skip AI for emails clearly from whitelisted domains
-          const fromDomain = email.from.match(/@([\w.-]+)>/)?.[1] ?? '';
-          if (domains.some(d => fromDomain.endsWith(d))) return email;
-
-          const result = await classifyEmail(email.from, email.subject, email.snippet).catch(() => null);
-          if (!result?.isWorkRelated) return null;
-          return email;
-        })
-      );
-      emails = classified.filter(Boolean) as typeof emails;
-    }
+    // Emails are already restricted to whitelisted institution domains, so they
+    // are work-related by definition. No AI second-pass — it was wrongly dropping
+    // legitimate automated notices (e.g. e-statements, transaction confirmations).
+    const emails = await listEmails(config, domains, 60);
 
     return NextResponse.json({
       connected: true,
