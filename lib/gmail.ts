@@ -112,6 +112,20 @@ function parseName(fromHeader: string): { name: string; email: string } {
 }
 
 /**
+ * Sanitise HTML for safe rendering — remove scripts, event handlers and
+ * javascript: URLs. Rendered inside a sandboxed iframe as a second layer.
+ * Inline styles and tables are preserved so the email looks like the original.
+ */
+export function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<meta[^>]*>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/javascript:/gi, '');
+}
+
+/**
  * Clean email body text for display — strip HTML, image references,
  * encoded tracking URLs and boilerplate clutter.
  */
@@ -289,9 +303,8 @@ export async function getThread(
     const dateRaw = headerVal(headers, 'Date');
     const { text, html } = extractBody(msg.payload as Parameters<typeof extractBody>[0]);
 
-    // Use plain text if available; fall back to cleaned HTML
-    const rawBody = text || html;
-    const cleanBody = cleanBodyForDisplay(rawBody);
+    // Keep the rich HTML (sanitised) for faithful display; plain text as fallback
+    const cleanBody = cleanBodyForDisplay(text || html);
 
     return {
       id:            msg.id ?? '',
@@ -302,7 +315,7 @@ export async function getThread(
       toEmail,
       date:          dateRaw ? new Date(dateRaw).toISOString() : new Date().toISOString(),
       body:          cleanBody,
-      bodyHtml:      '',   // already cleaned into body — no raw HTML needed client-side
+      bodyHtml:      html ? sanitizeHtml(html) : '',
       isFromAdvisor: fromEmail.toLowerCase().includes(advisorEmail.toLowerCase()),
       messageIdHeader: headerVal(headers, 'Message-ID'),
     } as EmailMessage;

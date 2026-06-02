@@ -5,6 +5,7 @@
  */
 
 import type { EmailSummary, EmailThread, EmailMessage, SendOptions, FollowUp } from './gmail';
+import { sanitizeHtml } from './gmail';
 
 const AUTHORITY = 'https://login.microsoftonline.com/common/oauth2/v2.0';
 const GRAPH     = 'https://graph.microsoft.com/v1.0';
@@ -205,7 +206,8 @@ export async function getThread(
     const fromName = m.from?.emailAddress?.name ?? fromAddr;
     const toAddr   = m.toRecipients?.[0]?.emailAddress?.address ?? '';
     const raw      = m.body?.content ?? '';
-    const text     = m.body?.contentType?.toLowerCase() === 'html' ? stripHtml(raw) : raw.trim();
+    const isHtml   = m.body?.contentType?.toLowerCase() === 'html';
+    const text     = isHtml ? stripHtml(raw) : raw.trim();
     return {
       id:            m.id,
       from:          fromAddr,
@@ -215,7 +217,7 @@ export async function getThread(
       toEmail:       toAddr,
       date:          m.receivedDateTime || m.sentDateTime || new Date().toISOString(),
       body:          text,
-      bodyHtml:      '',
+      bodyHtml:      isHtml ? sanitizeHtml(raw) : '',
       isFromAdvisor: fromAddr.toLowerCase() === advisorEmail.toLowerCase(),
       messageIdHeader: m.internetMessageId ?? '',
     };

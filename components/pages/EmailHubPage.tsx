@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { EmailSummary, EmailThread } from '@/lib/gmail';
 import type { SummaryResult } from '@/lib/emailClassifier';
@@ -105,6 +105,43 @@ function ConnectGmailPanel({ onConnect }: { onConnect: () => void }) {
         ARIA only reads emails from whitelisted domains you configure. Your email stays private.
       </div>
     </div>
+  );
+}
+
+// ── HTML email body (sandboxed iframe — preserves tables & formatting) ─────────
+
+function HtmlBody({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(120);
+
+  function onLoad() {
+    try {
+      const doc = ref.current?.contentDocument;
+      if (doc?.body) setHeight(Math.min(doc.body.scrollHeight + 24, 1200));
+    } catch { /* cross-origin — keep default */ }
+  }
+
+  const srcDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">
+<style>
+  body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#1b1b1b;line-height:1.6;margin:0;padding:2px;word-break:break-word;}
+  img{max-width:100%;height:auto;}
+  table{max-width:100%;border-collapse:collapse;}
+  td,th{padding:3px 6px;}
+  a{color:#F37338;}
+  blockquote{border-left:3px solid #ddd;margin:8px 0;padding-left:10px;color:#666;}
+</style></head><body>${html}</body></html>`;
+
+  // sandbox WITHOUT allow-scripts → email JS can't run; allow-same-origin only
+  // so we can measure height; allow-popups so links can open in a new tab.
+  return (
+    <iframe
+      ref={ref}
+      onLoad={onLoad}
+      sandbox="allow-same-origin allow-popups"
+      srcDoc={srcDoc}
+      style={{ width: '100%', border: 0, height, background: '#fff', borderRadius: 6 }}
+      title="Email content"
+    />
   );
 }
 
@@ -298,9 +335,12 @@ function EmailDetailPanel({
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>{formatDate(msg.date)}</span>
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {msg.body || msg.bodyHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || '(No content)'}
-                </div>
+                {msg.bodyHtml
+                  ? <HtmlBody html={msg.bodyHtml} />
+                  : <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {msg.body || '(No content)'}
+                    </div>
+                }
               </div>
             ))}
           </div>
