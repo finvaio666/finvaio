@@ -446,7 +446,7 @@ export default function EmailHubPage() {
   // Check for connection success/error in URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('connected') === '1') {
+    if (params.get('connected')) {
       window.history.replaceState({}, '', '/emails');
     }
     if (params.get('error')) {

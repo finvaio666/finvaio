@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { listEmails } from '@/lib/gmail';
+import { getActive, listEmails } from '@/lib/emailService';
 import { classifyEmail } from '@/lib/emailClassifier';
 
 export const dynamic = 'force-dynamic';
@@ -18,8 +18,9 @@ export async function GET(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   if (!config) return NextResponse.json({ error: 'Advisor not found' }, { status: 401 });
 
-  if (!config.gmailRefreshToken) {
-    return NextResponse.json({ error: 'Gmail not connected', connected: false }, { status: 200 });
+  const active = getActive(config);
+  if (!active.connected) {
+    return NextResponse.json({ error: 'Email not connected', connected: false }, { status: 200 });
   }
 
   // Parse institutions for domain whitelist
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
     try { institutions = JSON.parse(config.institutionsJson); } catch { /* ignore */ }
   }
   const domains = [...new Set(institutions.map(i => i.domain).filter(Boolean))];
-  const advisorEmail = config.gmailAddress || '';
+  const advisorEmail = active.address || '';
 
   // Strict whitelist: if no institutions configured, return empty — never pull all inbox
   if (domains.length === 0) {
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    let emails = await listEmails(config.gmailRefreshToken, domains, advisorEmail, 60);
+    let emails = await listEmails(config, domains, 60);
 
     // If domains are configured, do AI second-pass classification on borderline emails
     // (skip if no domains — too expensive to classify everything)

@@ -184,8 +184,11 @@ function SecurityTab() {
 const INST_TYPES = ['insurance', 'fund', 'other'] as const;
 
 function EmailTab() {
-  const [gmailConnected, setGmailConnected] = useState(false);
-  const [gmailAddr,      setGmailAddr]      = useState('');
+  const [gmailConnected,   setGmailConnected]   = useState(false);
+  const [gmailAddr,        setGmailAddr]        = useState('');
+  const [outlookConnected, setOutlookConnected] = useState(false);
+  const [outlookAddr,      setOutlookAddr]      = useState('');
+  const [provider,         setProvider]         = useState<'gmail' | 'outlook'>('gmail');
   const [institutions,   setInstitutions]   = useState<Institution[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [saving,         setSaving]         = useState(false);
@@ -205,6 +208,9 @@ function EmailTab() {
     ]).then(([profile, inst]) => {
       setGmailConnected(profile.gmailConnected ?? false);
       setGmailAddr(profile.gmailAddress ?? '');
+      setOutlookConnected(profile.outlookConnected ?? false);
+      setOutlookAddr(profile.outlookAddress ?? '');
+      setProvider((profile.emailProvider as 'gmail' | 'outlook') ?? 'gmail');
       setInstitutions(inst.institutions ?? []);
       setLoading(false);
     });
@@ -213,13 +219,20 @@ function EmailTab() {
   async function connectGmail() {
     const res  = await fetch('/api/email/auth');
     const data = await res.json();
+    if (data.error) { alert(data.error); return; }
     if (data.url) window.location.href = data.url;
   }
 
-  async function disconnectGmail() {
-    if (!confirm('Disconnect Gmail? Email Hub will stop working until reconnected.')) return;
-    await fetch('/api/settings/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gmailRefreshToken: '' }) });
-    setGmailConnected(false);
+  async function connectOutlook() {
+    const res  = await fetch('/api/email/outlook/auth');
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    if (data.url) window.location.href = data.url;
+  }
+
+  async function switchProvider(p: 'gmail' | 'outlook') {
+    setProvider(p);
+    await fetch('/api/email/provider', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: p }) });
   }
 
   function autofillDomain() {
@@ -254,20 +267,35 @@ function EmailTab() {
 
   return (
     <div>
-      {/* Gmail Connection */}
-      <Section title="Gmail Connection" desc="ARIA reads and sends emails on your behalf using your Gmail account.">
+      {/* Email Account Connection — Gmail or Outlook */}
+      <Section title="Email Account" desc="Connect Gmail or Microsoft 365 / Outlook. ARIA reads and sends work emails on your behalf using the active account.">
+        {/* Gmail */}
         <Row
-          label="Gmail Account"
-          desc={gmailConnected ? `Connected as ${gmailAddr || 'your account'}` : 'Not connected — Email Hub is inactive'}
+          label="📧 Gmail"
+          desc={gmailConnected ? `Connected as ${gmailAddr || 'your account'}` : 'Not connected'}
         >
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {gmailConnected && provider === 'gmail' && <Badge label="● Active" color="#22c55e" />}
             {gmailConnected
-              ? <Badge label="✓ Connected" color="#22c55e" />
-              : <Badge label="Not connected" color="var(--text3)" />
+              ? (provider !== 'gmail'
+                  ? <button onClick={() => switchProvider('gmail')} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use Gmail</button>
+                  : <Badge label="✓ Connected" color="#22c55e" />)
+              : <button onClick={connectGmail} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>Connect</button>
             }
-            {gmailConnected
-              ? <button onClick={disconnectGmail} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--red)', cursor: 'pointer' }}>Disconnect</button>
-              : <button onClick={connectGmail} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>📧 Connect Gmail</button>
+          </div>
+        </Row>
+        {/* Outlook */}
+        <Row
+          label="📨 Microsoft 365 / Outlook"
+          desc={outlookConnected ? `Connected as ${outlookAddr || 'your account'}` : 'Not connected'}
+        >
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {outlookConnected && provider === 'outlook' && <Badge label="● Active" color="#22c55e" />}
+            {outlookConnected
+              ? (provider !== 'outlook'
+                  ? <button onClick={() => switchProvider('outlook')} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use Outlook</button>
+                  : <Badge label="✓ Connected" color="#22c55e" />)
+              : <button onClick={connectOutlook} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#0078d4', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>Connect</button>
             }
           </div>
         </Row>

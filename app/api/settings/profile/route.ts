@@ -17,6 +17,9 @@ export async function GET(req: NextRequest) {
     role:              config.role,
     gmailAddress:      config.gmailAddress,
     gmailConnected:    !!config.gmailRefreshToken,
+    outlookAddress:    config.outlookAddress,
+    outlookConnected:  !!config.outlookRefreshToken,
+    emailProvider:     config.emailProvider || 'gmail',
     features:          config.features,
     notionApiKey:      config.notionApiKey ? '••••••••' + config.notionApiKey.slice(-6) : '',
   });

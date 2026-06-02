@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { sendEmail, markAsSent } from '@/lib/gmail';
+import { getActive, sendEmail } from '@/lib/emailService';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,25 +29,19 @@ export async function POST(req: NextRequest) {
   }
 
   const config = await getAdvisorConfig(advisorId);
-  if (!config?.gmailRefreshToken) {
-    return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 });
+  if (!config || !getActive(config).connected) {
+    return NextResponse.json({ error: 'Email not connected' }, { status: 400 });
   }
 
   try {
-    const messageId = await sendEmail(config.gmailRefreshToken, {
-      to:        body.to,
-      subject:   body.subject,
-      body:      body.body,
-      from:      config.gmailAddress || undefined, // force real Gmail address, bypass misconfigured alias
-      threadId:  body.threadId,
-      inReplyTo: body.inReplyTo,
+    const messageId = await sendEmail(config, {
+      to:         body.to,
+      subject:    body.subject,
+      body:       body.body,
+      threadId:   body.threadId,
+      inReplyTo:  body.inReplyTo,
       references: body.references,
     });
-
-    // If this is a new outbound email, add the ARIA/Sent label for monitoring
-    if (body.isNew && messageId) {
-      await markAsSent(config.gmailRefreshToken, messageId).catch(() => {});
-    }
 
     return NextResponse.json({ success: true, messageId });
   } catch (e: unknown) {

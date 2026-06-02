@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { closeThread } from '@/lib/gmail';
+import { getActive, closeThread } from '@/lib/emailService';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +16,12 @@ export async function POST(req: NextRequest) {
   }
 
   const config = await getAdvisorConfig(advisorId);
-  if (!config?.gmailRefreshToken) {
-    return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 });
+  if (!config || !getActive(config).connected) {
+    return NextResponse.json({ error: 'Email not connected' }, { status: 400 });
   }
 
   try {
-    await closeThread(config.gmailRefreshToken, body.messageId);
+    await closeThread(config, body.messageId);
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

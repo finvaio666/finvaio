@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getThread, markThreadSeen } from '@/lib/gmail';
+import { getActive, getThread, markThreadSeen } from '@/lib/emailService';
 import { summarizeEmail } from '@/lib/emailClassifier';
 
 export const dynamic = 'force-dynamic';
@@ -14,17 +14,15 @@ export async function GET(req: NextRequest) {
   if (!threadId) return NextResponse.json({ error: 'Missing thread id' }, { status: 400 });
 
   const config = await getAdvisorConfig(advisorId);
-  if (!config?.gmailRefreshToken) {
-    return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 });
+  if (!config || !getActive(config).connected) {
+    return NextResponse.json({ error: 'Email not connected' }, { status: 400 });
   }
 
-  const advisorEmail = config.gmailAddress || '';
-
   try {
-    const thread = await getThread(config.gmailRefreshToken, threadId, advisorEmail);
+    const thread = await getThread(config, threadId);
 
     // Mark as seen in ARIA once opened — drops it off the dashboard "new" list
-    markThreadSeen(config.gmailRefreshToken, threadId).catch(() => {});
+    markThreadSeen(config, threadId).catch(() => {});
 
     // Generate AI summary from the first (or longest) inbound message
     const inboundMsg = thread.messages.find(m => !m.isFromAdvisor) ?? thread.messages[0];

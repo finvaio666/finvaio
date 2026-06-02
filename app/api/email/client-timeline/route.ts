@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { searchClientEmails } from '@/lib/gmail';
+import { getActive, searchClientEmails } from '@/lib/emailService';
 import type { Institution } from '@/app/api/email/institutions/route';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   if (!config) return NextResponse.json({ error: 'Advisor not found' }, { status: 401 });
 
-  if (!config.gmailRefreshToken) {
+  if (!getActive(config).connected) {
     return NextResponse.json({ emails: [], connected: false });
   }
 
@@ -31,12 +31,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const emails = await searchClientEmails(
-      config.gmailRefreshToken,
-      domains,
-      config.gmailAddress || '',
-      clientName,
-    );
+    const emails = await searchClientEmails(config, domains, clientName);
     return NextResponse.json({ emails, connected: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

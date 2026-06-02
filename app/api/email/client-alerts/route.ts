@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getRecentInbound } from '@/lib/gmail';
+import { getActive, getRecentInbound } from '@/lib/emailService';
 import type { Institution } from '@/app/api/email/institutions/route';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   if (!config) return NextResponse.json({ error: 'Advisor not found' }, { status: 401 });
 
-  if (!config.gmailRefreshToken) return NextResponse.json({ alerts: [], connected: false });
+  if (!getActive(config).connected) return NextResponse.json({ alerts: [], connected: false });
 
   // Domain whitelist
   let institutions: Institution[] = [];
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     if (clientNames.length === 0) return NextResponse.json({ alerts: [] });
 
     // 2. Fetch recent inbound institution emails
-    const emails = await getRecentInbound(config.gmailRefreshToken, domains, 14, 40);
+    const emails = await getRecentInbound(config, domains, 14, 40);
 
     // 3. Match each email to a client by name in subject + snippet.
     //    getRecentInbound already excludes threads labelled ARIA/Seen, so once

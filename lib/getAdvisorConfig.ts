@@ -13,9 +13,12 @@ export interface AdvisorConfig {
   role:               string;
   name:               string;
   // ── Email Hub ──────────────────────────────────────────────────────────────
-  gmailRefreshToken:  string;  // OAuth2 refresh token for this advisor's Gmail
-  gmailAddress:       string;  // advisor's Gmail address (e.g. sky@gmail.com)
-  institutionsJson:   string;  // JSON array of institution contacts
+  emailProvider:        string; // 'gmail' | 'outlook' — which mailbox is active
+  gmailRefreshToken:    string; // OAuth2 refresh token for this advisor's Gmail
+  gmailAddress:         string; // advisor's Gmail address (e.g. sky@gmail.com)
+  outlookRefreshToken:  string; // OAuth2 refresh token for Microsoft 365 / Outlook
+  outlookAddress:       string; // advisor's Outlook/M365 address
+  institutionsJson:     string; // JSON array of institution contacts
 }
 
 // In-process cache — survives warm function re-use, cleared on cold start
@@ -55,9 +58,12 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       role: (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor',
       name: (p['Name']  as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '',
       // Email Hub fields
-      gmailRefreshToken:  rt(p, 'Gmail Refresh Token'),
-      gmailAddress:       rt(p, 'Gmail Address'),
-      institutionsJson:   rt(p, 'Institutions JSON'),
+      emailProvider:       (rt(p, 'Email Provider') || 'gmail').toLowerCase(),
+      gmailRefreshToken:   rt(p, 'Gmail Refresh Token'),
+      gmailAddress:        rt(p, 'Gmail Address'),
+      outlookRefreshToken: rt(p, 'Outlook Refresh Token'),
+      outlookAddress:      rt(p, 'Outlook Address'),
+      institutionsJson:    rt(p, 'Institutions JSON'),
     };
 
     cache.set(advisorId, { config, ts: Date.now() });
@@ -96,6 +102,50 @@ export async function saveGmailToken(
     clearAdvisorCache(advisorId); // force re-read on next request
   } catch (e) {
     console.error('saveGmailToken failed:', e);
+  }
+}
+
+/**
+ * Persist the Outlook (Microsoft 365) OAuth refresh token + address, and set
+ * the active email provider to 'outlook'.
+ */
+export async function saveOutlookToken(
+  advisorId:      string,
+  refreshToken:   string,
+  outlookAddress: string,
+): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+
+  const notion = new Client({ auth: hostKey });
+  try {
+    await notion.pages.update({
+      page_id:    advisorId,
+      properties: {
+        'Outlook Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Outlook Address':       { rich_text: [{ text: { content: outlookAddress } }] },
+        'Email Provider':        { rich_text: [{ text: { content: 'outlook' } }] },
+      } as never,
+    });
+    clearAdvisorCache(advisorId);
+  } catch (e) {
+    console.error('saveOutlookToken failed:', e);
+  }
+}
+
+/** Switch the active email provider (gmail | outlook). */
+export async function setEmailProvider(advisorId: string, provider: 'gmail' | 'outlook'): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+  const notion = new Client({ auth: hostKey });
+  try {
+    await notion.pages.update({
+      page_id:    advisorId,
+      properties: { 'Email Provider': { rich_text: [{ text: { content: provider } }] } } as never,
+    });
+    clearAdvisorCache(advisorId);
+  } catch (e) {
+    console.error('setEmailProvider failed:', e);
   }
 }
 

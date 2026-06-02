@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getFollowUps } from '@/lib/gmail';
+import { getActive, getFollowUps } from '@/lib/emailService';
 import type { Institution } from '@/app/api/email/institutions/route';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   if (!config) return NextResponse.json({ error: 'Advisor not found' }, { status: 401 });
 
-  if (!config.gmailRefreshToken) {
+  if (!getActive(config).connected) {
     return NextResponse.json({ followUps: [], connected: false });
   }
 
@@ -26,12 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const followUps = await getFollowUps(
-      config.gmailRefreshToken,
-      domains,
-      config.gmailAddress || '',
-      3, // overdue after 3 days
-    );
+    const followUps = await getFollowUps(config, domains, 3); // overdue after 3 days
     return NextResponse.json({ followUps, connected: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
