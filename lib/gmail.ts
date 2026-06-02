@@ -605,16 +605,17 @@ export async function markAsSent(refreshToken: string, messageId: string): Promi
 }
 
 /**
- * Mark an email thread as closed (removes from active tracking).
+ * Mark an email thread as closed (removes from active tracking & dashboard).
+ * Thread-level so every message in the conversation carries the label.
  */
-export async function closeThread(refreshToken: string, messageId: string): Promise<void> {
+export async function closeThread(refreshToken: string, threadId: string): Promise<void> {
   const gmail = getGmailClient(refreshToken);
   const labelId = await ensureLabel(gmail, 'ARIA/Closed');
   if (!labelId) return;
 
-  await gmail.users.messages.modify({
+  await gmail.users.threads.modify({
     userId: 'me',
-    id:     messageId,
+    id:     threadId,
     requestBody: { addLabelIds: [labelId] },
   }).catch(() => {});
 }

@@ -553,7 +553,7 @@ export default function EmailHubPage() {
     await fetch('/api/email/close', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messageId: email.id }),
+      body: JSON.stringify({ threadId: email.threadId }),
     });
     setEmails(prev => prev.filter(e => e.threadId !== selectedId));
     setSelectedId(null);

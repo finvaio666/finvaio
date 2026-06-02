@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getActive, sendEmail } from '@/lib/emailService';
+import { getActive, sendEmail, markThreadSeen } from '@/lib/emailService';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
       inReplyTo:  body.inReplyTo,
       references: body.references,
     });
+
+    // Replying = acted on → drop from dashboard "new" list (stays tracked as a
+    // follow-up). New outbound emails don't have a thread to mark.
+    if (!body.isNew && body.threadId) {
+      await markThreadSeen(config, body.threadId).catch(() => {});
+    }
 
     return NextResponse.json({ success: true, messageId });
   } catch (e: unknown) {

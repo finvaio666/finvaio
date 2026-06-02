@@ -331,8 +331,13 @@ export async function markThreadSeen(refreshToken: string, threadId: string): Pr
   if (id) await addCategory(refreshToken, id, 'ARIA/Seen');
 }
 
-export async function closeThread(refreshToken: string, messageId: string): Promise<void> {
-  await addCategory(refreshToken, messageId, 'ARIA/Closed');
+export async function closeThread(refreshToken: string, threadId: string): Promise<void> {
+  // threadId is conversationId — tag the latest message in it
+  const token = await getAccessToken(refreshToken);
+  const res = await graph(token, `/me/messages?$filter=conversationId eq '${threadId}'&$select=id&$top=1`);
+  const data = await res.json().catch(() => ({}));
+  const id = data.value?.[0]?.id;
+  if (id) await addCategory(refreshToken, id, 'ARIA/Closed');
 }
 
 export async function markAsSent(): Promise<void> {
