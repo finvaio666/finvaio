@@ -34,10 +34,10 @@ export function listEmails(config: AdvisorConfig, domains: string[], maxResults?
     : gmail.listEmails(a.token, domains, a.address, maxResults ?? 50);
 }
 
-export function getThread(config: AdvisorConfig, threadId: string): Promise<EmailThread> {
+export function getThread(config: AdvisorConfig, threadId: string, messageId?: string): Promise<EmailThread> {
   const a = getActive(config);
   return a.provider === 'outlook'
-    ? outlook.getThread(a.token, threadId, a.address)
+    ? outlook.getThread(a.token, threadId, a.address, messageId)
     : gmail.getThread(a.token, threadId, a.address);
 }
 

@@ -547,7 +547,7 @@ export default function EmailHubPage() {
     setSummaryLoading(true);
 
     try {
-      const res  = await fetch(`/api/email/thread?id=${encodeURIComponent(email.threadId)}`);
+      const res  = await fetch(`/api/email/thread?id=${encodeURIComponent(email.threadId)}&mid=${encodeURIComponent(email.id)}`);
       const data = await res.json();
       if (data.thread)    setThread(data.thread);
       if (data.aiSummary) setAiSummary(data.aiSummary);

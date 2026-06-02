@@ -191,15 +191,29 @@ export async function getThread(
   refreshToken: string,
   threadId: string, // conversationId
   advisorEmail: string,
+  messageId?: string,
 ): Promise<EmailThread> {
   const token = await getAccessToken(refreshToken);
-  // conversationId contains +, /, = — encode the whole filter expression
-  const filter = encodeURIComponent(`conversationId eq '${threadId}'`);
-  const res = await graph(token,
-    `/me/messages?$filter=${filter}&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,internetMessageId&$orderby=receivedDateTime asc&$top=50`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'Graph thread failed');
-  const msgs: GraphMessage[] = data.value ?? [];
+  const select = 'id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,internetMessageId';
+
+  // Primary: all messages in the conversation
+  let msgs: GraphMessage[] = [];
+  try {
+    const filter = encodeURIComponent(`conversationId eq '${threadId}'`);
+    const res = await graph(token,
+      `/me/messages?$filter=${filter}&$select=${select}&$orderby=receivedDateTime asc&$top=50`);
+    const data = await res.json();
+    if (res.ok) msgs = data.value ?? [];
+  } catch { /* fall through to single-message fetch */ }
+
+  // Fallback: conversation lookup returned nothing — fetch the exact opened message
+  if (msgs.length === 0 && messageId) {
+    try {
+      const res = await graph(token, `/me/messages/${messageId}?$select=${select}`);
+      const data = await res.json();
+      if (res.ok && data.id) msgs = [data];
+    } catch { /* leave empty */ }
+  }
 
   const messages: EmailMessage[] = msgs.map(m => {
     const fromAddr = m.from?.emailAddress?.address ?? '';

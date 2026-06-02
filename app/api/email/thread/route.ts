@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const threadId = searchParams.get('id');
+  const threadId  = searchParams.get('id');
+  const messageId = searchParams.get('mid') ?? undefined;
   if (!threadId) return NextResponse.json({ error: 'Missing thread id' }, { status: 400 });
 
   const config = await getAdvisorConfig(advisorId);
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const thread = await getThread(config, threadId);
+    const thread = await getThread(config, threadId, messageId);
 
     // Note: opening no longer marks it seen — it stays on the dashboard until
     // the advisor acts on it (replies or marks done).
