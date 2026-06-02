@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, searchClientEmails } from '@/lib/emailService';
+import { domainMatches } from '@/lib/outlook';
 import type { Institution } from '@/app/api/email/institutions/route';
 
 export const dynamic = 'force-dynamic';
@@ -42,15 +43,9 @@ export async function GET(req: NextRequest) {
     const last  = parts.length > 1 ? parts[parts.length - 1] : '';
     const full  = clientName.trim().toLowerCase();
 
-    const domainOf = (addr: string) => (addr.match(/@([\w.-]+)/)?.[1] ?? '').toLowerCase();
-    const inWhitelist = (addr: string) => {
-      const d = domainOf(addr);
-      return domains.some(w => d === w.toLowerCase() || d.endsWith(`.${w.toLowerCase()}`));
-    };
-
     const emails = candidates.filter(e => {
-      // Domain check — inbound: from must be whitelisted; outbound: to must be
-      const domainOk = e.direction === 'outbound' ? inWhitelist(e.to) : inWhitelist(e.from);
+      // Domain check (brand-based) — inbound: from must be whitelisted; outbound: to must be
+      const domainOk = e.direction === 'outbound' ? domainMatches(e.to, domains) : domainMatches(e.from, domains);
       if (!domainOk) return false;
 
       // Name relevance — full name, or first AND last as whole words in subject/snippet

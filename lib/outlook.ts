@@ -130,10 +130,21 @@ function stripHtml(html: string): string {
 
 // ── List / search / threads ───────────────────────────────────────────────────
 
-/** True if an email address belongs to one of the whitelisted domains. */
-function domainMatches(addr: string, domains: string[]): boolean {
+/**
+ * True if an email address belongs to one of the whitelisted institutions.
+ * Brand-based: matches on the institution's primary label (e.g. "phillipmutual")
+ * so phillipmutual.com.my, phillipmutual.com and mail.phillipmutual.com.my all match.
+ */
+export function domainMatches(addr: string, domains: string[]): boolean {
   const d = (addr.match(/@([\w.-]+)/)?.[1] ?? addr).toLowerCase();
-  return domains.some(w => d === w.toLowerCase() || d.endsWith(`.${w.toLowerCase()}`));
+  if (!d) return false;
+  const labels = d.split('.');
+  return domains.some(w => {
+    const wl = w.toLowerCase();
+    if (d === wl || d.endsWith(`.${wl}`)) return true;
+    const brand = wl.split('.')[0];          // "phillipmutual.com.my" → "phillipmutual"
+    return brand.length >= 4 && labels.includes(brand);
+  });
 }
 
 export async function listEmails(
