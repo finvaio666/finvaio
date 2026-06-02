@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getThread, markThreadRead } from '@/lib/gmail';
+import { getThread, markThreadSeen } from '@/lib/gmail';
 import { summarizeEmail } from '@/lib/emailClassifier';
 
 export const dynamic = 'force-dynamic';
@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
   try {
     const thread = await getThread(config.gmailRefreshToken, threadId, advisorEmail);
 
-    // Mark as read once opened — drops it off the dashboard "new" list
-    markThreadRead(config.gmailRefreshToken, threadId).catch(() => {});
+    // Mark as seen in ARIA once opened — drops it off the dashboard "new" list
+    markThreadSeen(config.gmailRefreshToken, threadId).catch(() => {});
 
     // Generate AI summary from the first (or longest) inbound message
     const inboundMsg = thread.messages.find(m => !m.isFromAdvisor) ?? thread.messages[0];

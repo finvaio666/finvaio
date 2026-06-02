@@ -402,7 +402,8 @@ export async function getRecentInbound(
   const gmail = getGmailClient(refreshToken);
 
   const domainQ = domains.map(d => `@${d}`).join(' OR ');
-  const q = `from:(${domainQ}) newer_than:${days}d -label:ARIA/Closed`;
+  // Inbound institution emails not yet closed or seen in ARIA
+  const q = `from:(${domainQ}) newer_than:${days}d -label:ARIA/Closed -label:ARIA/Seen`;
 
   const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults });
   const ids = (listRes.data.messages ?? []).map(m => m.id!);
@@ -617,15 +618,19 @@ export async function closeThread(refreshToken: string, messageId: string): Prom
 }
 
 /**
- * Mark all messages in a thread as read (removes the UNREAD label).
- * Called when the advisor opens a thread so it drops off the "new" list.
+ * Mark a thread as "seen in ARIA" by applying the ARIA/Seen label.
+ * We use our own label (not Gmail's UNREAD) because forwarded emails are
+ * always "read" in Gmail, which would otherwise hide them immediately.
+ * Called when the advisor opens a thread so it drops off the dashboard "new" list.
  */
-export async function markThreadRead(refreshToken: string, threadId: string): Promise<void> {
+export async function markThreadSeen(refreshToken: string, threadId: string): Promise<void> {
   const gmail = getGmailClient(refreshToken);
+  const labelId = await ensureLabel(gmail, 'ARIA/Seen');
+  if (!labelId) return;
   await gmail.users.threads.modify({
     userId: 'me',
     id:     threadId,
-    requestBody: { removeLabelIds: ['UNREAD'] },
+    requestBody: { addLabelIds: [labelId] },
   }).catch(() => {}); // non-critical
 }
 
