@@ -66,10 +66,12 @@ export async function GET(req: NextRequest) {
     const alerts: ClientAlert[] = [];
     for (const email of emails) {
       const haystack = `${email.subject} ${email.snippet}`.toLowerCase();
-      // Match if full name OR (first AND last) appears
+      // Match full name, or first AND last as whole words (word boundaries stop
+      // short tokens like "ng" matching inside unrelated words such as "Tng").
+      const wordIn = (w: string) => w.length > 0 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack);
       const match = clientNames.find(c => {
         if (haystack.includes(c.name.toLowerCase())) return true;
-        if (c.first && c.last) return haystack.includes(c.first) && haystack.includes(c.last);
+        if (c.first && c.last) return wordIn(c.first) && wordIn(c.last);
         return false;
       });
       if (!match) continue;

@@ -31,7 +31,36 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const emails = await searchClientEmails(config, domains, clientName);
+    const candidates = await searchClientEmails(config, domains, clientName);
+
+    // ── Strict re-filter (Gmail/Graph search is fuzzy) ───────────────────────
+    // 1. Counterpart must be a whitelisted institution domain
+    // 2. The client name must appear in the SUBJECT or PREVIEW (not buried deep
+    //    in a bulk body like a commission report listing many clients)
+    const parts = clientName.trim().toLowerCase().split(/\s+/);
+    const first = parts[0] ?? '';
+    const last  = parts.length > 1 ? parts[parts.length - 1] : '';
+    const full  = clientName.trim().toLowerCase();
+
+    const domainOf = (addr: string) => (addr.match(/@([\w.-]+)/)?.[1] ?? '').toLowerCase();
+    const inWhitelist = (addr: string) => {
+      const d = domainOf(addr);
+      return domains.some(w => d === w.toLowerCase() || d.endsWith(`.${w.toLowerCase()}`));
+    };
+
+    const emails = candidates.filter(e => {
+      // Domain check — inbound: from must be whitelisted; outbound: to must be
+      const domainOk = e.direction === 'outbound' ? inWhitelist(e.to) : inWhitelist(e.from);
+      if (!domainOk) return false;
+
+      // Name relevance — full name, or first AND last as whole words in subject/snippet
+      // (word boundaries prevent short tokens like "ng" matching inside "Tng")
+      const hay = `${e.subject} ${e.snippet}`.toLowerCase();
+      const wordIn = (w: string) => w.length > 0 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(hay);
+      const nameOk = hay.includes(full) || (wordIn(first) && wordIn(last));
+      return nameOk;
+    });
+
     return NextResponse.json({ emails, connected: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
