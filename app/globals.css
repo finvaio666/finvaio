@@ -147,7 +147,7 @@ body {
   color: var(--text);
 }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
-.date-badge { font-size: 15px; color: var(--text3); font-family: var(--font-mono); }
+.date-badge { font-size: 15px; color: var(--text3); font-family: var(--font-mono); white-space: nowrap; }
 .notion-badge {
   display: flex; align-items: center; gap: 6px;
   background: var(--accent-dim);
@@ -461,7 +461,10 @@ body {
   .sidebar-overlay.open { display: block; }
   .hamburger { display: flex; }
   .main { margin-left: 0; }
-  .topbar { padding: 16px 20px; }
+  .topbar { padding: 14px 18px; }
+  .topbar-right { gap: 8px; }
+  .date-badge { font-size: 12px; }
+  .notion-badge { font-size: 11px; padding: 4px 9px; }
   .page-content { padding: 20px 16px; }
   .stat-grid { grid-template-columns: repeat(2,1fr); }
   .stat-grid-3 { grid-template-columns: repeat(2,1fr); }
