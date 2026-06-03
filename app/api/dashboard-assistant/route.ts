@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
+import { listTasks, setTaskStatus } from '@/lib/tasks';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,8 +92,19 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
     if (nextRev) lines.push(`Next review: ${nextRev}`);
     if (lastRev) lines.push(`Last review: ${lastRev}`);
 
-    // Todo list = open action items from meeting notes
-    if (config.meetingNotesDbId) {
+    // Open tasks (preferred) — from the Tasks database
+    if (config.tasksDbId) {
+      try {
+        const open = await listTasks(config, { client: c.name, status: 'Open' });
+        if (open.length) {
+          lines.push('OPEN TASKS (not yet done):');
+          open.forEach(t => lines.push(`- ${t.task}${t.due ? ` (due ${t.due})` : ''}`));
+        } else {
+          lines.push('OPEN TASKS: none — all caught up for this client.');
+        }
+      } catch { /* ignore */ }
+    } else if (config.meetingNotesDbId) {
+      // Fallback: raw action items from meeting notes
       try {
         const mres = await notion.databases.query({
           database_id: config.meetingNotesDbId,
@@ -111,10 +123,8 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
           if (action.trim()) todos.push(`(${mdate || 'n/a'}) ${action.trim()}`);
         }
         if (todos.length) {
-          lines.push('TO-DO / ACTION ITEMS:');
+          lines.push('ACTION ITEMS (from meeting notes):');
           todos.forEach(t => lines.push(`- ${t}`));
-        } else {
-          lines.push('TO-DO / ACTION ITEMS: none recorded.');
         }
       } catch { /* ignore */ }
     }
@@ -141,6 +151,32 @@ export async function POST(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   const advisorName = config?.name || 'the advisor';
   const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  // ── Intent: mark a task done from chat ──────────────────────────────────────
+  // e.g. "mark Sell IFAST done for Ng Mei Ching" / "completed the EPF submission"
+  if (config?.tasksDbId && /\b(mark|set|complete[d]?|finish(?:ed)?|done|tick)\b/i.test(body.question)) {
+    try {
+      const open = await listTasks(config, { status: 'Open' });
+      const q = body.question.toLowerCase();
+      // Score each open task by how many of its significant words appear in the question
+      const scored = open.map(t => {
+        const words = t.task.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+        const hits = words.filter(w => q.includes(w)).length;
+        return { t, score: words.length ? hits / words.length : 0, hits };
+      }).filter(s => s.hits >= 2 || s.score >= 0.6)
+        .sort((a, b) => b.score - a.score);
+
+      if (scored.length === 1 || (scored.length > 1 && scored[0].score - scored[1].score > 0.25)) {
+        await setTaskStatus(config, scored[0].t.id, true);
+        return NextResponse.json({ answer: `✅ Marked done: **${scored[0].t.task}**${scored[0].t.client ? ` (${scored[0].t.client})` : ''}.` });
+      }
+      if (scored.length > 1) {
+        const list = scored.slice(0, 5).map(s => `- ${s.t.task}${s.t.client ? ` (${s.t.client})` : ''}`).join('\n');
+        return NextResponse.json({ answer: `I found a few tasks that could match — which one?\n${list}\n\nReply with more of the exact task wording.` });
+      }
+      // no match → fall through to normal AI answer
+    } catch { /* fall through */ }
+  }
 
   // Look up any client mentioned in the question (full profile, contact, todos)
   const clientData = config ? await lookupMentionedClients(config, body.question).catch(() => '') : '';
