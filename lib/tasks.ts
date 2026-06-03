@@ -72,11 +72,12 @@ export async function listTasks(
   }).filter(t => t.task);
 
   if (opts.client) {
-    const c = opts.client.toLowerCase();
-    const first = c.split(/\s+/)[0];
+    const c = opts.client.toLowerCase().trim();
     tasks = tasks.filter(t => {
-      const tc = t.client.toLowerCase();
-      return tc.includes(c) || c.includes(tc) || (first.length > 1 && tc.includes(first));
+      const tc = t.client.toLowerCase().trim();
+      if (!tc) return false;
+      // Compare whole client names — avoids short-name false matches (e.g. "Tng" vs "Ng")
+      return tc === c || tc.includes(c) || (c.includes(tc) && tc.length > 4);
     });
   }
   if (opts.status) tasks = tasks.filter(t => t.status === opts.status);

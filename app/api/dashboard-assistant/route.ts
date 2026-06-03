@@ -111,13 +111,18 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
           sorts: [{ property: 'Meeting Date', direction: 'descending' }],
           page_size: 20,
         });
-        const firstName = c.name.split(/\s+/)[0].toLowerCase();
+        const target = c.name.toLowerCase().trim();
         const todos: string[] = [];
         for (const m of mres.results) {
           if (!isFullPage(m)) continue;
           const mp = m.properties as Record<string, unknown>;
-          const hay = `${titleOf(mp)} ${rt(mp, 'Client Name')}`.toLowerCase();
-          if (!hay.includes(firstName) && !hay.includes(c.name.toLowerCase())) continue;
+          // Match on the meeting's CLIENT field (or the client portion of the
+          // title "Client — Type — Date") — NOT the action-item text, which
+          // caused false matches on short names like "Ng".
+          const mClient = (rt(mp, 'Client Name') || titleOf(mp).split(' — ')[0] || '').toLowerCase().trim();
+          if (!mClient) continue;
+          const isMatch = mClient === target || mClient.includes(target) || (target.includes(mClient) && mClient.length > 4);
+          if (!isMatch) continue;
           const action = rt(mp, 'Action Items');
           const mdate  = dt(mp, 'Meeting Date');
           if (action.trim()) todos.push(`(${mdate || 'n/a'}) ${action.trim()}`);
