@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
-import { listTasks, setTaskStatus } from '@/lib/tasks';
+import { listTasks, setTaskStatus, createTask } from '@/lib/tasks';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,6 +180,49 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ answer: `I found a few tasks that could match — which one?\n${list}\n\nReply with more of the exact task wording.` });
       }
       // no match → fall through to normal AI answer
+    } catch { /* fall through */ }
+  }
+
+  // ── Intent: add / record task(s) from chat ─────────────────────────────────
+  // e.g. "remind me to call Karen Friday", "add these todos: ...", "note down ..."
+  if (config?.tasksDbId &&
+      /\b(add|create|record|note( down)?|put down|remind me|new task|to-?do)\b/i.test(body.question) &&
+      !/\b(mark|complete[d]?|finish(?:ed)?|done)\b/i.test(body.question)) {
+    try {
+      const todayISO = new Date().toISOString().split('T')[0];
+      const extractPrompt = `Today is ${today} (${todayISO}). Extract every to-do task from the advisor's message below.
+Return ONLY a JSON array (no markdown) of objects: {"task": "...", "client": "...", "due": "YYYY-MM-DD or empty"}.
+- "task": the action, concise.
+- "client": a client's name if clearly mentioned, else "".
+- "due": resolve relative dates ("Friday", "tomorrow", "next Monday", "by 20th") to an absolute YYYY-MM-DD; else "".
+If there are no real tasks, return [].
+
+Message: "${body.question}"`;
+
+      const genAI = new GoogleGenerativeAI(key);
+      let raw = '';
+      for (const modelId of MODEL_FALLBACKS) {
+        try { raw = (await genAI.getGenerativeModel({ model: modelId }).generateContent(extractPrompt)).response.text(); break; }
+        catch { continue; }
+      }
+      const json = raw.replace(/^```json\s*|```$/gim, '').trim();
+      const items = JSON.parse(json) as { task: string; client?: string; due?: string }[];
+
+      if (Array.isArray(items) && items.length > 0) {
+        let created = 0;
+        for (const it of items) {
+          if (!it.task?.trim()) continue;
+          await createTask(config, { task: it.task.trim(), client: it.client, due: it.due || undefined, source: 'Added via ARIA' });
+          created++;
+        }
+        if (created > 0) {
+          const list = items.filter(i => i.task?.trim()).map(i =>
+            `- ${i.task}${i.client ? ` · ${i.client}` : ''}${i.due ? ` · due ${i.due}` : ''}`
+          ).join('\n');
+          return NextResponse.json({ answer: `✅ Added ${created} task${created === 1 ? '' : 's'} to your list:\n${list}\n\nI'll surface these on your dashboard and morning plan.` });
+        }
+      }
+      // nothing extracted → fall through to normal answer
     } catch { /* fall through */ }
   }
 

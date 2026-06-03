@@ -135,6 +135,10 @@ interface ClientAlert {
   subject: string; snippet: string; from: string; fromName: string;
   date: string; isRead: boolean;
 }
+interface TaskItem {
+  id: string; task: string; client: string;
+  status: 'Open' | 'Done'; due: string; source: string;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function daysUntil(dateStr: string): number | null {
@@ -177,7 +181,13 @@ export default function DashboardPage() {
   const [meetings,     setMeetings]     = useState<Meeting[]>([]);
   const [followUps,    setFollowUps]    = useState<FollowUp[]>([]);
   const [clientAlerts, setClientAlerts] = useState<ClientAlert[]>([]);
+  const [openTasks,    setOpenTasks]    = useState<TaskItem[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
+
+  const loadTasks = () => fetch('/api/tasks?status=Open', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(d => { if (d.tasks) setOpenTasks(d.tasks); })
+    .catch(() => {});
 
   useEffect(() => {
     Promise.all([
@@ -198,6 +208,8 @@ export default function DashboardPage() {
       .then(r => r.json())
       .then(d => { if (d.alerts) setClientAlerts(d.alerts); })
       .catch(() => {});
+
+    loadTasks();
   }, []);
 
   // ── Derived data ────────────────────────────────────────────────────────────
@@ -275,6 +287,14 @@ export default function DashboardPage() {
     L.push('\n# POLICIES EXPIRING (next 60 days)');
     if (expiringPolicies.length === 0) L.push('None.');
     else expiringPolicies.forEach(p => L.push(`- ${p.clientName}: ${p.policyName} (${p.insurer}) expires ${fmt(p.maturityDate)}`));
+
+    L.push('\n# OPEN TASKS (to-do list)');
+    if (openTasks.length === 0) L.push('None.');
+    else openTasks.forEach(t => {
+      const d = t.due ? daysUntil(t.due) : null;
+      const when = d === null ? '' : d < 0 ? ` (${Math.abs(d)}d OVERDUE)` : d === 0 ? ' (due TODAY)' : ` (due in ${d}d)`;
+      L.push(`- ${t.task}${t.client ? ` · ${t.client}` : ''}${when}`);
+    });
 
     L.push('\n# RECENT MEETINGS & OPEN ACTION ITEMS');
     if (recentMeetings.length === 0) L.push('None.');
@@ -403,6 +423,51 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Open Tasks (to-do reminders) ── */}
+      {openTasks.length > 0 && (
+        <div className="section" style={{ marginBottom: 20 }}>
+          <div className="section-header">
+            <div className="section-title">
+              <span className="section-dot" style={{ background: '#22c55e' }} />
+              My Tasks
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+                {openTasks.length} open
+              </span>
+            </div>
+            <Link href="/tasks" className="section-action">All tasks →</Link>
+          </div>
+          {[...openTasks]
+            .sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))
+            .slice(0, 6)
+            .map(t => {
+              const d = t.due ? daysUntil(t.due) : null;
+              const overdue = d !== null && d < 0;
+              const soon = d !== null && d >= 0 && d <= 3;
+              return (
+                <div key={t.id} style={{ ...rowStyle, cursor: 'default' }}>
+                  <button
+                    onClick={async () => {
+                      setOpenTasks(prev => prev.filter(x => x.id !== t.id));
+                      await fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: t.id, done: true }) });
+                    }}
+                    title="Mark done"
+                    style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '2px solid var(--border)', background: 'transparent' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{t.task}</div>
+                    {t.client && <div style={{ fontSize: 12, color: 'var(--text3)' }}>👤 {t.client}</div>}
+                  </div>
+                  {d !== null && (
+                    <div style={pillStyle(overdue, soon)}>
+                      {overdue ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d`}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       )}
 
