@@ -7,16 +7,20 @@ import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 
 // ─── Ask ARIA — dashboard daily co-pilot ─────────────────────────────────────
-function AskAria({ buildContext }: { buildContext: () => string }) {
+interface PendingTask { task: string; client: string; due: string; }
+
+function AskAria({ buildContext, onTasksAdded }: { buildContext: () => string; onTasksAdded?: () => void }) {
   const [question, setQuestion] = useState('');
   const [answer,   setAnswer]   = useState('');
   const [loading,  setLoading]  = useState(false);
   const [asked,    setAsked]    = useState('');
+  const [pending,  setPending]  = useState<PendingTask[] | null>(null);
+  const [savingTasks, setSavingTasks] = useState(false);
 
   async function ask(q: string) {
     const query = q.trim();
     if (!query || loading) return;
-    setLoading(true); setAnswer(''); setAsked(query); setQuestion('');
+    setLoading(true); setAnswer(''); setAsked(query); setQuestion(''); setPending(null);
     try {
       const res = await fetch('/api/dashboard-assistant', {
         method: 'POST',
@@ -24,11 +28,40 @@ function AskAria({ buildContext }: { buildContext: () => string }) {
         body: JSON.stringify({ question: query, context: buildContext() }),
       });
       const data = await res.json();
-      setAnswer(data.answer || data.error || 'No response.');
+      if (Array.isArray(data.pendingTasks)) {
+        setPending(data.pendingTasks.length ? data.pendingTasks : []);
+      } else {
+        setAnswer(data.answer || data.error || 'No response.');
+      }
     } catch {
       setAnswer('Sorry, I could not reach the assistant. Please try again.');
     }
     setLoading(false);
+  }
+
+  function updatePending(i: number, field: keyof PendingTask, val: string) {
+    setPending(prev => prev ? prev.map((t, idx) => idx === i ? { ...t, [field]: val } : t) : prev);
+  }
+  function removePending(i: number) {
+    setPending(prev => prev ? prev.filter((_, idx) => idx !== i) : prev);
+  }
+
+  async function confirmTasks() {
+    if (!pending || pending.length === 0) return;
+    setSavingTasks(true);
+    let created = 0;
+    for (const t of pending) {
+      if (!t.task.trim()) continue;
+      const res = await fetch('/api/tasks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: t.task.trim(), client: t.client.trim(), due: t.due || undefined }),
+      });
+      if (res.ok) created++;
+    }
+    setSavingTasks(false);
+    setPending(null);
+    setAnswer(`✅ Added ${created} task${created === 1 ? '' : 's'} to your list.`);
+    onTasksAdded?.();
   }
 
   const quick = [
@@ -76,7 +109,7 @@ function AskAria({ buildContext }: { buildContext: () => string }) {
       </div>
 
       {/* Quick buttons */}
-      {!answer && !loading && (
+      {!answer && !loading && !pending && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {quick.map(q => (
             <button
@@ -89,6 +122,42 @@ function AskAria({ buildContext }: { buildContext: () => string }) {
               }}
             >{q}</button>
           ))}
+        </div>
+      )}
+
+      {/* Pending tasks — review & confirm before adding */}
+      {pending && (
+        <div style={{ marginTop: 12, padding: '14px 16px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+          {pending.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text3)' }}>
+              I couldn&apos;t find a clear task in that. Try e.g. “remind me to call Karen on Friday”.
+              <button onClick={() => setPending(null)} style={{ marginLeft: 8, fontSize: 12, background: 'none', border: '1px solid var(--border)', borderRadius: 99, padding: '3px 10px', color: 'var(--text3)', cursor: 'pointer' }}>Dismiss</button>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Review {pending.length} task{pending.length === 1 ? '' : 's'} before adding</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>Fill in the client, fix wording or set a due date, then add.</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pending.map((t, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <input value={t.task} onChange={e => updatePending(i, 'task', e.target.value)} placeholder="Task…"
+                      style={{ flex: 2, minWidth: 160, padding: '6px 9px', fontSize: 13, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontFamily: 'var(--font-sans)' }} />
+                    <input value={t.client} onChange={e => updatePending(i, 'client', e.target.value)} placeholder="Client (optional)"
+                      style={{ flex: 1, minWidth: 120, padding: '6px 9px', fontSize: 13, background: t.client ? 'var(--bg)' : 'rgba(243,115,56,0.06)', border: `1px solid ${t.client ? 'var(--border)' : 'rgba(243,115,56,0.4)'}`, borderRadius: 6, color: 'var(--text)', fontFamily: 'var(--font-sans)' }} />
+                    <input value={t.due} onChange={e => updatePending(i, 'due', e.target.value)} type="date"
+                      style={{ padding: '6px 8px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)' }} />
+                    <button onClick={() => removePending(i)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button onClick={confirmTasks} disabled={savingTasks} style={{ padding: '8px 18px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer', opacity: savingTasks ? 0.6 : 1 }}>
+                  {savingTasks ? 'Adding…' : `✓ Add ${pending.length} task${pending.length === 1 ? '' : 's'}`}
+                </button>
+                <button onClick={() => setPending(null)} style={{ padding: '8px 14px', fontSize: 13, background: 'none', border: '1px solid var(--border)', borderRadius: 99, color: 'var(--text3)', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -308,7 +377,7 @@ export default function DashboardPage() {
   return (
     <>
       {/* ── Ask ARIA — daily co-pilot ── */}
-      <AskAria buildContext={buildContext} />
+      <AskAria buildContext={buildContext} onTasksAdded={loadTasks} />
 
       {/* ── Stat Cards ── */}
       <div className="stat-grid">

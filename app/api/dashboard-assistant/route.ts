@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
-import { listTasks, setTaskStatus, createTask } from '@/lib/tasks';
+import { listTasks, setTaskStatus } from '@/lib/tasks';
 
 export const dynamic = 'force-dynamic';
 
@@ -206,21 +206,13 @@ Message: "${body.question}"`;
         catch { continue; }
       }
       const json = raw.replace(/^```json\s*|```$/gim, '').trim();
-      const items = JSON.parse(json) as { task: string; client?: string; due?: string }[];
+      const items = (JSON.parse(json) as { task: string; client?: string; due?: string }[])
+        .filter(i => i.task?.trim())
+        .map(i => ({ task: i.task.trim(), client: (i.client ?? '').trim(), due: (i.due ?? '').trim() }));
 
-      if (Array.isArray(items) && items.length > 0) {
-        let created = 0;
-        for (const it of items) {
-          if (!it.task?.trim()) continue;
-          await createTask(config, { task: it.task.trim(), client: it.client, due: it.due || undefined, source: 'Added via ARIA' });
-          created++;
-        }
-        if (created > 0) {
-          const list = items.filter(i => i.task?.trim()).map(i =>
-            `- ${i.task}${i.client ? ` · ${i.client}` : ''}${i.due ? ` · due ${i.due}` : ''}`
-          ).join('\n');
-          return NextResponse.json({ answer: `✅ Added ${created} task${created === 1 ? '' : 's'} to your list:\n${list}\n\nI'll surface these on your dashboard and morning plan.` });
-        }
+      if (items.length > 0) {
+        // Propose tasks for the advisor to review & confirm — do NOT create yet.
+        return NextResponse.json({ pendingTasks: items });
       }
       // nothing extracted → fall through to normal answer
     } catch { /* fall through */ }
