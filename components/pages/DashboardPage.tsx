@@ -251,7 +251,18 @@ export default function DashboardPage() {
   const [followUps,    setFollowUps]    = useState<FollowUp[]>([]);
   const [clientAlerts, setClientAlerts] = useState<ClientAlert[]>([]);
   const [openTasks,    setOpenTasks]    = useState<TaskItem[]>([]);
+  const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
+
+  async function completeTask(id: string) {
+    if (completing.includes(id)) return;
+    setCompleting(prev => [...prev, id]); // show checked + strikethrough
+    fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: id, done: true }) }).catch(() => {});
+    setTimeout(() => {
+      setOpenTasks(prev => prev.filter(x => x.id !== id));
+      setCompleting(prev => prev.filter(x => x !== id));
+    }, 900);
+  }
 
   const loadTasks = () => fetch('/api/tasks?status=Open', { cache: 'no-store' })
     .then(r => r.json())
@@ -515,21 +526,26 @@ export default function DashboardPage() {
               const d = t.due ? daysUntil(t.due) : null;
               const overdue = d !== null && d < 0;
               const soon = d !== null && d >= 0 && d <= 3;
+              const isDone = completing.includes(t.id);
               return (
-                <div key={t.id} style={{ ...rowStyle, cursor: 'default' }}>
+                <div key={t.id} style={{ ...rowStyle, cursor: 'default', opacity: isDone ? 0.5 : 1, transition: 'opacity 0.3s' }}>
                   <button
-                    onClick={async () => {
-                      setOpenTasks(prev => prev.filter(x => x.id !== t.id));
-                      await fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: t.id, done: true }) });
-                    }}
+                    onClick={() => completeTask(t.id)}
                     title="Mark done"
-                    style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '2px solid var(--border)', background: 'transparent' }}
-                  />
+                    style={{
+                      width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer',
+                      border: `2px solid ${isDone ? '#22c55e' : 'var(--border)'}`,
+                      background: isDone ? '#22c55e' : 'transparent',
+                      color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >{isDone ? '✓' : ''}</button>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{t.task}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', textDecoration: isDone ? 'line-through' : 'none' }}>{t.task}</div>
                     {t.client && <div style={{ fontSize: 12, color: 'var(--text3)' }}>👤 {t.client}</div>}
                   </div>
-                  {d !== null && (
+                  {isDone ? (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>✓ Done</div>
+                  ) : d !== null && (
                     <div style={pillStyle(overdue, soon)}>
                       {overdue ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d`}
                     </div>
