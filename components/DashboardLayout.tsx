@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import SessionTimeout from './SessionTimeout';
+import InstallPrompt from './InstallPrompt';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -11,6 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <>
       <SessionTimeout />
+      <InstallPrompt />
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
