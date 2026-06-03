@@ -67,7 +67,7 @@ export async function listTasks(
       status:   (sel(p, 'Status') === 'Done' ? 'Done' : 'Open') as 'Open' | 'Done',
       due:      dt(p, 'Due'),
       source:   rt(p, 'Source'),
-      doneDate: dt(p, 'Done Date'),
+      doneDate: dt(p, 'Done'),
     };
   }).filter(t => t.task);
 
@@ -111,7 +111,7 @@ export async function setTaskStatus(config: AdvisorConfig, taskId: string, done:
   const notion = notionFor(config);
   const props: Record<string, unknown> = {
     'Status': { select: { name: done ? 'Done' : 'Open' } },
-    'Done Date': done ? { date: { start: new Date().toISOString().split('T')[0] } } : { date: null },
+    'Done': done ? { date: { start: new Date().toISOString().split('T')[0] } } : { date: null },
   };
   await notion.pages.update({ page_id: taskId, properties: props as never });
 }
