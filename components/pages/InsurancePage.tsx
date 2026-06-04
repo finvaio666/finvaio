@@ -50,18 +50,6 @@ const typeColor = (t: string) => {
   return key ? TYPE_COLORS[key] : '#9CB8A0';
 };
 
-const BENEFIT_COLORS: Record<string, string> = {
-  '🛡️ Life Cover':              '#60A5FA',
-  '❤️ Critical Illness (CI)':   '#F87171',
-  '🌟 Early CI':                '#FB923C',
-  '🏥 Medical':                 '#4ADE80',
-  '🦺 Personal Accident':       '#F59E0B',
-  '♿ TPD':                     '#A78BFA',
-  '⏸️ Waiver of Premium':       '#34D399',
-  '👶 Payor Benefit':           '#E879F9',
-};
-const benefitColor = (b: string) => BENEFIT_COLORS[b] ?? '#9CB8A0';
-
 // Coverage gap rules — keys match actual Notion benefit names
 const COVERAGE_RULES = [
   { key: '🛡️ Life Cover',            label: '🛡️ Life Cover',         rec: (income: number) => income * 10, desc: 'Recommended: 10× annual income' },
@@ -80,15 +68,6 @@ function TypeBadge({ type }: { type: string }) {
   return (
     <span style={{ padding: '3px 10px', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 700, background: `${color}18`, color, border: `1px solid ${color}33`, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
       {type}
-    </span>
-  );
-}
-
-function BenefitPill({ benefit }: { benefit: string }) {
-  const color = benefitColor(benefit);
-  return (
-    <span style={{ padding: '2px 8px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 600, background: `${color}15`, color, border: `1px solid ${color}30`, whiteSpace: 'nowrap' }}>
-      {benefit}
     </span>
   );
 }
@@ -415,17 +394,30 @@ export default function InsurancePage() {
 
           {/* Column header — same grid as data rows and subtotal */}
           {(() => {
-            const COLS = '2fr 150px 1.5fr 120px 110px 80px';
-            const MIN_W = 780;
+            const COLS = '2fr 120px 105px 95px 95px 90px 64px';
+            const MIN_W = 860;
             const activeRows = rows.filter(p => p.status?.includes('Active'));
+            // Life and TPD are typically the same as the Sum Assured — show in one column
+            const lifeTpd  = (p: Policy) => p.lifeCover || p.tpdCover || p.sumAssured;
+            const fmtCover = (n: number) =>
+              n <= 0 ? '—'
+              : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M`
+              : n >= 1000 ? `${Math.round(n / 1000)}K`
+              : Math.round(n).toLocaleString();
+            const colNum = (val: number, strong = false): React.CSSProperties => ({
+              textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13, paddingTop: 2,
+              fontWeight: strong ? 600 : 500,
+              color: val > 0 ? 'var(--text)' : 'var(--text3)',
+            });
             return (
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <div style={{ minWidth: MIN_W }}>
                 <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '8px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div>Policy / Insurer</div>
                   <div>Type</div>
-                  <div>Benefits</div>
-                  <div style={{ textAlign: 'right' }}>Sum Assured</div>
+                  <div style={{ textAlign: 'right' }}>Life / TPD</div>
+                  <div style={{ textAlign: 'right' }}>CI</div>
+                  <div style={{ textAlign: 'right' }}>Accident</div>
                   <div style={{ textAlign: 'right' }}>Premium/yr</div>
                   <div style={{ textAlign: 'right' }}>Status</div>
                 </div>
@@ -447,6 +439,7 @@ export default function InsurancePage() {
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                         {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
+                        {p.medicalClass && <span style={{ marginLeft: 6 }}>🏥 {p.medicalClass}</span>}
                         {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                       </div>
                       <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
@@ -456,33 +449,19 @@ export default function InsurancePage() {
                       {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 Beneficiary: {p.beneficiary}</div>}
                     </div>
 
-                    {/* Type — overflow hidden so badge never bleeds into next column */}
+                    {/* Type */}
                     <div style={{ overflow: 'hidden', paddingTop: 2 }}>
                       <TypeBadge type={p.insuranceType} />
                     </div>
 
-                    {/* Benefits */}
-                    <div style={{ paddingTop: 2 }}>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {p.benefits.length > 0
-                          ? p.benefits.map(b => <BenefitPill key={b} benefit={b} />)
-                          : <span style={{ fontSize: 11, color: 'var(--text3)' }}>—</span>}
-                      </div>
-                      {(p.lifeCover > 0 || p.ciCover > 0 || p.paCover > 0 || p.tpdCover > 0) && (
-                        <div style={{ marginTop: 4, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-mono)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {p.lifeCover > 0 && <span>🛡️ {fmtK(p.lifeCover)}</span>}
-                          {p.ciCover   > 0 && <span>❤️ {fmtK(p.ciCover)}</span>}
-                          {p.paCover   > 0 && <span>🦺 {fmtK(p.paCover)}</span>}
-                          {p.tpdCover  > 0 && <span>♿ {fmtK(p.tpdCover)}</span>}
-                          {p.medicalClass  && <span>🏥 {p.medicalClass}</span>}
-                        </div>
-                      )}
-                    </div>
+                    {/* Life / TPD (= Sum Assured) */}
+                    <div style={colNum(lifeTpd(p), true)}>{fmtCover(lifeTpd(p))}</div>
 
-                    {/* Sum Assured */}
-                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13, paddingTop: 2 }}>
-                      {p.sumAssured > 0 ? Math.round(p.sumAssured).toLocaleString() : '—'}
-                    </div>
+                    {/* CI */}
+                    <div style={colNum(p.ciCover)}>{fmtCover(p.ciCover)}</div>
+
+                    {/* Accident (PA) */}
+                    <div style={colNum(p.paCover)}>{fmtCover(p.paCover)}</div>
 
                     {/* Premium/yr */}
                     <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12, paddingTop: 2 }}>
@@ -498,13 +477,13 @@ export default function InsurancePage() {
                   </div>
                 ))}
 
-                {/* Subtotal — exact same COLS, numbers align perfectly with header */}
+                {/* Subtotal — same COLS so totals align under each coverage column */}
                 <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '10px 20px 18px', background: 'var(--bg2)', borderTop: '2px solid var(--border)' }}>
                   <div style={{ color: 'var(--text3)', fontSize: 11, fontWeight: 600 }}>Subtotal (active)</div>
-                  <div /><div />
-                  <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
-                    {Math.round(activeRows.reduce((s, p) => s + p.sumAssured, 0)).toLocaleString()}
-                  </div>
+                  <div />
+                  <div style={{ ...colNum(1, true), fontWeight: 700 }}>{fmtCover(activeRows.reduce((s, p) => s + lifeTpd(p), 0))}</div>
+                  <div style={{ ...colNum(activeRows.reduce((s, p) => s + p.ciCover, 0), true), fontWeight: 700 }}>{fmtCover(activeRows.reduce((s, p) => s + p.ciCover, 0))}</div>
+                  <div style={{ ...colNum(activeRows.reduce((s, p) => s + p.paCover, 0), true), fontWeight: 700 }}>{fmtCover(activeRows.reduce((s, p) => s + p.paCover, 0))}</div>
                   <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: 'var(--text3)' }}>
                     {Math.round(activeRows.reduce((s, p) => s + p.annualPremium, 0)).toLocaleString()}
                   </div>
