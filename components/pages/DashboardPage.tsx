@@ -208,6 +208,9 @@ interface TaskItem {
   id: string; task: string; client: string;
   status: 'Open' | 'Done'; due: string; source: string;
 }
+interface CalEvent {
+  id: string; title: string; start: string; end: string; allDay: boolean; location: string;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function daysUntil(dateStr: string): number | null {
@@ -251,6 +254,7 @@ export default function DashboardPage() {
   const [followUps,    setFollowUps]    = useState<FollowUp[]>([]);
   const [clientAlerts, setClientAlerts] = useState<ClientAlert[]>([]);
   const [openTasks,    setOpenTasks]    = useState<TaskItem[]>([]);
+  const [appointments, setAppointments] = useState<CalEvent[]>([]);
   const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
 
@@ -290,6 +294,11 @@ export default function DashboardPage() {
       .catch(() => {});
 
     loadTasks();
+
+    fetch('/api/calendar/events', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (d.events) setAppointments(d.events); })
+      .catch(() => {});
   }, []);
 
   // ── Derived data ────────────────────────────────────────────────────────────
@@ -369,6 +378,16 @@ export default function DashboardPage() {
     else expiringPolicies.forEach(p => L.push(`- ${p.clientName}: ${p.policyName} (${p.insurer}) expires ${fmt(p.maturityDate)}`));
 
     // OPEN TASKS is the single source of truth for to-dos (reflects done/not-done).
+    L.push('\n# CALENDAR APPOINTMENTS (next 14 days)');
+    if (appointments.length === 0) L.push('None.');
+    else appointments.slice(0, 15).forEach(a => {
+      const d = new Date(a.start);
+      const when = a.allDay
+        ? d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }) + ' (all day)'
+        : d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' });
+      L.push(`- ${when}: ${a.title}${a.location ? ` @ ${a.location}` : ''}`);
+    });
+
     L.push('\n# OPEN TASKS — the authoritative to-do list (only these are outstanding)');
     if (openTasks.length === 0) L.push('None — all tasks done.');
     else openTasks.forEach(t => {
@@ -508,6 +527,42 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      {/* ── Today's Appointments (calendar) ── */}
+      {appointments.length > 0 && (() => {
+        const todayStr = new Date().toDateString();
+        const fmtTime = (iso: string, allDay: boolean) => {
+          const d = new Date(iso);
+          const dayLabel = d.toDateString() === todayStr ? 'Today' : d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' });
+          return allDay ? `${dayLabel} · all day` : `${dayLabel} · ${d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}`;
+        };
+        return (
+          <div className="section" style={{ marginBottom: 20 }}>
+            <div className="section-header">
+              <div className="section-title">
+                <span className="section-dot" style={{ background: 'var(--blue)' }} />
+                Appointments
+                <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>next 14 days</span>
+              </div>
+            </div>
+            {appointments.slice(0, 6).map(a => {
+              const isToday = new Date(a.start).toDateString() === todayStr;
+              return (
+                <div key={a.id} style={{ ...rowStyle, cursor: 'default' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isToday ? 'var(--accent-dim)' : 'var(--surface2)', fontSize: 16 }}>📅</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                    {a.location && <div style={{ fontSize: 12, color: 'var(--text3)' }}>📍 {a.location}</div>}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isToday ? 'var(--accent2)' : 'var(--text3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    {fmtTime(a.start, a.allDay)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Open Tasks (to-do reminders) ── */}
       {openTasks.length > 0 && (

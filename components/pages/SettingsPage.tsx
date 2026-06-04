@@ -523,6 +523,79 @@ function UsersTab() {
   );
 }
 
+// ── Tab: Calendar ─────────────────────────────────────────────────────────────
+
+function CalendarTab() {
+  const [loading,   setLoading]   = useState(true);
+  const [connected, setConnected] = useState(false);
+  const [provider,  setProvider]  = useState('');
+  const [address,   setAddress]   = useState('');
+  const [count,     setCount]     = useState(0);
+  const [notice,    setNotice]    = useState('');
+
+  function load() {
+    fetch('/api/calendar/events').then(r => r.json()).then(d => {
+      setConnected(!!d.connected);
+      setProvider(d.provider ?? '');
+      setAddress(d.address ?? '');
+      setCount((d.events ?? []).length);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('cal') === 'connected') { setNotice('✓ Calendar connected.'); window.history.replaceState({}, '', '/settings'); }
+    else if (p.get('cal')) { setNotice('Calendar connection failed or was cancelled.'); window.history.replaceState({}, '', '/settings'); }
+    load();
+  }, []);
+
+  async function connect(prov: 'google' | 'microsoft') {
+    const res  = await fetch(`/api/calendar/auth?provider=${prov}`);
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+    else setNotice(data.error || 'Could not start calendar connection.');
+  }
+  async function disconnect() {
+    if (!confirm('Disconnect calendar?')) return;
+    await fetch('/api/calendar/disconnect', { method: 'POST' });
+    setConnected(false); setProvider(''); setAddress(''); setCount(0);
+  }
+
+  const providerLabel = provider === 'microsoft' ? 'Microsoft / Outlook' : 'Google Calendar';
+
+  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading…</div>;
+
+  return (
+    <div>
+      <Section title="Calendar Connection" desc="Connect a calendar to see your appointments on the dashboard and in your morning plan. This can be a different account from your email.">
+        {connected ? (
+          <>
+            <Row label="Connected Calendar" desc={`${count} upcoming event${count === 1 ? '' : 's'} in the next 2 weeks`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, color: 'var(--text)' }}>{address || '—'}</span>
+                <Badge label={providerLabel} color={provider === 'microsoft' ? '#0078d4' : '#ea4335'} />
+              </div>
+            </Row>
+            <div style={{ padding: '12px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={disconnect} style={{ padding: '7px 14px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--red)', cursor: 'pointer' }}>Disconnect</button>
+            </div>
+          </>
+        ) : (
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 13, color: 'var(--text2)' }}>No calendar connected. Choose a provider:</div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => connect('google')} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 700, background: '#ea4335', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>📅 Connect Google Calendar</button>
+              <button onClick={() => connect('microsoft')} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 700, background: '#0078d4', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>📅 Connect Outlook Calendar</button>
+            </div>
+          </div>
+        )}
+        {notice && <div style={{ padding: '0 20px 14px', fontSize: 12, color: notice.startsWith('✓') ? '#22c55e' : 'var(--text3)' }}>{notice}</div>}
+      </Section>
+    </div>
+  );
+}
+
 // ── Tab: About ────────────────────────────────────────────────────────────────
 
 function AboutTab() {
@@ -552,12 +625,13 @@ function AboutTab() {
 
 // ── Main Settings Page ────────────────────────────────────────────────────────
 
-type TabId = 'profile' | 'security' | 'email' | 'users' | 'about';
+type TabId = 'profile' | 'security' | 'email' | 'calendar' | 'users' | 'about';
 
 const TABS: { id: TabId; label: string; icon: string; adminOnly?: boolean }[] = [
   { id: 'profile',  label: 'Profile',   icon: '👤' },
   { id: 'security', label: 'Security',  icon: '🔒' },
   { id: 'email',    label: 'Email Hub', icon: '📧' },
+  { id: 'calendar', label: 'Calendar',  icon: '📅' },
   { id: 'users',    label: 'Users',     icon: '👥', adminOnly: true },
   { id: 'about',    label: 'About',     icon: 'ℹ️' },
 ];
@@ -611,6 +685,7 @@ export default function SettingsPage() {
           {tab === 'profile'  && <ProfileTab  advisorId={advisorId} />}
           {tab === 'security' && <SecurityTab />}
           {tab === 'email'    && <EmailTab isAdmin={isAdmin} />}
+          {tab === 'calendar' && <CalendarTab />}
           {tab === 'users'    && <UsersTab />}
           {tab === 'about'    && <AboutTab />}
         </div>

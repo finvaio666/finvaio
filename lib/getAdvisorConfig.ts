@@ -20,6 +20,10 @@ export interface AdvisorConfig {
   outlookRefreshToken:  string; // OAuth2 refresh token for Microsoft 365 / Outlook
   outlookAddress:       string; // advisor's Outlook/M365 address
   institutionsJson:     string; // JSON array of institution contacts
+  // ── Calendar (independent of email) ─────────────────────────────────────────
+  calendarProvider:     string; // 'google' | 'microsoft'
+  calendarRefreshToken: string; // OAuth2 refresh token for the connected calendar
+  calendarAddress:      string; // the connected calendar account address
 }
 
 // In-process cache — survives warm function re-use, cleared on cold start
@@ -66,6 +70,9 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       outlookRefreshToken: rt(p, 'Outlook Refresh Token'),
       outlookAddress:      rt(p, 'Outlook Address'),
       institutionsJson:    rt(p, 'Institutions JSON'),
+      calendarProvider:     (rt(p, 'Calendar Provider') || '').toLowerCase(),
+      calendarRefreshToken: rt(p, 'Calendar Refresh Token'),
+      calendarAddress:      rt(p, 'Calendar Address'),
     };
 
     cache.set(advisorId, { config, ts: Date.now() });
@@ -104,6 +111,31 @@ export async function saveGmailToken(
     clearAdvisorCache(advisorId); // force re-read on next request
   } catch (e) {
     console.error('saveGmailToken failed:', e);
+  }
+}
+
+/** Persist the calendar connection (provider + refresh token + address). */
+export async function saveCalendarToken(
+  advisorId:    string,
+  provider:     string,
+  refreshToken: string,
+  address:      string,
+): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+  const notion = new Client({ auth: hostKey });
+  try {
+    await notion.pages.update({
+      page_id:    advisorId,
+      properties: {
+        'Calendar Provider':      { rich_text: [{ text: { content: provider } }] },
+        'Calendar Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Calendar Address':       { rich_text: [{ text: { content: address } }] },
+      } as never,
+    });
+    clearAdvisorCache(advisorId);
+  } catch (e) {
+    console.error('saveCalendarToken failed:', e);
   }
 }
 
