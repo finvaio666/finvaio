@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, listEmails } from '@/lib/emailService';
+import { getCompanyInstitutions } from '@/lib/institutions';
 
 export const dynamic = 'force-dynamic';
-
-export interface Institution {
-  name:   string;
-  email:  string;
-  domain: string;
-}
 
 export async function GET(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
@@ -22,11 +17,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Email not connected', connected: false }, { status: 200 });
   }
 
-  // Parse institutions for domain whitelist
-  let institutions: Institution[] = [];
-  if (config.institutionsJson) {
-    try { institutions = JSON.parse(config.institutionsJson); } catch { /* ignore */ }
-  }
+  // Company-wide shared whitelist
+  const institutions = await getCompanyInstitutions();
   const domains = [...new Set(institutions.map(i => i.domain).filter(Boolean))];
   const advisorEmail = active.address || '';
 

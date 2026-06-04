@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdvisorConfig, saveInstitutions } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getCompanyInstitutions, setCompanyInstitutions } from '@/lib/institutions';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,11 +21,8 @@ export async function GET(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   if (!config) return NextResponse.json({ error: 'Advisor not found' }, { status: 401 });
 
-  let institutions: Institution[] = [];
-  if (config.institutionsJson) {
-    try { institutions = JSON.parse(config.institutionsJson); } catch { /* ignore */ }
-  }
-
+  // Company-wide shared whitelist (merged across all records)
+  const institutions = await getCompanyInstitutions();
   return NextResponse.json({ institutions });
 }
 
@@ -60,6 +58,7 @@ export async function POST(req: NextRequest) {
     type:   (['insurance', 'fund', 'other'].includes(inst.type) ? inst.type : 'other') as Institution['type'],
   })).filter(i => i.name && (i.email || i.domain));
 
-  await saveInstitutions(advisorId, JSON.stringify(clean));
+  // Save as the company-wide canonical list (admin record + clears others)
+  await setCompanyInstitutions(advisorId, clean);
   return NextResponse.json({ success: true, count: clean.length });
 }

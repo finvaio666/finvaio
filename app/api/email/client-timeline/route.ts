@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, searchClientEmails } from '@/lib/emailService';
 import { domainMatches } from '@/lib/outlook';
-import type { Institution } from '@/app/api/email/institutions/route';
+import { getCompanyDomains } from '@/lib/institutions';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,12 +21,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ emails: [], connected: false });
   }
 
-  // Domain whitelist
-  let institutions: Institution[] = [];
-  if (config.institutionsJson) {
-    try { institutions = JSON.parse(config.institutionsJson); } catch { /* ignore */ }
-  }
-  const domains = [...new Set(institutions.map(i => i.domain).filter(Boolean))];
+  // Company-wide shared whitelist
+  const domains = await getCompanyDomains();
   if (domains.length === 0) {
     return NextResponse.json({ emails: [], noWhitelist: true });
   }
