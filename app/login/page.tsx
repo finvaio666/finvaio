@@ -27,6 +27,9 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data.error ?? 'Login failed. Please try again.');
       } else {
+        // Stamp activity NOW so the idle-logout check doesn't fire on a stale
+        // timestamp from a previous session.
+        try { localStorage.setItem('aria-last-active', String(Date.now())); } catch { /* ignore */ }
         router.push('/');
         router.refresh();
       }
