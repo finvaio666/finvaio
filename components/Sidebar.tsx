@@ -88,39 +88,59 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         <nav className="nav">
-          {navItems.map((group) => {
-            // Filter items by feature flag and admin-only restriction
-            const visibleItems = group.items.filter(item =>
-              (!item.feature || features.includes(item.feature)) &&
-              (!('adminOnly' in item && item.adminOnly) || isAdmin)
-            );
-            if (visibleItems.length === 0) return null;
-            return (
-              <div key={group.group}>
-                <div className="nav-label">{group.group}</div>
-                {visibleItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
-                    onClick={onClose}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Link>
-                ))}
+          {isAdmin ? (
+            /* ── Admin nav: platform management only ── */
+            <>
+              <div>
+                <div className="nav-label">Platform</div>
+                <Link href="/"       className={`nav-item ${isActive('/') ? 'active' : ''}`}      onClick={onClose}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  Dashboard
+                </Link>
+                <Link href="/admin"  className={`nav-item ${isActive('/admin') ? 'active' : ''}`} onClick={onClose}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                  Admin Dashboard
+                </Link>
               </div>
-            );
-          })}
-          {/* Admin-only section */}
-          {isAdmin && (
-            <div>
-              <div className="nav-label">Admin</div>
-              <Link href="/admin" className={`nav-item ${isActive('/admin') ? 'active' : ''}`} onClick={onClose}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-                Admin Dashboard
-              </Link>
-            </div>
+              <div>
+                <div className="nav-label">Management</div>
+                <Link href="/settings"  className={`nav-item ${isActive('/settings') ? 'active' : ''}`}  onClick={onClose}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  Settings
+                </Link>
+                <Link href="/knowledge" className={`nav-item ${isActive('/knowledge') ? 'active' : ''}`} onClick={onClose}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                  Knowledge Base
+                </Link>
+              </div>
+            </>
+          ) : (
+            /* ── Advisor nav: full workspace ── */
+            <>
+              {navItems.map((group) => {
+                const visibleItems = group.items.filter(item =>
+                  (!item.feature || features.includes(item.feature)) &&
+                  !('adminOnly' in item && item.adminOnly)
+                );
+                if (visibleItems.length === 0) return null;
+                return (
+                  <div key={group.group}>
+                    <div className="nav-label">{group.group}</div>
+                    {visibleItems.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
+                        onClick={onClose}
+                      >
+                        {item.icon}
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                );
+              })}
+            </>
           )}
         </nav>
 
