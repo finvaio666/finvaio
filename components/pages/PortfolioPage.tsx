@@ -243,12 +243,11 @@ export default function PortfolioPage() {
             {/* Column headers */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: activeTab === 'All' ? '160px 1fr 120px 120px 90px 80px' : '1fr 120px 120px 90px 80px',
+              gridTemplateColumns: '1fr 120px 120px 90px 80px',
               padding: '8px 20px', fontSize: 11, fontWeight: 700,
               color: 'var(--text3)', borderBottom: '1px solid var(--border)',
               background: 'var(--bg2)', letterSpacing: '0.04em', textTransform: 'uppercase',
             }}>
-              {activeTab === 'All' && <div>Client</div>}
               <div>Fund / Holding</div>
               <div style={{ textAlign: 'right' }}>Value (MYR)</div>
               <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
@@ -283,9 +282,7 @@ export default function PortfolioPage() {
 
                 {/* Holding rows */}
                 {rows.map((h, i) => {
-                  const cols = activeTab === 'All'
-                    ? '160px 1fr 120px 120px 90px 80px'
-                    : '1fr 120px 120px 90px 80px';
+                  const cols = '1fr 120px 120px 90px 80px';
                   return (
                     <div key={h.id} style={{
                       display: 'grid', gridTemplateColumns: cols,
@@ -296,13 +293,6 @@ export default function PortfolioPage() {
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
                       onMouseOut={e => (e.currentTarget.style.background = '')}
                     >
-                      {/* Client col — only "All" view */}
-                      {activeTab === 'All' && (
-                        <div style={{ fontSize: 12, color: 'var(--text3)', paddingRight: 8 }}>
-                          {h.clientName?.split(' ').slice(0, 2).join(' ')}
-                        </div>
-                      )}
-
                       {/* Holding name */}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)', flexWrap: 'wrap' }}>
@@ -354,11 +344,10 @@ export default function PortfolioPage() {
                   const sr = sp > 0 ? ((sg / sp) * 100).toFixed(1) : '0.0';
                   return (
                     <div style={{
-                      display: 'grid', gridTemplateColumns: '160px 1fr 120px 120px 90px 80px',
+                      display: 'grid', gridTemplateColumns: '1fr 120px 120px 90px 80px',
                       padding: '8px 20px', background: 'var(--bg2)',
                       borderBottom: '2px solid var(--border)', fontSize: 12, fontWeight: 700,
                     }}>
-                      <div />
                       <div style={{ color: 'var(--text3)', fontSize: 11 }}>Subtotal</div>
                       <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(sv).toLocaleString()}</div>
                       <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(sp).toLocaleString()}</div>
@@ -373,11 +362,10 @@ export default function PortfolioPage() {
             {/* Grand total */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: activeTab === 'All' ? '160px 1fr 120px 120px 90px 80px' : '1fr 120px 120px 90px 80px',
+              gridTemplateColumns: '1fr 120px 120px 90px 80px',
               padding: '12px 20px', background: 'var(--surface2)',
               borderTop: '2px solid var(--text)', fontSize: 13, fontWeight: 700,
             }}>
-              {activeTab === 'All' && <div />}
               <div style={{ color: 'var(--text)' }}>TOTAL <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>(MYR equiv.)</span></div>
               <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(totalValue).toLocaleString()}</div>
               <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(totalPurchase).toLocaleString()}</div>
