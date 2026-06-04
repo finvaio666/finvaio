@@ -348,6 +348,21 @@ function EmailDetailPanel({
           <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.6 }}>{email.snippet}</div>
         )}
 
+        {/* Mark Done — at the end of the email content */}
+        {!replyMode && !sent && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(34,197,94,0.12)', color: '#22c55e',
+                border: '1px solid rgba(34,197,94,0.3)', borderRadius: 'var(--r-pill)',
+                padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >✓ Mark Done</button>
+          </div>
+        )}
+
         {/* Reply box */}
         {replyMode && (
           <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
@@ -443,16 +458,6 @@ function EmailDetailPanel({
                 whiteSpace: 'nowrap',
               }}
             >✉ Write Reply</button>
-            <div style={{ flex: 1 }} />
-            <button
-              onClick={onClose}
-              style={{
-                background: 'rgba(34,197,94,0.12)', color: '#22c55e',
-                border: 'none', borderRadius: 'var(--r-pill)',
-                padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >✓ Mark Done</button>
           </div>
         </div>
       )}
