@@ -368,18 +368,21 @@ export default function DashboardPage() {
     if (expiringPolicies.length === 0) L.push('None.');
     else expiringPolicies.forEach(p => L.push(`- ${p.clientName}: ${p.policyName} (${p.insurer}) expires ${fmt(p.maturityDate)}`));
 
-    L.push('\n# OPEN TASKS (to-do list)');
-    if (openTasks.length === 0) L.push('None.');
+    // OPEN TASKS is the single source of truth for to-dos (reflects done/not-done).
+    L.push('\n# OPEN TASKS — the authoritative to-do list (only these are outstanding)');
+    if (openTasks.length === 0) L.push('None — all tasks done.');
     else openTasks.forEach(t => {
       const d = t.due ? daysUntil(t.due) : null;
       const when = d === null ? '' : d < 0 ? ` (${Math.abs(d)}d OVERDUE)` : d === 0 ? ' (due TODAY)' : ` (due in ${d}d)`;
       L.push(`- ${t.task}${t.client ? ` · ${t.client}` : ''}${when}`);
     });
 
-    L.push('\n# RECENT MEETINGS & OPEN ACTION ITEMS');
+    // Recent meetings for CONTEXT ONLY — do NOT treat their action items as
+    // outstanding to-dos (those are tracked in OPEN TASKS above, with completion).
+    L.push('\n# RECENT MEETINGS (context only — NOT a to-do list; do not list these as tasks)');
     if (recentMeetings.length === 0) L.push('None.');
     else recentMeetings.forEach(m => {
-      L.push(`- ${m.clientName} (${m.meetingType}, ${fmt(m.meetingDate)})${m.actionItems?.trim() ? `: ACTION → ${m.actionItems.trim()}` : ''}`);
+      L.push(`- ${m.clientName} · ${m.meetingType} · ${fmt(m.meetingDate)}`);
     });
 
     return L.join('\n');
