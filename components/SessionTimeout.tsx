@@ -6,7 +6,18 @@ import { useRouter } from 'next/navigation';
 const IDLE_MINUTES  = 30;          // warn after 30 min of no activity
 const WARN_SECONDS  = 60;          // countdown duration before auto-logout
 const IDLE_MS       = IDLE_MINUTES * 60 * 1000;
+const LAST_ACTIVE_KEY = 'aria-last-active';
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'] as const;
+
+function markActive() {
+  try { localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now())); } catch { /* ignore */ }
+}
+function idleFor(): number {
+  try {
+    const last = Number(localStorage.getItem(LAST_ACTIVE_KEY) || 0);
+    return last ? Date.now() - last : 0;
+  } catch { return 0; }
+}
 
 export default function SessionTimeout() {
   const router   = useRouter();
@@ -41,6 +52,7 @@ export default function SessionTimeout() {
 
   const resetTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    markActive(); // persist last-activity so we can enforce idle across reloads/resumes
     timerRef.current = setTimeout(startWarning, IDLE_MS);
   }, [startWarning]);
 
@@ -53,6 +65,10 @@ export default function SessionTimeout() {
   }, [resetTimer]);
 
   useEffect(() => {
+    // On mount: if we were already idle past the limit (tab was closed / phone
+    // locked / PWA suspended and reopened later), log out immediately.
+    if (idleFor() > IDLE_MS) { doLogout(); return; }
+
     // Start idle timer on mount
     resetTimer();
 
@@ -61,10 +77,23 @@ export default function SessionTimeout() {
       if (!showWarning) resetTimer();
     };
 
+    // When the tab/app regains focus or visibility, re-check idle time.
+    // This catches "left it for a long time then came back" even if timers
+    // were frozen while backgrounded.
+    const handleResume = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (idleFor() > IDLE_MS) { doLogout(); return; }
+      if (!showWarning) resetTimer();
+    };
+
     ACTIVITY_EVENTS.forEach(evt => window.addEventListener(evt, handleActivity, { passive: true }));
+    document.addEventListener('visibilitychange', handleResume);
+    window.addEventListener('focus', handleResume);
 
     return () => {
       ACTIVITY_EVENTS.forEach(evt => window.removeEventListener(evt, handleActivity));
+      document.removeEventListener('visibilitychange', handleResume);
+      window.removeEventListener('focus', handleResume);
       if (timerRef.current) clearTimeout(timerRef.current);
       if (warnRef.current)  clearInterval(warnRef.current);
     };
