@@ -117,7 +117,7 @@ export default function ComposeEmailModal({ institutions, onClose, onSent }: Pro
                 >
                   <option value="">Select institution…</option>
                   {institutions.map(i => (
-                    <option key={i.id} value={i.id}>{i.name} — {i.email}</option>
+                    <option key={i.id} value={i.id}>{i.name}{i.email ? ` — ${i.email}` : ` — @${i.domain}`}</option>
                   ))}
                   <option value="__custom__">Other (enter manually)</option>
                 </select>

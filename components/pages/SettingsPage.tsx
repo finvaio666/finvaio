@@ -214,7 +214,6 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
   const [err,            setErr]            = useState('');
   // New institution form
   const [newName,   setNewName]   = useState('');
-  const [newEmail,  setNewEmail]  = useState('');
   const [newDomain, setNewDomain] = useState('');
   const [newType,   setNewType]   = useState<'insurance' | 'fund' | 'other'>('insurance');
   const [addErr,    setAddErr]    = useState('');
@@ -253,19 +252,16 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
     await fetch('/api/email/provider', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: p }) });
   }
 
-  function autofillDomain() {
-    if (!newDomain && newEmail.includes('@')) {
-      setNewDomain(newEmail.split('@')[1]);
-    }
-  }
-
   function addInstitution() {
     setAddErr('');
-    if (!newName.trim()) { setAddErr('Name is required.'); return; }
-    if (!newEmail.trim() && !newDomain.trim()) { setAddErr('Either email or domain is required.'); return; }
-    const domain = newDomain.trim() || (newEmail.includes('@') ? newEmail.split('@')[1] : '');
-    setInstitutions(prev => [...prev, { id: Date.now().toString(), name: newName.trim(), email: newEmail.trim(), domain, type: newType }]);
-    setNewName(''); setNewEmail(''); setNewDomain(''); setNewType('insurance');
+    if (!newName.trim()) { setAddErr('Company name is required.'); return; }
+    // Accept either a bare domain or a full email — extract the domain either way
+    let domain = newDomain.trim().toLowerCase();
+    if (domain.includes('@')) domain = domain.split('@')[1];
+    domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!domain) { setAddErr('Domain is required (e.g. prudential.com.my).'); return; }
+    setInstitutions(prev => [...prev, { id: Date.now().toString(), name: newName.trim(), email: '', domain, type: newType }]);
+    setNewName(''); setNewDomain(''); setNewType('insurance');
   }
 
   function removeInstitution(id: string) {
@@ -365,15 +361,11 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Company Name *</div>
-              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Prudential Malaysia" style={{ padding: '7px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', width: 180 }} />
+              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Prudential Malaysia" style={{ padding: '7px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', width: 220 }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Contact Email</div>
-              <input value={newEmail} onChange={e => setNewEmail(e.target.value)} onBlur={autofillDomain} placeholder="service@company.com" type="email" style={{ padding: '7px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', width: 200 }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Domain *</div>
-              <input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="company.com.my" style={{ padding: '7px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', width: 160 }} />
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Email Domain *</div>
+              <input value={newDomain} onChange={e => setNewDomain(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addInstitution(); }} placeholder="prudential.com.my" style={{ padding: '7px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', width: 200 }} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Type</div>
