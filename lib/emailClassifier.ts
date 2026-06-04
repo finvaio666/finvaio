@@ -78,6 +78,8 @@ export interface SummaryResult {
   actionItems: string[]; // list of required actions
   urgency:    'high' | 'medium' | 'low';
   clientHint: string;   // any client name or policy number mentioned
+  needsFollowUp: boolean; // true if the advisor must do something in response
+  followUpTask:  string;  // a concise one-line task for the advisor (or '')
 }
 
 /** Strip HTML tags, image references, encoded URLs and boilerplate from email body. */
@@ -114,19 +116,26 @@ Respond ONLY in this exact JSON format (no markdown):
   "summary": "2-4 sentence plain English summary of what this email is about",
   "actionItems": ["action 1", "action 2"],
   "urgency": "medium",
-  "clientHint": "any client name, policy number, or account number mentioned, or empty string"
-}`;
+  "clientHint": "any client name, policy number, or account number mentioned, or empty string",
+  "needsFollowUp": true,
+  "followUpTask": "a concise one-line to-do for the advisor (verb first, e.g. 'Submit signed form to Prudential for Karen Chew') — empty string if no action is needed"
+}
+
+Set "needsFollowUp" to true ONLY if the advisor must take an action (reply, submit a document, chase a status, inform/contact the client, complete a request). Set it to false for pure FYI/confirmation/receipt emails that need no action.`;
 
   try {
     const text = (await generateText(prompt)).trim();
     const json = text.replace(/^```json\s*|```$/g, '').trim();
-    return JSON.parse(json) as SummaryResult;
+    const parsed = JSON.parse(json) as SummaryResult;
+    return { ...parsed, needsFollowUp: !!parsed.needsFollowUp, followUpTask: parsed.followUpTask ?? '' };
   } catch {
     return {
       summary:     'Unable to summarise this email.',
       actionItems: [],
       urgency:     'low',
       clientHint:  '',
+      needsFollowUp: false,
+      followUpTask:  '',
     };
   }
 }

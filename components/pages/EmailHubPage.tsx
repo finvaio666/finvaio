@@ -205,6 +205,31 @@ function EmailDetailPanel({
   const [sendError,   setSendError]   = useState('');
   const [instruction, setInstruction] = useState('');
 
+  // Make-task flow
+  const [taskOpen,   setTaskOpen]   = useState(false);
+  const [taskText,   setTaskText]   = useState('');
+  const [taskClient, setTaskClient] = useState('');
+  const [taskDue,    setTaskDue]    = useState('');
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskDone,   setTaskDone]   = useState(false);
+
+  function openTaskForm() {
+    setTaskText(aiSummary?.followUpTask || aiSummary?.actionItems?.[0] || `Follow up: ${email.subject}`);
+    setTaskClient(aiSummary?.clientHint || '');
+    setTaskDue('');
+    setTaskOpen(true);
+  }
+  async function saveTask() {
+    if (!taskText.trim()) return;
+    setTaskSaving(true);
+    const res = await fetch('/api/tasks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: taskText.trim(), client: taskClient.trim(), due: taskDue || undefined }),
+    });
+    setTaskSaving(false);
+    if (res.ok) { setTaskDone(true); setTaskOpen(false); }
+  }
+
   const status = threadStatus(thread, email);
   const lastMsg = thread?.messages[thread.messages.length - 1];
 
@@ -317,6 +342,47 @@ function EmailDetailPanel({
       {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
         <AISummaryPanel summary={aiSummary} loading={summaryLoading} />
+
+        {/* Follow-up flag → Make Task */}
+        {aiSummary?.needsFollowUp && !taskDone && (
+          <div style={{ marginBottom: 12, padding: '12px 14px', background: 'rgba(243,115,56,0.06)', border: '1px solid rgba(243,115,56,0.25)', borderRadius: 8 }}>
+            {!taskOpen ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>
+                  📌 <b>This needs follow-up.</b>{aiSummary.followUpTask ? ` ${aiSummary.followUpTask}` : ''}
+                </span>
+                <button onClick={openTaskForm} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📋 Make Task
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 8 }}>Review the task before adding</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input value={taskText} onChange={e => setTaskText(e.target.value)} placeholder="Task…"
+                    style={{ padding: '8px 10px', fontSize: 13, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontFamily: 'var(--font-sans)' }} />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input value={taskClient} onChange={e => setTaskClient(e.target.value)} placeholder="Client (optional)"
+                      style={{ flex: 1, minWidth: 140, padding: '8px 10px', fontSize: 13, background: taskClient ? 'var(--bg)' : 'rgba(243,115,56,0.06)', border: `1px solid ${taskClient ? 'var(--border)' : 'rgba(243,115,56,0.4)'}`, borderRadius: 6, color: 'var(--text)', fontFamily: 'var(--font-sans)' }} />
+                    <input value={taskDue} onChange={e => setTaskDue(e.target.value)} type="date"
+                      style={{ padding: '8px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button onClick={saveTask} disabled={taskSaving || !taskText.trim()} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer', opacity: taskSaving ? 0.6 : 1 }}>
+                    {taskSaving ? 'Adding…' : '✓ Add Task'}
+                  </button>
+                  <button onClick={() => setTaskOpen(false)} style={{ padding: '7px 14px', fontSize: 13, background: 'none', border: '1px solid var(--border)', borderRadius: 99, color: 'var(--text3)', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {taskDone && (
+          <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, fontSize: 13, color: '#22c55e', fontWeight: 600 }}>
+            ✓ Task added to your list.
+          </div>
+        )}
 
         {/* Thread messages */}
         {messages.length > 0 ? (
@@ -800,6 +866,7 @@ export default function EmailHubPage() {
                   </div>
                 ) : (
                   <EmailDetailPanel
+                    key={selectedEmail.threadId}
                     email={selectedEmail}
                     thread={thread}
                     aiSummary={aiSummary}
