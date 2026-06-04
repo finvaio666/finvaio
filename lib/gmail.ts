@@ -194,14 +194,21 @@ export async function listEmails(
   if (domains.length === 0) return [];
 
   const domainQ  = domains.map(d => `@${d}`).join(' OR ');
-  // Only emails sent FROM a whitelisted institution belong in the Email Hub.
-  const inboundQ = `from:(${domainQ})`;
+  const inboundQ  = `from:(${domainQ})`;
+  const outboundQ = `from:me to:(${domainQ})`;
 
-  const inRes = await gmail.users.messages.list({ userId: 'me', q: `${inboundQ} -label:ARIA/Closed`, maxResults });
+  // Fetch both inbound and outbound in parallel
+  const [inRes, outRes] = await Promise.all([
+    gmail.users.messages.list({ userId: 'me', q: `${inboundQ} -label:ARIA/Closed`, maxResults }),
+    gmail.users.messages.list({ userId: 'me', q: `${outboundQ} -label:ARIA/Closed`, maxResults: 20 }),
+  ]);
 
-  // Deduplicate by thread
+  const inIds  = (inRes.data.messages  ?? []).map(m => m.id!);
+  const outIds = (outRes.data.messages ?? []).map(m => m.id!);
+
+  // Deduplicate (a thread may appear in both)
   const seenThreads = new Set<string>();
-  const allIds = (inRes.data.messages ?? []).map(m => m.id!);
+  const allIds = [...inIds, ...outIds];
 
   // Fetch message metadata in parallel (max 30 concurrent)
   const chunks: string[][] = [];
