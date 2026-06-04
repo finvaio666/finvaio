@@ -170,20 +170,13 @@ export async function listEmails(
   if (!res.ok) throw new Error(data.error?.message || 'Graph list failed');
   const msgs: GraphMessage[] = data.value ?? [];
 
-  const me = advisorEmail.toLowerCase();
   const seen = new Set<string>();
   const out: EmailSummary[] = [];
   for (const m of msgs) {
     if ((m.categories ?? []).includes('ARIA/Closed')) continue;
     const fromAddr = m.from?.emailAddress?.address ?? m.sender?.emailAddress?.address ?? '';
-    const toAddr   = m.toRecipients?.[0]?.emailAddress?.address ?? '';
-    // Direction-aware match so the advisor's OWN domain (always in the To of
-    // inbound mail) can't flood everything in:
-    //  • inbound (from someone else)  → the SENDER must be a whitelisted institution
-    //  • outbound (from the advisor)  → the RECIPIENT must be a whitelisted institution
-    const isFromMe = fromAddr.toLowerCase() === me;
-    const ok = isFromMe ? domainMatches(toAddr, domains) : domainMatches(fromAddr, domains);
-    if (!ok) continue;
+    // Only emails sent FROM a whitelisted institution belong in the Email Hub.
+    if (!domainMatches(fromAddr, domains)) continue;
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
     seen.add(cid);
