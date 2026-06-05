@@ -431,8 +431,8 @@ export default function InsurancePage() {
 
           {/* Column header — same grid as data rows and subtotal */}
           {(() => {
-            const COLS = '2fr 120px 105px 95px 95px 90px 64px';
-            const MIN_W = 860;
+            const COLS = '2fr 110px 95px 80px 80px 130px 90px 60px';
+            const MIN_W = 980;
             const activeRows = rows.filter(p => p.status?.includes('Active'));
             // Life and TPD are typically the same as the Sum Assured — show in one column
             const lifeTpd  = (p: Policy) => p.lifeCover || p.tpdCover || p.sumAssured;
@@ -455,6 +455,7 @@ export default function InsurancePage() {
                   <div style={{ textAlign: 'right' }}>Life / TPD</div>
                   <div style={{ textAlign: 'right' }}>CI</div>
                   <div style={{ textAlign: 'right' }}>Accident</div>
+                  <div style={{ textAlign: 'right' }}>Medical</div>
                   <div style={{ textAlign: 'right' }}>Premium/yr</div>
                   <div style={{ textAlign: 'right' }}>Status</div>
                 </div>
@@ -479,11 +480,6 @@ export default function InsurancePage() {
                         {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
                         {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                       </div>
-                      {(p.medicalClass || p.medicalCard) && (
-                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3 }}>
-                          🏥 <span style={{ fontWeight: 600 }}>Medical Card:</span> {[p.medicalClass, p.medicalCard].filter(Boolean).join(' · ')}
-                        </div>
-                      )}
                       {p.benefits.length > 0 && (
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5 }}>
                           {p.benefits.map(b => <BenefitPill key={b} benefit={b} />)}
@@ -506,6 +502,13 @@ export default function InsurancePage() {
                     {/* Accident (PA) */}
                     <div style={colNum(p.paCover)}>{fmtCover(p.paCover)}</div>
 
+                    {/* Medical Card (R&B / Annual Limit) */}
+                    <div style={{ textAlign: 'right', fontSize: 11, lineHeight: 1.3, paddingTop: 3, color: (p.medicalClass || p.medicalCard) ? 'var(--green)' : 'var(--text3)' }}>
+                      {(p.medicalClass || p.medicalCard)
+                        ? <span>🏥 {[p.medicalClass, p.medicalCard].filter(Boolean).join(' · ')}</span>
+                        : '—'}
+                    </div>
+
                     {/* Premium/yr */}
                     <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12, paddingTop: 2 }}>
                       {p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—'}
@@ -527,6 +530,7 @@ export default function InsurancePage() {
                   <div style={{ ...colNum(1, true), fontWeight: 700 }}>{fmtCover(activeRows.reduce((s, p) => s + lifeTpd(p), 0))}</div>
                   <div style={{ ...colNum(activeRows.reduce((s, p) => s + p.ciCover, 0), true), fontWeight: 700 }}>{fmtCover(activeRows.reduce((s, p) => s + p.ciCover, 0))}</div>
                   <div style={{ ...colNum(activeRows.reduce((s, p) => s + p.paCover, 0), true), fontWeight: 700 }}>{fmtCover(activeRows.reduce((s, p) => s + p.paCover, 0))}</div>
+                  <div />
                   <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: 'var(--text3)' }}>
                     {Math.round(activeRows.reduce((s, p) => s + p.annualPremium, 0)).toLocaleString()}
                   </div>
