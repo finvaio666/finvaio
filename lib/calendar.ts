@@ -68,6 +68,8 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
   } catch { /* fall back to primary */ }
 
   const all: CalEvent[] = [];
+  let ok = false;
+  let lastErr: unknown;
   for (const calendarId of calendarIds) {
     try {
       const res = await cal.events.list({
@@ -77,6 +79,7 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
         orderBy: 'startTime',
         maxResults: 50,
       });
+      ok = true;
       for (const e of res.data.items ?? []) {
         if (e.status === 'cancelled') continue;
         all.push({
@@ -88,8 +91,10 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
           location: e.location ?? '',
         });
       }
-    } catch { /* skip inaccessible calendar */ }
+    } catch (e) { lastErr = e; /* try next calendar */ }
   }
+  // If every calendar query failed (e.g. missing calendar scope), surface it
+  if (!ok && lastErr) throw lastErr;
   return all;
 }
 
@@ -176,12 +181,9 @@ async function getMsEvents(refreshToken: string): Promise<CalEvent[]> {
 
 export async function getUpcomingEvents(config: AdvisorConfig): Promise<CalEvent[]> {
   if (!config.calendarRefreshToken) return [];
-  try {
-    const events = config.calendarProvider === 'microsoft'
-      ? await getMsEvents(config.calendarRefreshToken)
-      : await getGoogleEvents(config.calendarRefreshToken);
-    return events.filter(e => e.start).sort((a, b) => a.start.localeCompare(b.start));
-  } catch {
-    return [];
-  }
+  // Let errors propagate so the API can report scope/permission problems.
+  const events = config.calendarProvider === 'microsoft'
+    ? await getMsEvents(config.calendarRefreshToken)
+    : await getGoogleEvents(config.calendarRefreshToken);
+  return events.filter(e => e.start).sort((a, b) => a.start.localeCompare(b.start));
 }
