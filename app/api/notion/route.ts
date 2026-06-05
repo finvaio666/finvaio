@@ -204,6 +204,7 @@ export async function GET(req: NextRequest) {
           paCover:          p['PA Cover (MYR)']?.type === 'number'       ? p['PA Cover (MYR)'].number ?? 0                      : 0,
           tpdCover:         p['TPD Cover (MYR)']?.type === 'number'      ? p['TPD Cover (MYR)'].number ?? 0                     : 0,
           medicalClass:     p['Medical Class']?.type === 'rich_text'     ? p['Medical Class'].rich_text[0]?.plain_text ?? ''    : '',
+          medicalCard:      p['Medical Card']?.type === 'rich_text'      ? p['Medical Card'].rich_text[0]?.plain_text ?? ''     : '',
         };
       });
       return NextResponse.json({ data });

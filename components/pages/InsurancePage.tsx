@@ -24,6 +24,7 @@ interface Policy {
   paCover:      number;
   tpdCover:     number;
   medicalClass: string;
+  medicalCard:  string;
   policyOwner:  string;
   lifeAssured:  string;
 }
@@ -453,9 +454,13 @@ export default function InsurancePage() {
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                         {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
-                        {p.medicalClass && <span style={{ marginLeft: 6 }}>🏥 {p.medicalClass}</span>}
                         {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                       </div>
+                      {(p.medicalClass || p.medicalCard) && (
+                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3 }}>
+                          🏥 <span style={{ fontWeight: 600 }}>Medical Card:</span> {[p.medicalClass, p.medicalCard].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
                       {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>🎯 Beneficiary: {p.beneficiary}</div>}
                     </div>
 

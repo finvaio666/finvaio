@@ -266,7 +266,9 @@ async function importInsurance(clientIdMap) {
     const obj = {};
     headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
 
-    const clientName   = String(obj['Client Name *'] ?? '').trim();
+    // The Policy Owner column is the client this policy links to. Accept the new
+    // 'Policy Owner *' header, fall back to the old 'Client Name *' for old files.
+    const clientName   = String(obj['Policy Owner *'] ?? obj['Client Name *'] ?? '').trim();
     const policyName   = String(obj['Policy Name *'] ?? '').trim();
     const policyNumber = String(obj['Policy Number'] ?? '').trim();
     if (!clientName || !policyName) { skipped++; continue; }
@@ -290,7 +292,9 @@ async function importInsurance(clientIdMap) {
     const paCover     = obj['PA Cover (MYR)']    !== '' && obj['PA Cover (MYR)']    !== 0 ? Number(obj['PA Cover (MYR)'])    : null;
     const tpdCover    = obj['TPD Cover (MYR)']   !== '' && obj['TPD Cover (MYR)']   !== 0 ? Number(obj['TPD Cover (MYR)'])   : null;
     const medClass    = String(obj['Medical Class']  ?? '').trim();
-    const policyOwner = String(obj['Policy Owner']   ?? '').trim();
+    const medCard     = String(obj['Medical Card (R&B / Annual Limit)'] ?? obj['Medical Card'] ?? '').trim();
+    // Policy Owner = the linked client (from the Policy Owner * / Client Name * column)
+    const policyOwner = clientName || String(obj['Policy Owner'] ?? '').trim();
     const lifeAssured = String(obj['Life Assured']   ?? '').trim();
     const beneficiary = String(obj['Beneficiary']    ?? '').trim();
 
@@ -308,6 +312,7 @@ async function importInsurance(clientIdMap) {
       'PA Cover (MYR)':      paCover      != null    ? { number: paCover }      : undefined,
       'TPD Cover (MYR)':     tpdCover     != null    ? { number: tpdCover }     : undefined,
       'Medical Class':       medClass                ? { rich_text: [{ text: { content: medClass } }] }    : undefined,
+      'Medical Card':        medCard                 ? { rich_text: [{ text: { content: medCard } }] }     : undefined,
       'Policy Owner':        policyOwner             ? { rich_text: [{ text: { content: policyOwner } }] } : undefined,
       'Life Assured':        lifeAssured             ? { rich_text: [{ text: { content: lifeAssured } }] } : undefined,
       'Annual Premium (MYR)': annPremium  != null    ? { number: annPremium }   : undefined,
