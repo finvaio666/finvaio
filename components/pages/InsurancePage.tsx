@@ -227,19 +227,25 @@ export default function InsurancePage() {
     ? 'All'
     : clients.find(c => c.id === filterClientId)?.name ?? null;
 
+  // The Policy Owner is who the policies are categorised under. Fall back to the
+  // linked client when no owner is recorded.
+  const ownerOf = (p: Policy) => (p.policyOwner || '').trim() || p.clientName;
+
   const visible = filterClient === null ? [] : filterClient === 'All'
     ? policies
-    : policies.filter(p => p.clientName === filterClient);
+    : policies.filter(p => p.clientName === filterClient || ownerOf(p) === filterClient);
   const activePolicies = visible.filter(p => p.status?.includes('Active'));
 
   const totalSumAssured    = activePolicies.reduce((s, p) => s + p.sumAssured, 0);
   const totalAnnualPremium = activePolicies.reduce((s, p) => s + p.annualPremium, 0);
-  const clientsCovered     = new Set(visible.map(p => p.clientName)).size;
+  const clientsCovered     = new Set(visible.map(ownerOf)).size;
 
-  const grouped = (filterClient === 'All' ? clientNames : filterClient ? [filterClient] : []).map(name => ({
-    clientName: name,
-    policies:   visible.filter(p => p.clientName === name),
-    clientData: clients.find(c => c.name === name),
+  // Group by Policy Owner (each owner can hold policies for several Life Assured)
+  const ownerKeys = Array.from(new Set(visible.map(ownerOf).filter(Boolean))).sort();
+  const grouped = ownerKeys.map(owner => ({
+    clientName: owner,
+    policies:   visible.filter(p => ownerOf(p) === owner),
+    clientData: clients.find(c => c.name === owner),
   }));
 
   const coverFieldMap: Record<string, keyof Policy> = {
@@ -382,10 +388,17 @@ export default function InsurancePage() {
       {/* ── Policies view ── */}
       {filterClient && !loading && activeView === 'policies' && policies.length > 0 && grouped.map(({ clientName, policies: rows }) => (
         <div key={clientName} className="section" style={{ marginBottom: 12 }}>
-          {/* Client header */}
+          {/* Policy Owner header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, flexShrink: 0 }}>{initials(clientName)}</div>
-            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', flex: 1 }}>{clientName}</span>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{clientName}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', marginLeft: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>👤 Policy Owner</span>
+              {(() => {
+                const lives = Array.from(new Set(rows.map(p => (p.lifeAssured || '').trim()).filter(Boolean)));
+                return lives.length > 0 ? <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Insuring: {lives.join(', ')}</div> : null;
+              })()}
+            </div>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rows.length} {rows.length === 1 ? 'policy' : 'policies'}</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
               {fmtK(rows.filter(p => p.status?.includes('Active')).reduce((s, p) => s + p.sumAssured, 0))} assured
@@ -431,9 +444,10 @@ export default function InsurancePage() {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</span>
-                        {p.lifeAssured && p.policyOwner && p.lifeAssured !== p.policyOwner && (
-                          <span style={{ padding: '1px 7px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: 'var(--gold, #F59E0B)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                            Owner ≠ Assured
+                        {/* Life Assured badge — who this specific policy insures */}
+                        {p.lifeAssured && (
+                          <span style={{ padding: '1px 8px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 700, background: 'rgba(96,165,250,0.14)', color: '#60A5FA', border: '1px solid rgba(96,165,250,0.3)', whiteSpace: 'nowrap' }}>
+                            🧑 Life Assured: {p.lifeAssured}
                           </span>
                         )}
                       </div>
@@ -442,11 +456,7 @@ export default function InsurancePage() {
                         {p.medicalClass && <span style={{ marginLeft: 6 }}>🏥 {p.medicalClass}</span>}
                         {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                       </div>
-                      <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-                        {p.lifeAssured && <div style={{ fontSize: 10, color: 'var(--text3)' }}>🧑 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Life Assured:</span> {p.lifeAssured}</div>}
-                        {p.policyOwner && <div style={{ fontSize: 10, color: 'var(--text3)' }}>👤 <span style={{ fontWeight: 600, color: 'var(--text2)' }}>Policy Owner:</span> {p.policyOwner}</div>}
-                      </div>
-                      {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 Beneficiary: {p.beneficiary}</div>}
+                      {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>🎯 Beneficiary: {p.beneficiary}</div>}
                     </div>
 
                     {/* Type */}
