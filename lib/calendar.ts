@@ -52,24 +52,45 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
   const auth = googleOAuth();
   auth.setCredentials({ refresh_token: refreshToken });
   const cal = google.calendar({ version: 'v3', auth });
-  const now = new Date();
-  const until = new Date(now.getTime() + WINDOW_DAYS * 86400000);
-  const res = await cal.events.list({
-    calendarId: 'primary',
-    timeMin: now.toISOString(),
-    timeMax: until.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 50,
-  });
-  return (res.data.items ?? []).map(e => ({
-    id:       e.id ?? '',
-    title:    e.summary ?? '(No title)',
-    start:    e.start?.dateTime ?? (e.start?.date ? `${e.start.date}T00:00:00` : ''),
-    end:      e.end?.dateTime ?? (e.end?.date ? `${e.end.date}T00:00:00` : ''),
-    allDay:   !e.start?.dateTime,
-    location: e.location ?? '',
-  }));
+
+  // Start 12h ago (timezone-safe — captures all of today's appointments
+  // regardless of the server/UTC vs Malaysia offset) through the next 14 days.
+  const now = Date.now();
+  const timeMin = new Date(now - 12 * 3600 * 1000).toISOString();
+  const timeMax = new Date(now + WINDOW_DAYS * 86400000).toISOString();
+
+  // Pull from ALL the user's calendars, not just primary
+  let calendarIds = ['primary'];
+  try {
+    const list = await cal.calendarList.list({ maxResults: 25 });
+    const ids = (list.data.items ?? []).map(c => c.id).filter(Boolean) as string[];
+    if (ids.length) calendarIds = ids;
+  } catch { /* fall back to primary */ }
+
+  const all: CalEvent[] = [];
+  for (const calendarId of calendarIds) {
+    try {
+      const res = await cal.events.list({
+        calendarId,
+        timeMin, timeMax,
+        singleEvents: true,
+        orderBy: 'startTime',
+        maxResults: 50,
+      });
+      for (const e of res.data.items ?? []) {
+        if (e.status === 'cancelled') continue;
+        all.push({
+          id:       e.id ?? '',
+          title:    e.summary ?? '(No title)',
+          start:    e.start?.dateTime ?? (e.start?.date ? `${e.start.date}T00:00:00` : ''),
+          end:      e.end?.dateTime ?? (e.end?.date ? `${e.end.date}T00:00:00` : ''),
+          allDay:   !e.start?.dateTime,
+          location: e.location ?? '',
+        });
+      }
+    } catch { /* skip inaccessible calendar */ }
+  }
+  return all;
 }
 
 // ── Microsoft / Outlook Calendar ────────────────────────────────────────────
