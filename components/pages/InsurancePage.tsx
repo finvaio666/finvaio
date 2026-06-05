@@ -62,6 +62,29 @@ const COVERAGE_RULES = [
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n).toLocaleString()}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
+// Benefit pill colours (keys match Notion benefit names; partial-match by keyword)
+const BENEFIT_COLORS: { kw: string; color: string }[] = [
+  { kw: 'life',       color: '#60A5FA' },
+  { kw: 'critical',   color: '#F87171' },
+  { kw: 'early ci',   color: '#FB923C' },
+  { kw: 'medical',    color: '#4ADE80' },
+  { kw: 'accident',   color: '#F59E0B' },
+  { kw: 'tpd',        color: '#A78BFA' },
+  { kw: 'waiver',     color: '#34D399' },
+  { kw: 'payor',      color: '#E879F9' },
+  { kw: 'lady',       color: '#F472B6' },
+];
+const benefitColor = (b: string) => BENEFIT_COLORS.find(x => b.toLowerCase().includes(x.kw))?.color ?? '#9CB8A0';
+
+function BenefitPill({ benefit }: { benefit: string }) {
+  const color = benefitColor(benefit);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 'var(--r-pill)', fontSize: 10, fontWeight: 600, background: `${color}1A`, color, border: `1px solid ${color}40`, whiteSpace: 'nowrap' }}>
+      {benefit}
+    </span>
+  );
+}
+
 // ── Badge components ─────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: string }) {
@@ -459,6 +482,11 @@ export default function InsurancePage() {
                       {(p.medicalClass || p.medicalCard) && (
                         <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3 }}>
                           🏥 <span style={{ fontWeight: 600 }}>Medical Card:</span> {[p.medicalClass, p.medicalCard].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                      {p.benefits.length > 0 && (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5 }}>
+                          {p.benefits.map(b => <BenefitPill key={b} benefit={b} />)}
                         </div>
                       )}
                       {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>🎯 Beneficiary: {p.beneficiary}</div>}
