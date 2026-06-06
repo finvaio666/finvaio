@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import type { UpdatePageParameters } from '@notionhq/client/build/src/api-endpoints';
-import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
   }
 
-  const res   = await notion.databases.query({ database_id: PORTFOLIO_DB, page_size: 100 });
+  const navF  = advisorFilter(config);
+  const res   = await notion.databases.query({ database_id: PORTFOLIO_DB, page_size: 100, ...(navF ? { filter: navF } : {}) });
   const pages = res.results.filter(isFullPage);
 
   const results: { fundName: string; client: string; oldValue: number; newValue: number; units: number; pageId: string }[] = [];
@@ -89,7 +90,8 @@ export async function GET(req: NextRequest) {
   const PORTFOLIO_DB = config.portfolioDbId;
   const CLIENTS_DB   = config.clientsDbId;
 
-  const clientRes  = await notion.databases.query({ database_id: CLIENTS_DB });
+  const navF = advisorFilter(config);
+  const clientRes  = await notion.databases.query({ database_id: CLIENTS_DB, ...(navF ? { filter: navF } : {}) });
   const clientMap: Record<string, string> = {};
   clientRes.results.filter(isFullPage).forEach(page => {
     const name = page.properties['Client Name']?.type === 'title'
@@ -100,6 +102,7 @@ export async function GET(req: NextRequest) {
   const res = await notion.databases.query({
     database_id: PORTFOLIO_DB,
     page_size: 100,
+    ...(navF ? { filter: navF } : {}),
     sorts: [{ property: 'Holding Name', direction: 'ascending' }],
   });
 

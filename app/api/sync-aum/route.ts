@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
 
   const notion = new Client({ auth: config.notionApiKey });
   const DB = { clients: config.clientsDbId, portfolio: config.portfolioDbId };
+  const f = advisorFilter(config);
 
   try {
     // Step 1: Sum Value (MYR) per client from Portfolio
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
       const res = await notion.databases.query({
         database_id: DB.portfolio,
         start_cursor: cursor,
+        ...(f ? { filter: f } : {}),
       });
       for (const page of res.results.filter(isFullPage)) {
         const relations = page.properties['👥 Clients']?.type === 'relation'
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
     } while (cursor);
 
     // Step 2: Update each client's AUM (MYR)
-    const clientRes = await notion.databases.query({ database_id: DB.clients });
+    const clientRes = await notion.databases.query({ database_id: DB.clients, ...(f ? { filter: f } : {}) });
     const updated: { name: string; aum: number }[] = [];
 
     for (const page of clientRes.results.filter(isFullPage)) {

@@ -33,11 +33,19 @@ if (!NOTION_KEY) {
   process.exit(1);
 }
 
+// Centralized model: shared company DBs (env), with current IDs as defaults.
 const DB = {
-  clients:   '362de6dd1dfe80e59275e4ce2fc046b2',
-  portfolio: '363de6dd1dfe8058b73ec7fa8bb431fb',
-  insurance: 'b03d83d0e5a7409684993758865cde7f',
+  clients:   process.env.COMPANY_CLIENTS_DB_ID   || '362de6dd1dfe80e59275e4ce2fc046b2',
+  portfolio: process.env.COMPANY_PORTFOLIO_DB_ID || '363de6dd1dfe8058b73ec7fa8bb431fb',
+  insurance: process.env.COMPANY_INSURANCE_DB_ID || 'b03d83d0e5a7409684993758865cde7f',
 };
+
+// Which advisor owns the imported data — every record is tagged with this in
+// the shared DB's "Advisor" select. Pass via:  ADVISOR_NAME="Alice Tan" node scripts/import-from-excel.mjs
+// or as the first CLI arg:  node scripts/import-from-excel.mjs "Alice Tan"
+const ADVISOR_NAME = (process.env.ADVISOR_NAME || process.argv[2] || 'Sky Siew').trim();
+const advisorProp = { 'Advisor': { select: { name: ADVISOR_NAME } } };
+console.log(`👤 Importing as advisor: ${ADVISOR_NAME}`);
 
 const notion = new Client({ auth: NOTION_KEY });
 
@@ -99,8 +107,9 @@ async function importClients() {
   );
   log('📊', `Found ${data.length} clients in Excel`);
 
-  // Get existing clients from Notion
-  const existing = await notionCall(() => notion.databases.query({ database_id: DB.clients }));
+  // Get existing clients from Notion — scoped to THIS advisor so a same-named
+  // client owned by another FA is never matched/overwritten.
+  const existing = await notionCall(() => notion.databases.query({ database_id: DB.clients, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } }));
   const existingMap = {};
   existing.results.filter(isFullPage).forEach(p => {
     const name = p.properties['Client Name']?.title?.[0]?.plain_text ?? '';
@@ -122,6 +131,7 @@ async function importClients() {
     const phoneFormatted = phone ? (phone.startsWith('+') ? phone : '+' + phone) : '';
 
     const props = {
+      ...advisorProp,
       'Client Name':          { title:        [{ text: { content: name } }] },
       'Status':               obj['Status']            ? { select: { name: String(obj['Status']) } } : undefined,
       'Client Segment':       obj['Client Segment']    ? { select: { name: String(obj['Client Segment']) } } : undefined,
@@ -171,8 +181,8 @@ async function importPortfolio(clientIdMap) {
   );
   log('📊', `Found ${data.length} portfolio rows in Excel`);
 
-  // Get existing holdings
-  const existing = await notionCall(() => notion.databases.query({ database_id: DB.portfolio, page_size: 100 }));
+  // Get existing holdings — scoped to this advisor
+  const existing = await notionCall(() => notion.databases.query({ database_id: DB.portfolio, page_size: 100, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } }));
   const existingMap = {};
   existing.results.filter(isFullPage).forEach(p => {
     const holdingName = p.properties['Holding Name']?.title?.[0]?.plain_text ?? '';
@@ -208,6 +218,7 @@ async function importPortfolio(clientIdMap) {
     const currency     = String(obj['Currency'] ?? 'MYR').trim() || 'MYR';
 
     const props = {
+      ...advisorProp,
       'Holding Name':                       { title: [{ text: { content: holdingName } }] },
       '👥 Clients':                          { relation: [{ id: clientPageId }] },
       'Asset class':                         obj['Asset class']  ? { select: { name: String(obj['Asset class']) } } : undefined,
@@ -246,8 +257,8 @@ async function importInsurance(clientIdMap) {
   const data = rows.slice(3).filter(r => r[0] && String(r[0]).trim());
   log('📊', `Found ${data.length} insurance rows in Excel`);
 
-  // Get existing policies
-  const existing = await notionCall(() => notion.databases.query({ database_id: DB.insurance, page_size: 100 }));
+  // Get existing policies — scoped to this advisor
+  const existing = await notionCall(() => notion.databases.query({ database_id: DB.insurance, page_size: 100, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } }));
   const existingMap = {};
   existing.results.filter(isFullPage).forEach(p => {
     const policyName   = p.properties['Policy Name']?.title?.[0]?.plain_text ?? '';
@@ -299,6 +310,7 @@ async function importInsurance(clientIdMap) {
     const beneficiary = String(obj['Beneficiary']    ?? '').trim();
 
     const props = {
+      ...advisorProp,
       'Policy Name':         { title: [{ text: { content: policyName } }] },
       'Clients':             { relation: [{ id: clientPageId }] },
       'Insurance Type':      obj['Insurance Type *'] ? { select: { name: String(obj['Insurance Type *']) } } : undefined,

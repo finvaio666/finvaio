@@ -26,6 +26,18 @@ export interface AdvisorConfig {
   calendarAddress:      string; // the connected calendar account address
 }
 
+/**
+ * Centralized multi-advisor scoping.
+ * Shared DBs carry an "Advisor" select tagging each record's owning FA.
+ * Returns a Notion filter limiting results to this advisor's records, or
+ * `undefined` for Admin (who sees every advisor's data).
+ */
+export function advisorFilter(config: Pick<AdvisorConfig, 'role' | 'name'>) {
+  return config.role === 'Admin'
+    ? undefined
+    : { property: 'Advisor', select: { equals: config.name } };
+}
+
 // In-process cache — survives warm function re-use, cleared on cold start
 const cache = new Map<string, { config: AdvisorConfig; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -50,14 +62,17 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
     if (!isFullPage(page)) return null;
 
     const p = page.properties as Record<string, unknown>;
+    // Centralized model: if a per-advisor DB ID isn't set on the record, fall back
+    // to the company-wide shared DB (env). New FAs need NO DB IDs filled in.
+    const env = process.env;
     const config: AdvisorConfig = {
-      notionApiKey:     rt(p, 'Notion API Key'),
-      clientsDbId:      rt(p, 'Clients DB ID'),
-      portfolioDbId:    rt(p, 'Portfolio DB ID'),
-      insuranceDbId:    rt(p, 'Insurance DB ID'),
-      cashflowDbId:     rt(p, 'Cashflow DB ID'),
-      meetingNotesDbId:   rt(p, 'Meeting Notes DB ID'),
-      tasksDbId:          rt(p, 'Tasks DB ID'),
+      notionApiKey:     rt(p, 'Notion API Key')      || env.NOTION_API_KEY            || '',
+      clientsDbId:      rt(p, 'Clients DB ID')       || env.COMPANY_CLIENTS_DB_ID      || '',
+      portfolioDbId:    rt(p, 'Portfolio DB ID')     || env.COMPANY_PORTFOLIO_DB_ID    || '',
+      insuranceDbId:    rt(p, 'Insurance DB ID')     || env.COMPANY_INSURANCE_DB_ID    || '',
+      cashflowDbId:     rt(p, 'Cashflow DB ID')      || env.COMPANY_CASHFLOW_DB_ID     || '',
+      meetingNotesDbId:   rt(p, 'Meeting Notes DB ID') || env.COMPANY_MEETING_NOTES_DB_ID || '',
+      tasksDbId:          rt(p, 'Tasks DB ID')         || env.COMPANY_TASKS_DB_ID        || '',
       insurancePlansDbId: rt(p, 'Insurance Plans DB ID'),
       fundsDbId:          rt(p, 'Funds DB ID'),
       features:           rt(p, 'Features').split(',').map(f => f.trim().toLowerCase()).filter(Boolean),

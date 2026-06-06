@@ -500,6 +500,11 @@ function UsersTab() {
 
       {showForm && (
         <Section title="New User" desc="Create a new login account for an advisor.">
+          <div style={{ margin: '0 20px 4px', padding: '10px 14px', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.25)', borderRadius: 8, fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>
+            ℹ️ The advisor automatically shares the company databases — no setup needed.
+            Their data is tagged by <b>Full Name</b>, so it must <b>exactly match</b> the
+            “Advisor” name used when importing their client data.
+          </div>
           <Row label="Full Name" desc=""><Input value={newName} onChange={setNewName} placeholder="e.g. Alice Tan" /></Row>
           <Row label="Username" desc="Used to log in — lowercase, no spaces"><Input value={newUser} onChange={v => setNewUser(v.toLowerCase().replace(/\s/g, ''))} placeholder="e.g. alice" /></Row>
           <Row label="Initial Password" desc="The user should change this on first login"><Input value={newPass} onChange={setNewPass} type="password" placeholder="Min 8 characters" /></Row>

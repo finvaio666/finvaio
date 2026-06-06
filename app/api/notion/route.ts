@@ -43,11 +43,27 @@ export async function GET(req: NextRequest) {
     funds:            config.fundsDbId,
   };
 
+  // ── Centralized multi-advisor scoping ────────────────────────────────────
+  // Shared DBs hold every FA's records, tagged with an "Advisor" select.
+  // A normal advisor sees only their own rows; Admin sees everything.
+  const isAdmin = config.role === 'Admin';
+  const advisorFilter = isAdmin
+    ? undefined
+    : { property: 'Advisor', select: { equals: config.name } };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scoped = (extra?: any) => {
+    if (advisorFilter && extra) return { filter: { and: [advisorFilter, extra] } };
+    if (advisorFilter)          return { filter: advisorFilter };
+    if (extra)                  return { filter: extra };
+    return {};
+  };
+
   try {
     if (type === 'clients') {
       if (!DB.clients) return NextResponse.json({ data: [] });
       const res = await notion.databases.query({
         database_id: DB.clients,
+        ...scoped(),
         sorts: [{ property: 'Client Name', direction: 'ascending' }],
       });
       const data = res.results.filter(isFullPage).map(page => {
@@ -76,7 +92,7 @@ export async function GET(req: NextRequest) {
       if (!DB.portfolio) return NextResponse.json({ data: [] });
 
       // Build client ID → name map first
-      const clientRes = await notion.databases.query({ database_id: DB.clients });
+      const clientRes = await notion.databases.query({ database_id: DB.clients, ...scoped() });
       const clientMap: Record<string, string> = {};
       clientRes.results.filter(isFullPage).forEach(page => {
         const name = page.properties['Client Name']?.type === 'title'
@@ -86,6 +102,7 @@ export async function GET(req: NextRequest) {
 
       const res = await notion.databases.query({
         database_id: DB.portfolio,
+        ...scoped(),
         sorts: [{ property: 'Holding Name', direction: 'ascending' }],
       });
       const data = res.results.filter(isFullPage).map(page => {
@@ -131,6 +148,7 @@ export async function GET(req: NextRequest) {
       if (!DB.cashflow) return NextResponse.json({ data: [] });
       const res = await notion.databases.query({
         database_id: DB.cashflow,
+        ...scoped(),
         sorts: [{ property: 'Month', direction: 'descending' }],
       });
       const data = res.results.filter(isFullPage).map(page => {
@@ -165,7 +183,7 @@ export async function GET(req: NextRequest) {
     if (type === 'insurance') {
       if (!DB.insurance) return NextResponse.json({ data: [] });
 
-      const clientRes = await notion.databases.query({ database_id: DB.clients });
+      const clientRes = await notion.databases.query({ database_id: DB.clients, ...scoped() });
       const clientMap: Record<string, { name: string; income: number }> = {};
       clientRes.results.filter(isFullPage).forEach(page => {
         const name   = page.properties['Client Name']?.type === 'title'  ? page.properties['Client Name'].title[0]?.plain_text ?? ''  : '';
@@ -175,6 +193,7 @@ export async function GET(req: NextRequest) {
 
       const res = await notion.databases.query({
         database_id: DB.insurance,
+        ...scoped(),
         sorts: [{ property: 'Policy Name', direction: 'ascending' }],
       });
       const data = res.results.filter(isFullPage).map(page => {

@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
   }
 
   const notion = new Client({ auth: config.notionApiKey });
+  const isAdmin = config.role === 'Admin';
 
   // ── 1. Fetch client ─────────────────────────────────────────────────────────
   let clientData = null;
@@ -46,6 +47,11 @@ export async function GET(req: NextRequest) {
     const page = await notion.pages.retrieve({ page_id: clientId });
     if (isFullPage(page)) {
       const p = page.properties as Record<string, unknown>;
+      // Centralized model: an advisor may only report on their own clients.
+      const ownerAdvisor = (p['Advisor'] as { select?: { name: string } })?.select?.name ?? '';
+      if (!isAdmin && ownerAdvisor && ownerAdvisor !== config.name) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       const rt = (key: string) => (p[key] as { rich_text?: Array<{ plain_text: string }> })?.rich_text?.[0]?.plain_text ?? '';
       const sel = (key: string) => (p[key] as { select?: { name: string } })?.select?.name ?? '';
       const num = (key: string) => (p[key] as { number?: number })?.number ?? 0;

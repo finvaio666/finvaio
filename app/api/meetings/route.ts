@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { DEMO_MEETINGS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
@@ -15,8 +15,10 @@ export async function GET(req: NextRequest) {
 
   const notion = new Client({ auth: config.notionApiKey });
   try {
+    const f = advisorFilter(config);
     const res = await notion.databases.query({
       database_id: config.meetingNotesDbId,
+      ...(f ? { filter: f } : {}),
       sorts: [{ property: 'Meeting Date', direction: 'descending' }],
     });
 
@@ -85,6 +87,8 @@ export async function POST(req: NextRequest) {
     'Notes':        { rich_text: [{ text: { content: notes || '' } }] },
     'Action Items': { rich_text: [{ text: { content: actionItems || '' } }] },
     ...(nextReviewDate ? { 'Next Review Date': { date: { start: nextReviewDate } } } : {}),
+    // Centralized model: stamp owning advisor
+    'Advisor':      { select: { name: config.name } },
   };
 
   // Optional properties — only present if the DB has these columns

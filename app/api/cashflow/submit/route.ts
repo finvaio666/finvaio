@@ -216,14 +216,19 @@ export async function POST(req: NextRequest) {
       'EPF contribution (MYR)': {
         number: totalEPF,
       },
+      // Centralized model: stamp owning advisor
+      'Advisor': { select: { name: config.name } },
     };
 
-    // Check for an existing entry with the same title (client + month)
+    // Check for an existing entry with the same title (client + month), scoped
+    // to this advisor so two FAs' same-named clients don't overwrite each other.
     const existing = await notion.databases.query({
       database_id: config.cashflowDbId,
       filter: {
-        property: 'Entry',
-        title: { equals: entryTitle },
+        and: [
+          { property: 'Entry', title: { equals: entryTitle } },
+          { property: 'Advisor', select: { equals: config.name } },
+        ],
       },
       page_size: 1,
     });

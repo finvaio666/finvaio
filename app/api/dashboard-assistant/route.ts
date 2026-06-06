@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { listTasks, setTaskStatus } from '@/lib/tasks';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +44,8 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
 
   let clientPages: { id: string; name: string; props: Record<string, unknown> }[] = [];
   try {
-    const res = await notion.databases.query({ database_id: config.clientsDbId, page_size: 100 });
+    const f = advisorFilter(config);
+    const res = await notion.databases.query({ database_id: config.clientsDbId, page_size: 100, ...(f ? { filter: f } : {}) });
     clientPages = res.results.filter(isFullPage).map(pg => {
       const props = pg.properties as Record<string, unknown>;
       const name = (props['Client Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.type === 'title'
@@ -106,8 +107,10 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
     } else if (config.meetingNotesDbId) {
       // Fallback: raw action items from meeting notes
       try {
+        const mf = advisorFilter(config);
         const mres = await notion.databases.query({
           database_id: config.meetingNotesDbId,
+          ...(mf ? { filter: mf } : {}),
           sorts: [{ property: 'Meeting Date', direction: 'descending' }],
           page_size: 20,
         });

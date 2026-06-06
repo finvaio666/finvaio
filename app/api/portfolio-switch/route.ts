@@ -82,6 +82,8 @@ export async function POST(req: NextRequest) {
         'FX Rate to MYR':                     { number: fxRate            },
         'Value (MYR)':                        { number: fund.valueMyr  || fund.valueOrig  * fxRate },
         'Purchase price (MYR)':               { number: fund.purchaseMyr || fund.purchaseOrig * fxRate },
+        // Centralized model: stamp owning advisor
+        'Advisor':                            { select: { name: config.name } },
       };
       if (fund.assetClass) props['Asset class']  = { select:    { name: fund.assetClass } };
       if (fund.institution) props['Institution'] = { rich_text: [{ text: { content: fund.institution } }] };

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE } from '@/lib/demoData';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
@@ -91,10 +91,12 @@ async function buildClientContext(
   if (!config.notionApiKey || !config.clientsDbId) return '';
   const notion = new Client({ auth: config.notionApiKey });
 
-  // ── 1. Find client by name ──────────────────────────────────────────────────
+  // ── 1. Find client by name (scoped to this advisor; Admin = all) ────────────
+  const af = advisorFilter(config);
+  const nameFilter = { property: 'Client Name', title: { contains: clientName.split(' ')[0] } };
   const clientRes = await notion.databases.query({
     database_id: config.clientsDbId,
-    filter: { property: 'Client Name', title: { contains: clientName.split(' ')[0] } },
+    filter: af ? { and: [af, nameFilter] } : nameFilter,
   });
 
   const clientPages = clientRes.results.filter(isFullPage);
@@ -143,6 +145,7 @@ async function buildClientContext(
         const allHoldings = await notion.databases.query({
           database_id: config.portfolioDbId,
           page_size: 100,
+          ...(af ? { filter: af } : {}),
         });
         // Match if any text property contains the client's name
         portfolioRes = {
@@ -203,6 +206,7 @@ async function buildClientContext(
         const allPolicies = await notion.databases.query({
           database_id: config.insuranceDbId,
           page_size: 100,
+          ...(af ? { filter: af } : {}),
         });
         insurRes = {
           ...allPolicies,
@@ -246,6 +250,7 @@ async function buildClientContext(
       // Fetch recent meetings sorted newest-first
       const meetRes = await notion.databases.query({
         database_id: config.meetingNotesDbId,
+        ...(af ? { filter: af } : {}),
         sorts: [{ property: 'Meeting Date', direction: 'descending' }],
         page_size: 10,
       });

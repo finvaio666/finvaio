@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { getActive, getRecentInbound } from '@/lib/emailService';
 import { getCompanyDomains } from '@/lib/institutions';
 
@@ -36,7 +36,8 @@ export async function GET(req: NextRequest) {
     const clientNames: { id: string; name: string; first: string; last: string }[] = [];
     if (config.notionApiKey && config.notionApiKey !== 'DEMO_MODE' && config.clientsDbId) {
       const notion = new Client({ auth: config.notionApiKey });
-      const res = await notion.databases.query({ database_id: config.clientsDbId, page_size: 100 });
+      const f = advisorFilter(config);
+      const res = await notion.databases.query({ database_id: config.clientsDbId, page_size: 100, ...(f ? { filter: f } : {}) });
       for (const page of res.results) {
         if (!isFullPage(page)) continue;
         const nameProp = page.properties['Client Name'];

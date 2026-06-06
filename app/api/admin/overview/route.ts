@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
   if (!hostKey || !usersDbId) return NextResponse.json({ error: 'Server config error' }, { status: 500 });
 
   const notion = new Client({ auth: hostKey });
+  // Centralized model: one shared Clients DB; attribute by the Advisor tag.
+  const clientsDbId = config.clientsDbId || process.env.COMPANY_CLIENTS_DB_ID;
 
   // Fetch all users
   const usersRes = await notion.databases.query({ database_id: usersDbId, page_size: 50 });
@@ -49,41 +51,43 @@ export async function GET(req: NextRequest) {
     return role === 'Advisor'; // only FAs, not admins
   });
 
-  // For each FA, fetch their client count + total AUM in parallel
+  // For each FA, count their clients + total AUM by querying the shared DB
+  // filtered to that FA's Advisor tag.
   const advisors: FAStats[] = await Promise.all(
     faUsers.map(async (page) => {
       const p        = page.properties as Record<string, unknown>;
       const name     = (p['Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '';
       const username = rt(p, 'Username');
       const active   = (p['Active'] as { type: string; checkbox?: boolean } | undefined)?.checkbox ?? true;
-      const faConfig = await getAdvisorConfig(page.id).catch(() => null);
 
       let clientCount  = 0;
       let totalAUM     = 0;
       let lastActivity = '';
 
-      if (faConfig?.notionApiKey && faConfig.notionApiKey !== 'DEMO_MODE' && faConfig.clientsDbId) {
+      if (clientsDbId && name) {
         try {
-          const faNotion    = new Client({ auth: faConfig.notionApiKey });
-          const clientsRes  = await faNotion.databases.query({
-            database_id: faConfig.clientsDbId,
-            page_size: 100,
-          });
-          clientCount = clientsRes.results.length;
-
-          // Sum AUM from clients
-          for (const cp of clientsRes.results) {
-            if (!isFullPage(cp)) continue;
-            const aumProp = cp.properties['AUM'] ?? cp.properties['Total AUM'] ?? cp.properties['AUM (MYR)'];
-            if (aumProp?.type === 'number') {
-              totalAUM += (aumProp as { type: 'number'; number: number | null }).number ?? 0;
+          let cursor: string | undefined;
+          do {
+            const clientsRes = await notion.databases.query({
+              database_id: clientsDbId,
+              page_size: 100,
+              start_cursor: cursor,
+              filter: { property: 'Advisor', select: { equals: name } },
+            });
+            clientCount += clientsRes.results.length;
+            for (const cp of clientsRes.results) {
+              if (!isFullPage(cp)) continue;
+              const aumProp = cp.properties['AUM'] ?? cp.properties['Total AUM'] ?? cp.properties['AUM (MYR)'];
+              if (aumProp?.type === 'number') {
+                totalAUM += (aumProp as { type: 'number'; number: number | null }).number ?? 0;
+              }
+              if (!lastActivity || cp.last_edited_time > lastActivity) {
+                lastActivity = cp.last_edited_time;
+              }
             }
-            // Track last created/edited time
-            if (!lastActivity || cp.last_edited_time > lastActivity) {
-              lastActivity = cp.last_edited_time;
-            }
-          }
-        } catch { /* FA's Notion may be inaccessible */ }
+            cursor = clientsRes.has_more ? (clientsRes.next_cursor ?? undefined) : undefined;
+          } while (cursor);
+        } catch { /* shared DB may be inaccessible */ }
       }
 
       return {

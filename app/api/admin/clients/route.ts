@@ -55,41 +55,47 @@ export async function GET(req: NextRequest) {
 
   const notion = new Client({ auth: hostKey });
 
-  // Get all FA users
+  // Get all FA users → build Advisor name → user-id map for attribution
   const usersRes = await notion.databases.query({ database_id: usersDbId, page_size: 50 });
-  let faUsers = usersRes.results.filter(isFullPage).filter(page => {
+  const faUsers = usersRes.results.filter(isFullPage).filter(page => {
     const p    = page.properties as Record<string, unknown>;
     const role = (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor';
     const active = (p['Active'] as { type: string; checkbox?: boolean } | undefined)?.checkbox ?? true;
     return role === 'Advisor' && active;
   });
+  const nameToId: Record<string, string> = {};
+  for (const fa of faUsers) {
+    const nm = (fa.properties['Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '';
+    if (nm) nameToId[nm] = fa.id;
+  }
+  // If filtering by a specific FA, resolve their name to filter on the Advisor tag
+  const filterFaName = filterFaId
+    ? (Object.entries(nameToId).find(([, id]) => id === filterFaId)?.[0] ?? '')
+    : '';
 
-  // Filter to specific FA if requested
-  if (filterFaId) faUsers = faUsers.filter(p => p.id === filterFaId);
-
+  // Centralized model: query the ONE shared Clients DB and attribute each row
+  // by its Advisor tag — no more per-FA DB iteration.
+  const clientsDbId = config.clientsDbId || process.env.COMPANY_CLIENTS_DB_ID;
   const allClients: AdminClient[] = [];
 
-  await Promise.all(faUsers.map(async (faPage) => {
-    const faProps  = faPage.properties as Record<string, unknown>;
-    const faName   = (faProps['Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '';
-    const faConfig = await getAdvisorConfig(faPage.id).catch(() => null);
-    if (!faConfig?.notionApiKey || !faConfig.clientsDbId || faConfig.notionApiKey === 'DEMO_MODE') return;
-
-    try {
-      const faNotion   = new Client({ auth: faConfig.notionApiKey });
-      const clientsRes = await faNotion.databases.query({
-        database_id: faConfig.clientsDbId,
+  if (clientsDbId) {
+    let cursor: string | undefined;
+    do {
+      const clientsRes = await notion.databases.query({
+        database_id: clientsDbId,
         page_size:   100,
+        start_cursor: cursor,
+        ...(filterFaName ? { filter: { property: 'Advisor', select: { equals: filterFaName } } } : {}),
       });
-
       for (const cp of clientsRes.results) {
         if (!isFullPage(cp)) continue;
         const p = cp.properties as Record<string, unknown>;
+        const advisorName = sel(p, 'Advisor');
         allClients.push({
           id:          cp.id,
           name:        title(p),
-          advisorId:   faPage.id,
-          advisorName: faName,
+          advisorId:   nameToId[advisorName] ?? '',
+          advisorName,
           aum:         num(p, 'AUM') || num(p, 'Total AUM') || num(p, 'AUM (MYR)'),
           risk:        sel(p, 'Risk Profile') || sel(p, 'Risk'),
           segment:     sel(p, 'Segment') || sel(p, 'Client Segment'),
@@ -99,8 +105,9 @@ export async function GET(req: NextRequest) {
           email:       rt(p, 'Email') || rt(p, 'Email Address'),
         });
       }
-    } catch { /* skip inaccessible FA */ }
-  }));
+      cursor = clientsRes.has_more ? (clientsRes.next_cursor ?? undefined) : undefined;
+    } while (cursor);
+  }
 
   // Sort by AUM descending
   allClients.sort((a, b) => b.aum - a.aum);

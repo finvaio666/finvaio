@@ -57,7 +57,11 @@ export async function listTasks(
 ): Promise<Task[]> {
   if (!config.tasksDbId || !config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return [];
   const notion = notionFor(config);
-  const res = await notion.databases.query({ database_id: config.tasksDbId, page_size: 100 });
+  // Centralized model: scope to this advisor's tasks (Admin sees all).
+  const advisorScope = config.role === 'Admin'
+    ? {}
+    : { filter: { property: 'Advisor', select: { equals: config.name } } };
+  const res = await notion.databases.query({ database_id: config.tasksDbId, page_size: 100, ...advisorScope });
   let tasks = res.results.filter(isFullPage).map(pg => {
     const p = pg.properties as Record<string, unknown>;
     return {
@@ -101,6 +105,8 @@ export async function createTask(
     'Status': { select: { name: 'Open' } },
     'Client': { rich_text: [{ text: { content: (t.client ?? '').slice(0, 200) } }] },
     'Source': { rich_text: [{ text: { content: (t.source ?? 'Manual').slice(0, 200) } }] },
+    // Centralized model: stamp the owning advisor so it stays scoped to them.
+    'Advisor': { select: { name: config.name } },
   };
   if (t.due) props['Due'] = { date: { start: t.due } };
   await notion.pages.create({ parent: { database_id: config.tasksDbId }, properties: props as never });
@@ -137,6 +143,7 @@ export async function syncTasksFromMeetings(config: AdvisorConfig): Promise<numb
 
   const mres = await notion.databases.query({
     database_id: config.meetingNotesDbId,
+    ...(config.role === 'Admin' ? {} : { filter: { property: 'Advisor', select: { equals: config.name } } }),
     sorts: [{ property: 'Meeting Date', direction: 'descending' }],
     page_size: 50,
   });
