@@ -589,11 +589,32 @@ export default function EmailHubPage() {
       }
 
       setConnected(true);
-      setEmails(data.emails ?? []);
+      const fresh: EmailSummary[] = data.emails ?? [];
+      setEmails(fresh);
       setInstitutions(data.institutions ?? []);
       setAdvisorEmail(data.advisorEmail ?? '');
       if (Array.isArray(data.themes) && data.themes.length) setThemes(data.themes);
       if (data.noWhitelist) setError('no_whitelist');
+
+      // Phase 2 — background AI categorisation for emails rules couldn't resolve.
+      // Runs detached, in small batches, so the theme chips show instantly and
+      // their counts tick up as each batch returns.
+      (async () => {
+        const todo = fresh.filter(e => !e.category);
+        for (let i = 0; i < todo.length; i += 8) {
+          const batch = todo.slice(i, i + 8);
+          try {
+            const r = await fetch('/api/email/categorize', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: batch.map(e => ({ id: e.id, from: e.from, subject: e.subject, snippet: e.snippet })) }),
+            });
+            const d = await r.json();
+            if (d.results) {
+              setEmails(prev => prev.map(e => (!e.category && d.results[e.id]) ? { ...e, category: d.results[e.id] } : e));
+            }
+          } catch { /* ignore batch failure */ }
+        }
+      })();
     } catch {
       setError('Failed to load emails.');
     } finally {
@@ -696,9 +717,9 @@ export default function EmailHubPage() {
     return true;
   };
 
-  // Combined filter: status tab AND theme chip
+  // Combined filter: status tab AND theme chip (uncategorised only show under "All")
   const filtered = emails.filter(e =>
-    statusPass(e) && (themeFilter === 'all' || (e.category ?? 'other') === themeFilter)
+    statusPass(e) && (themeFilter === 'all' || e.category === themeFilter)
   );
 
   const counts = {
@@ -709,10 +730,13 @@ export default function EmailHubPage() {
   };
 
   // Theme counts respect the active status tab so chips reflect what you'd see.
+  // Uncategorised emails (AI pass not done yet) are counted as "pending" and
+  // fold into their theme as classification completes — so counts tick up.
   const themeCounts: Record<string, number> = {};
+  let categorizing = 0;
   for (const e of emails.filter(statusPass)) {
-    const id = e.category ?? 'other';
-    themeCounts[id] = (themeCounts[id] ?? 0) + 1;
+    if (!e.category) { categorizing++; continue; }
+    themeCounts[e.category] = (themeCounts[e.category] ?? 0) + 1;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -789,25 +813,34 @@ export default function EmailHubPage() {
                 color: themeFilter === 'all' ? '#F37338' : 'var(--text3)',
               }}
             >All ({emails.length})</button>
-            {themes.filter(t => (themeCounts[t.id] ?? 0) > 0).map(t => {
+            {/* Show every theme group immediately; counts tick up as the AI pass
+                classifies the remaining emails. Hide only an empty "Other". */}
+            {themes.filter(t => t.id !== 'other' || (themeCounts[t.id] ?? 0) > 0).map(t => {
               const active = themeFilter === t.id;
+              const n = themeCounts[t.id] ?? 0;
               return (
                 <button
                   key={t.id}
                   onClick={() => setThemeFilter(active ? 'all' : t.id)}
-                  title={`${t.label} — ${themeCounts[t.id]} email(s)`}
+                  title={`${t.label} — ${n} email(s)`}
                   style={{
                     padding: '4px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     borderRadius: 99,
                     border: `1px solid ${active ? t.color : 'var(--border)'}`,
                     background: active ? `${t.color}22` : 'var(--surface)',
                     color: active ? t.color : 'var(--text2)',
+                    opacity: n === 0 ? 0.55 : 1,
                   }}
                 >
-                  {t.emoji} {t.label} <span style={{ opacity: 0.7 }}>({themeCounts[t.id]})</span>
+                  {t.emoji} {t.label} <span style={{ opacity: 0.7 }}>({n})</span>
                 </button>
               );
             })}
+            {categorizing > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', fontSize: 11, color: 'var(--text3)' }}>
+                ⏳ categorising {categorizing}…
+              </span>
+            )}
           </div>
         )}
       </div>

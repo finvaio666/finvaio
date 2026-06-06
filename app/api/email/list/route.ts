@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, listEmails } from '@/lib/emailService';
 import { getCompanyInstitutions } from '@/lib/institutions';
-import { categorizeEmail } from '@/lib/emailClassifier';
 import { getCompanyThemes } from '@/lib/themesStore';
+import { categorizeByThemes } from '@/lib/emailThemes';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,17 +57,14 @@ export async function GET(req: NextRequest) {
     // legitimate automated notices (e.g. e-statements, transaction confirmations).
     const emails = await listEmails(config, domains, 60);
 
-    // Auto-triage each email into a theme group (company-configurable themes).
-    // Keyword rules resolve most instantly; only the unclear ones hit the AI
-    // (cached per message), so this stays fast on repeat loads.
+    // Phase 1 — instant keyword categorisation only (no AI here, so the list
+    // returns fast). Emails the rules can't resolve are left uncategorised and
+    // get classified by the AI in a background pass via /api/email/categorize,
+    // so the UI shows the theme groups immediately and counts fill in after.
     const themes = await getCompanyThemes();
-    await Promise.all(emails.map(async (e) => {
-      try {
-        e.category = await categorizeEmail(themes, e.id, e.from, e.subject, e.snippet);
-      } catch {
-        e.category = 'other';
-      }
-    }));
+    for (const e of emails) {
+      e.category = categorizeByThemes(themes, e.subject, e.snippet) ?? undefined;
+    }
 
     const payload = { connected: true, emails, institutions, advisorEmail, themes };
     listCache.set(advisorId, { ts: Date.now(), payload });

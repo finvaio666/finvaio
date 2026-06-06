@@ -259,7 +259,7 @@ export default function DashboardPage() {
   const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
   const [emailThemes,  setEmailThemes]  = useState<Theme[]>(DEFAULT_THEMES);
-  const [themeCounts,  setThemeCounts]  = useState<Record<string, { total: number; unread: number }>>({});
+  const [emailList,    setEmailList]    = useState<{ id: string; from: string; subject: string; snippet: string; isRead: boolean; category?: string }[]>([]);
 
   async function completeTask(id: string) {
     if (completing.includes(id)) return;
@@ -296,21 +296,31 @@ export default function DashboardPage() {
       .then(d => { if (d.alerts) setClientAlerts(d.alerts); })
       .catch(() => {});
 
-    // Email theme breakdown — counts by triage group for the summary widget
+    // Email theme breakdown — show theme groups immediately; counts tick up as
+    // the background AI pass classifies the remaining emails.
     fetch('/api/email/list', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d.themes) && d.themes.length) setEmailThemes(d.themes);
-        if (Array.isArray(d.emails)) {
-          const counts: Record<string, { total: number; unread: number }> = {};
-          for (const e of d.emails) {
-            const id = e.category ?? 'other';
-            if (!counts[id]) counts[id] = { total: 0, unread: 0 };
-            counts[id].total++;
-            if (!e.isRead) counts[id].unread++;
+        const fresh = Array.isArray(d.emails) ? d.emails : [];
+        setEmailList(fresh);
+        // Phase 2 — classify the ones rules couldn't resolve, in small batches.
+        (async () => {
+          const todo = fresh.filter((e: { category?: string }) => !e.category);
+          for (let i = 0; i < todo.length; i += 8) {
+            const batch = todo.slice(i, i + 8);
+            try {
+              const r = await fetch('/api/email/categorize', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: batch.map((e: { id: string; from: string; subject: string; snippet: string }) => ({ id: e.id, from: e.from, subject: e.subject, snippet: e.snippet })) }),
+              });
+              const dd = await r.json();
+              if (dd.results) {
+                setEmailList(prev => prev.map(e => (!e.category && dd.results[e.id]) ? { ...e, category: dd.results[e.id] } : e));
+              }
+            } catch { /* ignore */ }
           }
-          setThemeCounts(counts);
-        }
+        })();
       })
       .catch(() => {});
 
@@ -462,7 +472,18 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Inbox by Theme — triage summary of institution emails ── */}
-      {Object.keys(themeCounts).length > 0 && (
+      {emailList.length > 0 && (() => {
+        // Derive counts live from the email list so they tick up as the
+        // background AI pass classifies the remaining emails.
+        const themeCounts: Record<string, { total: number; unread: number }> = {};
+        let categorizing = 0;
+        for (const e of emailList) {
+          if (!e.category) { categorizing++; continue; }
+          if (!themeCounts[e.category]) themeCounts[e.category] = { total: 0, unread: 0 };
+          themeCounts[e.category].total++;
+          if (!e.isRead) themeCounts[e.category].unread++;
+        }
+        return (
         <div className="section" style={{ marginBottom: 20 }}>
           <div className="section-header">
             <div className="section-title">
@@ -470,16 +491,17 @@ export default function DashboardPage() {
               Inbox by Theme
               <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
                 institution emails grouped · last 60 days
+                {categorizing > 0 && ` · ⏳ categorising ${categorizing}…`}
               </span>
             </div>
             <Link href="/emails" className="section-action">Email Hub →</Link>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '14px 16px' }}>
             {emailThemes
-              .filter(t => (themeCounts[t.id]?.total ?? 0) > 0)
-              .sort((a, b) => (themeCounts[b.id]?.unread ?? 0) - (themeCounts[a.id]?.unread ?? 0))
+              .filter(t => t.id !== 'other' || (themeCounts[t.id]?.total ?? 0) > 0)
+              .sort((a, b) => (themeCounts[b.id]?.total ?? 0) - (themeCounts[a.id]?.total ?? 0))
               .map(t => {
-                const c = themeCounts[t.id];
+                const c = themeCounts[t.id] ?? { total: 0, unread: 0 };
                 return (
                   <button
                     key={t.id}
@@ -488,6 +510,7 @@ export default function DashboardPage() {
                       display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
                       padding: '10px 14px', borderRadius: 12, textAlign: 'left',
                       border: `1px solid ${t.color}55`, background: `${t.color}14`, minWidth: 150,
+                      opacity: c.total === 0 ? 0.55 : 1,
                     }}
                   >
                     <span style={{ fontSize: 20 }}>{t.emoji}</span>
@@ -507,7 +530,8 @@ export default function DashboardPage() {
               })}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── New Client Correspondence — inbound institution emails matched to clients ── */}
       {clientAlerts.length > 0 && (
