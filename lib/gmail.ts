@@ -17,6 +17,7 @@ export interface EmailSummary {
   subject:   string;
   snippet:   string;
   bodyText?: string;       // cleaned plain-text body (used for client-name matching)
+  category?: string;       // triage theme id (product|claims|transaction|statement|notice|other)
   date:      string;       // ISO string
   isRead:    boolean;
   direction: 'inbound' | 'outbound'; // inbound = they wrote first; outbound = we wrote first

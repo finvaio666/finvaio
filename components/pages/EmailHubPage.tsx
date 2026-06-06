@@ -6,6 +6,7 @@ import type { EmailSummary, EmailThread } from '@/lib/gmail';
 import type { SummaryResult } from '@/lib/emailClassifier';
 import type { Institution } from '@/app/api/email/institutions/route';
 import ComposeEmailModal from '@/components/pages/ComposeEmailModal';
+import { THEMES, themeOf, type ThemeId } from '@/lib/emailThemes';
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -551,6 +552,7 @@ export default function EmailHubPage() {
   const [aiSummary,       setAiSummary]       = useState<SummaryResult | null>(null);
   const [summaryLoading,  setSummaryLoading]  = useState(false);
   const [filter,          setFilter]          = useState<FilterTab>('all');
+  const [themeFilter,     setThemeFilter]     = useState<ThemeId | 'all'>('all');
   const [composeOpen,     setComposeOpen]     = useState(false);
   const [refreshing,      setRefreshing]      = useState(false);
 
@@ -681,15 +683,20 @@ export default function EmailHubPage() {
     return email.status;
   }
 
-  // Filter tabs
-  const filtered = emails.filter(e => {
+  // Status filter (tabs)
+  const statusPass = (e: EmailSummary) => {
     const s = getStatus(e);
     if (filter === 'all')        return true;
     if (filter === 'pending')    return s === 'pending';
     if (filter === 'replied')    return s === 'replied';
     if (filter === 'monitoring') return s === 'monitoring';
     return true;
-  });
+  };
+
+  // Combined filter: status tab AND theme chip
+  const filtered = emails.filter(e =>
+    statusPass(e) && (themeFilter === 'all' || (e.category ?? 'other') === themeFilter)
+  );
 
   const counts = {
     all:        emails.length,
@@ -697,6 +704,13 @@ export default function EmailHubPage() {
     replied:    emails.filter(e => getStatus(e) === 'replied').length,
     monitoring: emails.filter(e => getStatus(e) === 'monitoring').length,
   };
+
+  // Theme counts respect the active status tab so chips reflect what you'd see.
+  const themeCounts: Record<string, number> = {};
+  for (const e of emails.filter(statusPass)) {
+    const id = e.category ?? 'other';
+    themeCounts[id] = (themeCounts[id] ?? 0) + 1;
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -758,6 +772,41 @@ export default function EmailHubPage() {
             >+ New Email</button>
           </div>
         </div>
+
+        {/* Theme triage chips — filter institution emails by theme */}
+        {connected && emails.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '10px 0 4px' }}>
+            <button
+              onClick={() => setThemeFilter('all')}
+              style={{
+                padding: '4px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                borderRadius: 99,
+                border: `1px solid ${themeFilter === 'all' ? '#F37338' : 'var(--border)'}`,
+                background: themeFilter === 'all' ? 'rgba(243,115,56,0.12)' : 'var(--surface)',
+                color: themeFilter === 'all' ? '#F37338' : 'var(--text3)',
+              }}
+            >All ({emails.length})</button>
+            {THEMES.filter(t => (themeCounts[t.id] ?? 0) > 0).map(t => {
+              const active = themeFilter === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setThemeFilter(active ? 'all' : t.id)}
+                  title={`${t.label} — ${themeCounts[t.id]} email(s)`}
+                  style={{
+                    padding: '4px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    borderRadius: 99,
+                    border: `1px solid ${active ? t.color : 'var(--border)'}`,
+                    background: active ? `${t.color}22` : 'var(--surface)',
+                    color: active ? t.color : 'var(--text2)',
+                  }}
+                >
+                  {t.emoji} {t.label} <span style={{ opacity: 0.7 }}>({themeCounts[t.id]})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Body */}
@@ -813,7 +862,9 @@ export default function EmailHubPage() {
             }}>
               {filtered.length === 0 ? (
                 <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}>
-                  {filter === 'all' ? 'No work emails found. Add institutions to start monitoring.' : `No ${filter} emails.`}
+                  {themeFilter !== 'all'
+                    ? `No ${themeOf(themeFilter).label} emails${filter !== 'all' ? ` in "${filter}"` : ''}.`
+                    : filter === 'all' ? 'No work emails found. Add institutions to start monitoring.' : `No ${filter} emails.`}
                 </div>
               ) : (
                 filtered.map(email => {
@@ -838,6 +889,11 @@ export default function EmailHubPage() {
                         <div style={{ fontSize: 13, fontWeight: email.isRead ? 500 : 700, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {email.fromName}
                         </div>
+                        {(() => { const t = themeOf(email.category); return (
+                          <span title={t.label} style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 99, background: `${t.color}22`, color: t.color, border: `1px solid ${t.color}55` }}>
+                            {t.emoji} {t.label}
+                          </span>
+                        ); })()}
                         <div style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>{formatDate(email.date)}</div>
                       </div>
                       <div style={{ fontSize: 12, fontWeight: email.isRead ? 400 : 600, color: 'var(--text2)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, listEmails } from '@/lib/emailService';
 import { getCompanyInstitutions } from '@/lib/institutions';
+import { categorizeEmail } from '@/lib/emailClassifier';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,17 @@ export async function GET(req: NextRequest) {
     // are work-related by definition. No AI second-pass — it was wrongly dropping
     // legitimate automated notices (e.g. e-statements, transaction confirmations).
     const emails = await listEmails(config, domains, 60);
+
+    // Auto-triage each email into a theme group. Keyword rules resolve most
+    // instantly; only the unclear ones hit the AI (and are cached per message),
+    // so this stays fast on repeat loads.
+    await Promise.all(emails.map(async (e) => {
+      try {
+        e.category = await categorizeEmail(e.id, e.from, e.subject, e.snippet);
+      } catch {
+        e.category = 'other';
+      }
+    }));
 
     return NextResponse.json({
       connected: true,
