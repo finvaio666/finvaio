@@ -13,7 +13,7 @@ const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-l
 /**
  * Generate text with automatic model fallback. Throws only if ALL models fail.
  */
-async function generateText(prompt: string): Promise<string> {
+export async function generateText(prompt: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY not set');
   const genAI = new GoogleGenerativeAI(key);
