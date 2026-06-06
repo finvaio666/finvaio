@@ -5,7 +5,7 @@
  */
 
 import type { EmailSummary, EmailThread, EmailMessage, SendOptions, FollowUp } from './gmail';
-import { sanitizeHtml } from './gmail';
+import { sanitizeHtml, cleanBodyForDisplay } from './gmail';
 
 const AUTHORITY = 'https://login.microsoftonline.com/common/oauth2/v2.0';
 const GRAPH     = 'https://graph.microsoft.com/v1.0';
@@ -305,8 +305,10 @@ export async function getRecentInbound(
   const token = await getAccessToken(refreshToken);
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const rfilter = encodeURIComponent(`receivedDateTime ge ${since}`);
+  // Include the full body so the client-name matcher can scan it, not just the
+  // short bodyPreview (institutions often name the client deep in the email).
   const res = await graph(token,
-    `/me/messages?$filter=${rfilter}&$top=${maxResults}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,isRead,from,sender,toRecipients,categories&$orderby=receivedDateTime desc`);
+    `/me/messages?$filter=${rfilter}&$top=${maxResults}&$select=id,conversationId,subject,bodyPreview,body,receivedDateTime,isRead,from,sender,toRecipients,categories&$orderby=receivedDateTime desc`);
   const data = await res.json();
   if (!res.ok) return [];
   const msgs: GraphMessage[] = data.value ?? [];
@@ -320,7 +322,8 @@ export async function getRecentInbound(
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
     seen.add(cid);
-    out.push(toSummary(m, ''));
+    const bodyText = cleanBodyForDisplay(m.body?.content || m.bodyPreview || '').slice(0, 4000);
+    out.push({ ...toSummary(m, ''), bodyText });
   }
   return out;
 }

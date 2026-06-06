@@ -16,6 +16,7 @@ export interface EmailSummary {
   to:        string;
   subject:   string;
   snippet:   string;
+  bodyText?: string;       // cleaned plain-text body (used for client-name matching)
   date:      string;       // ISO string
   isRead:    boolean;
   direction: 'inbound' | 'outbound'; // inbound = they wrote first; outbound = we wrote first
@@ -427,12 +428,11 @@ export async function getRecentInbound(
   const seenThreads = new Set<string>();
   const summaries: EmailSummary[] = [];
 
+  // Fetch full messages so the client-name matcher can scan the BODY, not just
+  // the short snippet (institution emails often name the client deep in the body).
   const msgs = await Promise.all(
     ids.map(id =>
-      gmail.users.messages.get({
-        userId: 'me', id, format: 'metadata',
-        metadataHeaders: ['From', 'To', 'Subject', 'Date'],
-      }).catch(() => null)
+      gmail.users.messages.get({ userId: 'me', id, format: 'full' }).catch(() => null)
     )
   );
 
@@ -447,6 +447,8 @@ export async function getRecentInbound(
     const from = headerVal(headers, 'From');
     const { name: fromName, email: fromEmail } = parseName(from);
     const dateRaw = headerVal(headers, 'Date');
+    const { text, html } = extractBody(d.payload as Parameters<typeof extractBody>[0]);
+    const bodyText = cleanBodyForDisplay(text || html).slice(0, 4000);
 
     summaries.push({
       id:        d.id ?? '',
@@ -456,6 +458,7 @@ export async function getRecentInbound(
       to:        headerVal(headers, 'To'),
       subject:   headerVal(headers, 'Subject') || '(No subject)',
       snippet:   d.snippet ?? '',
+      bodyText,
       date:      dateRaw ? new Date(dateRaw).toISOString() : new Date().toISOString(),
       isRead:    !(d.labelIds ?? []).includes('UNREAD'),
       direction: 'inbound',

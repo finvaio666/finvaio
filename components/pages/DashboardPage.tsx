@@ -455,7 +455,7 @@ export default function DashboardPage() {
           </div>
           {clientAlerts.map(a => (
             <div
-              key={a.threadId}
+              key={`${a.clientId}-${a.threadId}`}
               style={rowStyle}
               onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
               onMouseOut={e  => (e.currentTarget.style.background = '')}

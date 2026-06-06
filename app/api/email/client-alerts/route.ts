@@ -62,28 +62,36 @@ export async function GET(req: NextRequest) {
     //    the FA opens a thread in ARIA it drops off this list automatically.
     const alerts: ClientAlert[] = [];
     for (const email of emails) {
-      const haystack = `${email.subject} ${email.snippet}`.toLowerCase();
-      // Match full name, or first AND last as whole words (word boundaries stop
-      // short tokens like "ng" matching inside unrelated words such as "Tng").
+      // Scan subject + snippet + full body — institution emails frequently name
+      // the client deeper in the body, beyond the short preview snippet.
+      const haystack = `${email.subject} ${email.snippet} ${email.bodyText ?? ''}`.toLowerCase();
       const wordIn = (w: string) => w.length > 0 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack);
-      const match = clientNames.find(c => {
-        if (haystack.includes(c.name.toLowerCase())) return true;
-        if (c.first && c.last) return wordIn(c.first) && wordIn(c.last);
-        return false;
-      });
-      if (!match) continue;
 
-      alerts.push({
-        clientId:   match.id,
-        clientName: match.name,
-        threadId:   email.threadId,
-        subject:    email.subject,
-        snippet:    email.snippet,
-        from:       email.from,
-        fromName:   email.fromName,
-        date:       email.date,
-        isRead:     email.isRead,
-      });
+      // 1) Exact full-name matches take priority — this disambiguates siblings
+      //    who share first + last names (e.g. "Lim Sheng Yee" vs "Lim Hiook Yee").
+      let matched = clientNames.filter(c => haystack.includes(c.name.toLowerCase()));
+      // 2) Fall back to first AND last as whole words only if no full-name hit.
+      if (matched.length === 0) {
+        const fl = clientNames.find(c => c.first && c.last && wordIn(c.first) && wordIn(c.last));
+        if (fl) matched = [fl];
+      }
+      if (matched.length === 0) continue;
+
+      // One alert per distinct client named in the email (a single institution
+      // email can reference more than one client).
+      for (const match of matched) {
+        alerts.push({
+          clientId:   match.id,
+          clientName: match.name,
+          threadId:   email.threadId,
+          subject:    email.subject,
+          snippet:    email.snippet,
+          from:       email.from,
+          fromName:   email.fromName,
+          date:       email.date,
+          isRead:     email.isRead,
+        });
+      }
     }
 
     return NextResponse.json({ alerts, connected: true });
