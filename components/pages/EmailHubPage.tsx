@@ -6,7 +6,7 @@ import type { EmailSummary, EmailThread } from '@/lib/gmail';
 import type { SummaryResult } from '@/lib/emailClassifier';
 import type { Institution } from '@/app/api/email/institutions/route';
 import ComposeEmailModal from '@/components/pages/ComposeEmailModal';
-import { THEMES, themeOf, type ThemeId } from '@/lib/emailThemes';
+import { DEFAULT_THEMES, themeFromList, type Theme, type ThemeId } from '@/lib/emailThemes';
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -552,7 +552,8 @@ export default function EmailHubPage() {
   const [aiSummary,       setAiSummary]       = useState<SummaryResult | null>(null);
   const [summaryLoading,  setSummaryLoading]  = useState(false);
   const [filter,          setFilter]          = useState<FilterTab>('all');
-  const [themeFilter,     setThemeFilter]     = useState<ThemeId | 'all'>('all');
+  const [themes,          setThemes]          = useState<Theme[]>(DEFAULT_THEMES);
+  const [themeFilter,     setThemeFilter]     = useState<ThemeId | 'all'>(searchParams?.get('theme') ?? 'all');
   const [composeOpen,     setComposeOpen]     = useState(false);
   const [refreshing,      setRefreshing]      = useState(false);
 
@@ -590,6 +591,7 @@ export default function EmailHubPage() {
       setEmails(data.emails ?? []);
       setInstitutions(data.institutions ?? []);
       setAdvisorEmail(data.advisorEmail ?? '');
+      if (Array.isArray(data.themes) && data.themes.length) setThemes(data.themes);
       if (data.noWhitelist) setError('no_whitelist');
     } catch {
       setError('Failed to load emails.');
@@ -786,7 +788,7 @@ export default function EmailHubPage() {
                 color: themeFilter === 'all' ? '#F37338' : 'var(--text3)',
               }}
             >All ({emails.length})</button>
-            {THEMES.filter(t => (themeCounts[t.id] ?? 0) > 0).map(t => {
+            {themes.filter(t => (themeCounts[t.id] ?? 0) > 0).map(t => {
               const active = themeFilter === t.id;
               return (
                 <button
@@ -863,7 +865,7 @@ export default function EmailHubPage() {
               {filtered.length === 0 ? (
                 <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}>
                   {themeFilter !== 'all'
-                    ? `No ${themeOf(themeFilter).label} emails${filter !== 'all' ? ` in "${filter}"` : ''}.`
+                    ? `No ${themeFromList(themes, themeFilter).label} emails${filter !== 'all' ? ` in "${filter}"` : ''}.`
                     : filter === 'all' ? 'No work emails found. Add institutions to start monitoring.' : `No ${filter} emails.`}
                 </div>
               ) : (
@@ -889,7 +891,7 @@ export default function EmailHubPage() {
                         <div style={{ fontSize: 13, fontWeight: email.isRead ? 500 : 700, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {email.fromName}
                         </div>
-                        {(() => { const t = themeOf(email.category); return (
+                        {(() => { const t = themeFromList(themes, email.category); return (
                           <span title={t.label} style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 99, background: `${t.color}22`, color: t.color, border: `1px solid ${t.color}55` }}>
                             {t.emoji} {t.label}
                           </span>

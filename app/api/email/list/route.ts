@@ -3,6 +3,7 @@ import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { getActive, listEmails } from '@/lib/emailService';
 import { getCompanyInstitutions } from '@/lib/institutions';
 import { categorizeEmail } from '@/lib/emailClassifier';
+import { getCompanyThemes } from '@/lib/themesStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,12 +41,13 @@ export async function GET(req: NextRequest) {
     // legitimate automated notices (e.g. e-statements, transaction confirmations).
     const emails = await listEmails(config, domains, 60);
 
-    // Auto-triage each email into a theme group. Keyword rules resolve most
-    // instantly; only the unclear ones hit the AI (and are cached per message),
-    // so this stays fast on repeat loads.
+    // Auto-triage each email into a theme group (company-configurable themes).
+    // Keyword rules resolve most instantly; only the unclear ones hit the AI
+    // (cached per message), so this stays fast on repeat loads.
+    const themes = await getCompanyThemes();
     await Promise.all(emails.map(async (e) => {
       try {
-        e.category = await categorizeEmail(e.id, e.from, e.subject, e.snippet);
+        e.category = await categorizeEmail(themes, e.id, e.from, e.subject, e.snippet);
       } catch {
         e.category = 'other';
       }
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest) {
       emails,
       institutions,
       advisorEmail,
+      themes,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

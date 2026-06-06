@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Institution } from '@/app/api/email/institutions/route';
+import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 
 // ── Shared UI helpers ─────────────────────────────────────────────────────────
 
@@ -630,15 +631,104 @@ function AboutTab() {
 
 // ── Main Settings Page ────────────────────────────────────────────────────────
 
-type TabId = 'profile' | 'security' | 'email' | 'calendar' | 'users' | 'about';
+// ── Email Themes management (Admin) ───────────────────────────────────────────
+function ThemesTab() {
+  const [themes,  setThemes]  = useState<Theme[]>(DEFAULT_THEMES);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [msg,     setMsg]     = useState('');
+
+  useEffect(() => {
+    fetch('/api/email/themes').then(r => r.json()).then(d => {
+      if (Array.isArray(d.themes) && d.themes.length) setThemes(d.themes);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const update = (i: number, patch: Partial<Theme>) =>
+    setThemes(prev => prev.map((t, idx) => idx === i ? { ...t, ...patch } : t));
+
+  const remove = (i: number) => setThemes(prev => prev.filter((_, idx) => idx !== i));
+
+  const move = (i: number, dir: -1 | 1) => setThemes(prev => {
+    const arr = [...prev];
+    const j = i + dir;
+    if (j < 0 || j >= arr.length || arr[i].id === 'other' || arr[j].id === 'other') return prev;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return arr;
+  });
+
+  const addTheme = () => setThemes(prev => {
+    const other = prev.filter(t => t.id === 'other');
+    const rest  = prev.filter(t => t.id !== 'other');
+    return [...rest, { id: '', label: '', emoji: '🏷️', color: '#60A5FA', keywords: [] }, ...other];
+  });
+
+  async function save() {
+    setSaving(true); setMsg('');
+    const res  = await fetch('/api/email/themes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ themes }) });
+    const data = await res.json();
+    if (data.error) setMsg(data.error);
+    else { if (Array.isArray(data.themes)) setThemes(data.themes); setMsg('✓ Saved. New emails will be sorted using these themes.'); }
+    setSaving(false);
+  }
+
+  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading themes…</div>;
+
+  return (
+    <Section title="Email Themes" desc="Customise how ARIA auto-sorts institution emails. Order = matching priority (top wins). Keywords are comma-separated; ARIA falls back to AI when keywords don't match. “Other” is the catch-all and can't be removed.">
+      {themes.map((t, i) => {
+        const locked = t.id === 'other';
+        return (
+          <div key={i} style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input value={t.emoji} onChange={e => update(i, { emoji: e.target.value })} maxLength={4}
+                style={{ width: 44, textAlign: 'center', padding: '7px 4px', fontSize: 16, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6 }} />
+              <input value={t.label} onChange={e => update(i, { label: e.target.value })} placeholder="Theme name" disabled={locked}
+                style={{ flex: 1, padding: '7px 10px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', opacity: locked ? 0.6 : 1 }} />
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(t.color) ? t.color : '#9CA3AF'} onChange={e => update(i, { color: e.target.value })}
+                style={{ width: 36, height: 33, padding: 0, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer' }} />
+              {!locked && (
+                <>
+                  <button onClick={() => move(i, -1)} title="Move up"   style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'none', color: 'var(--text3)', cursor: 'pointer' }}>↑</button>
+                  <button onClick={() => move(i, 1)}  title="Move down" style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'none', color: 'var(--text3)', cursor: 'pointer' }}>↓</button>
+                  <button onClick={() => remove(i)}   title="Delete"    style={{ padding: '6px 9px', border: '1px solid var(--border)', borderRadius: 6, background: 'none', color: 'var(--red)', cursor: 'pointer' }}>✕</button>
+                </>
+              )}
+            </div>
+            {!locked && (
+              <input
+                value={(t.keywords ?? []).join(', ')}
+                onChange={e => update(i, { keywords: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                placeholder="keywords, comma separated — e.g. claim, hospitalisation, guarantee letter"
+                style={{ padding: '7px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)' }} />
+            )}
+          </div>
+        );
+      })}
+
+      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={addTheme} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 99, color: 'var(--text2)', cursor: 'pointer' }}>+ Add Theme</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {msg && <span style={{ fontSize: 12, color: msg.startsWith('✓') ? '#22c55e' : 'var(--red)' }}>{msg}</span>}
+          <button onClick={save} disabled={saving} style={{ padding: '8px 20px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>
+            {saving ? 'Saving…' : 'Save Themes'}
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+type TabId = 'profile' | 'security' | 'email' | 'themes' | 'calendar' | 'users' | 'about';
 
 const TABS: { id: TabId; label: string; icon: string; adminOnly?: boolean }[] = [
-  { id: 'profile',  label: 'Profile',   icon: '👤' },
-  { id: 'security', label: 'Security',  icon: '🔒' },
-  { id: 'email',    label: 'Email Hub', icon: '📧' },
-  { id: 'calendar', label: 'Calendar',  icon: '📅' },
-  { id: 'users',    label: 'Users',     icon: '👥', adminOnly: true },
-  { id: 'about',    label: 'About',     icon: 'ℹ️' },
+  { id: 'profile',  label: 'Profile',     icon: '👤' },
+  { id: 'security', label: 'Security',    icon: '🔒' },
+  { id: 'email',    label: 'Email Hub',   icon: '📧' },
+  { id: 'themes',   label: 'Email Themes', icon: '🏷️', adminOnly: true },
+  { id: 'calendar', label: 'Calendar',    icon: '📅' },
+  { id: 'users',    label: 'Users',       icon: '👥', adminOnly: true },
+  { id: 'about',    label: 'About',       icon: 'ℹ️' },
 ];
 
 export default function SettingsPage() {
@@ -690,6 +780,7 @@ export default function SettingsPage() {
           {tab === 'profile'  && <ProfileTab  advisorId={advisorId} />}
           {tab === 'security' && <SecurityTab />}
           {tab === 'email'    && <EmailTab isAdmin={isAdmin} />}
+          {tab === 'themes'   && <ThemesTab />}
           {tab === 'calendar' && <CalendarTab />}
           {tab === 'users'    && <UsersTab />}
           {tab === 'about'    && <AboutTab />}

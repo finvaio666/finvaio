@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
+import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 
 // ─── Ask ARIA — dashboard daily co-pilot ─────────────────────────────────────
 interface PendingTask { task: string; client: string; due: string; }
@@ -257,6 +258,8 @@ export default function DashboardPage() {
   const [appointments, setAppointments] = useState<CalEvent[]>([]);
   const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
+  const [emailThemes,  setEmailThemes]  = useState<Theme[]>(DEFAULT_THEMES);
+  const [themeCounts,  setThemeCounts]  = useState<Record<string, { total: number; unread: number }>>({});
 
   async function completeTask(id: string) {
     if (completing.includes(id)) return;
@@ -291,6 +294,24 @@ export default function DashboardPage() {
     fetch('/api/email/client-alerts', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (d.alerts) setClientAlerts(d.alerts); })
+      .catch(() => {});
+
+    // Email theme breakdown — counts by triage group for the summary widget
+    fetch('/api/email/list', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d.themes) && d.themes.length) setEmailThemes(d.themes);
+        if (Array.isArray(d.emails)) {
+          const counts: Record<string, { total: number; unread: number }> = {};
+          for (const e of d.emails) {
+            const id = e.category ?? 'other';
+            if (!counts[id]) counts[id] = { total: 0, unread: 0 };
+            counts[id].total++;
+            if (!e.isRead) counts[id].unread++;
+          }
+          setThemeCounts(counts);
+        }
+      })
       .catch(() => {});
 
     loadTasks();
@@ -439,6 +460,54 @@ export default function DashboardPage() {
           <div className="stat-sub">{pendingActions === 0 ? 'All clear' : `${pendingActions} with open items`}</div>
         </div>
       </div>
+
+      {/* ── Inbox by Theme — triage summary of institution emails ── */}
+      {Object.keys(themeCounts).length > 0 && (
+        <div className="section" style={{ marginBottom: 20 }}>
+          <div className="section-header">
+            <div className="section-title">
+              <span className="section-dot" style={{ background: 'var(--accent2)' }} />
+              Inbox by Theme
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+                institution emails grouped · last 60 days
+              </span>
+            </div>
+            <Link href="/emails" className="section-action">Email Hub →</Link>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '14px 16px' }}>
+            {emailThemes
+              .filter(t => (themeCounts[t.id]?.total ?? 0) > 0)
+              .sort((a, b) => (themeCounts[b.id]?.unread ?? 0) - (themeCounts[a.id]?.unread ?? 0))
+              .map(t => {
+                const c = themeCounts[t.id];
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => router.push(`/emails?theme=${encodeURIComponent(t.id)}`)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                      padding: '10px 14px', borderRadius: 12, textAlign: 'left',
+                      border: `1px solid ${t.color}55`, background: `${t.color}14`, minWidth: 150,
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>{t.emoji}</span>
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>
+                        {c.total}
+                        {c.unread > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: t.color, background: `${t.color}22`, padding: '1px 6px', borderRadius: 99, marginLeft: 6, verticalAlign: 'middle' }}>
+                            {c.unread} NEW
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 1 }}>{t.label}</div>
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* ── New Client Correspondence — inbound institution emails matched to clients ── */}
       {clientAlerts.length > 0 && (

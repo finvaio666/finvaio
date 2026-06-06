@@ -4,7 +4,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { ThemeId } from './emailThemes';
+import { categorizeByThemes, type Theme, type ThemeId } from './emailThemes';
 
 // Current models with fallback — newest first. Older models (1.5) are being
 // retired, so we try modern ones and fall back if a model is unavailable/overloaded.
@@ -74,45 +74,25 @@ Categories: policy_renewal, policy_lapse, fund_statement, fund_update, transacti
 
 // ── Theme triage (hybrid: keyword rules first, AI fallback, cached) ───────────
 
-// Priority order matters: the first rule that matches wins. "Claims" is checked
-// before "Transactions" so a "claim payment" isn't mis-binned as a transaction.
-const THEME_RULES: { id: ThemeId; kw: RegExp }[] = [
-  { id: 'claims',      kw: /\b(claim|claims|hospitalis|hospitaliz|medical card|guarantee letter|\bGL\b|admission|discharge|reimburse|panel hospital|pre-?auth|surgical|inpatient|outpatient)\b/i },
-  { id: 'transaction', kw: /\b(switch|switching|redempt|redeem|subscrib|subscription|top.?up|premium\s+(payment|due|paid|notice)|payment\s+(received|due|confirm)|contribution|withdrawal|transfer|deduction|debit|transaction|surrender|disbursement|settlement)\b/i },
-  { id: 'statement',   kw: /\b(e-?statement|statement|account summary|valuation|portfolio statement|annual statement|consolidated statement|holdings? report|nav report)\b/i },
-  { id: 'product',     kw: /\b(new\s+(product|plan|fund)|product update|launch|promotion|promo|campaign|webinar|roadshow|rate change|fund house update|bonus declaration|now available|introducing)\b/i },
-  { id: 'notice',      kw: /\b(notice|notification|reminder|maintenance|scheduled downtime|kindly note|important information|circular|advisory|expiry|expire|renewal notice|update your|system upgrade)\b/i },
-];
-
-/** Instant keyword categorisation. Returns null if nothing matches. */
-export function categorizeByRules(subject: string, snippet: string, body = ''): ThemeId | null {
-  const hay = `${subject}\n${snippet}\n${body}`.toLowerCase();
-  for (const r of THEME_RULES) if (r.kw.test(hay)) return r.id;
-  return null;
-}
-
-const VALID_THEMES: ThemeId[] = ['product', 'claims', 'transaction', 'statement', 'notice', 'other'];
-
 /** AI fallback — used only when keyword rules can't decide. Returns a theme id. */
-export async function categorizeWithAI(from: string, subject: string, snippet: string): Promise<ThemeId> {
-  const prompt = `You triage emails for a Malaysian financial advisor. Classify the email from an insurance company / fund house into exactly ONE category.
+export async function categorizeWithAI(themes: Theme[], from: string, subject: string, snippet: string): Promise<ThemeId> {
+  const validIds = themes.map(t => t.id);
+  const list = themes
+    .map(t => `- ${t.id}: ${t.label}${t.keywords?.length ? ` (e.g. ${t.keywords.slice(0, 6).join(', ')})` : ''}`)
+    .join('\n');
+  const prompt = `You triage emails for a Malaysian financial advisor. Classify the email from an insurance company / fund house into exactly ONE category id from this list.
 
 From: ${from}
 Subject: ${subject}
 Snippet: ${snippet}
 
 Categories:
-- product: new or updated products/plans/funds, promotions, campaigns, webinars, rate changes
-- claims: insurance/medical claims — submissions, status, approvals, rejections, guarantee letters
-- transaction: fund switching, redemption, subscription, premium/payment, contributions, withdrawals, surrenders
-- statement: account statements, e-statements, valuations, holdings reports
-- notice: general notices, reminders, notifications, maintenance, circulars, renewals
-- other: anything that doesn't clearly fit the above
+${list}
 
-Respond with ONLY the category id (one word).`;
+Respond with ONLY the category id (one token, exactly as written above).`;
   try {
-    const raw = (await generateText(prompt)).trim().toLowerCase().replace(/[^a-z]/g, '');
-    return (VALID_THEMES as string[]).includes(raw) ? (raw as ThemeId) : 'other';
+    const raw = (await generateText(prompt)).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    return validIds.includes(raw) ? raw : 'other';
   } catch {
     return 'other';
   }
@@ -122,20 +102,21 @@ Respond with ONLY the category id (one word).`;
 const themeCache = new Map<string, { id: ThemeId; ts: number }>();
 const THEME_TTL = 24 * 60 * 60 * 1000; // 24h
 
-/** Hybrid categoriser: instant rules first, cached AI fallback for the unclear. */
+/** Hybrid categoriser: instant keyword rules first, cached AI fallback. */
 export async function categorizeEmail(
+  themes: Theme[],
   messageId: string,
   from: string,
   subject: string,
   snippet: string,
 ): Promise<ThemeId> {
-  const ruled = categorizeByRules(subject, snippet);
+  const ruled = categorizeByThemes(themes, subject, snippet);
   if (ruled) return ruled;
 
   const cached = themeCache.get(messageId);
   if (cached && Date.now() - cached.ts < THEME_TTL) return cached.id;
 
-  const id = await categorizeWithAI(from, subject, snippet);
+  const id = await categorizeWithAI(themes, from, subject, snippet);
   themeCache.set(messageId, { id, ts: Date.now() });
   return id;
 }
