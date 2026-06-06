@@ -7,9 +7,25 @@ import { getCompanyThemes } from '@/lib/themesStore';
 
 export const dynamic = 'force-dynamic';
 
+// Short server-side cache of the categorized result per advisor. The Email Hub
+// and the dashboard "Inbox by Theme" widget both hit this endpoint; caching the
+// (slow) Gmail fetch + categorization keeps repeat loads instant. Manual refresh
+// (?fresh=1) bypasses it.
+type ListPayload = Record<string, unknown>;
+const listCache = new Map<string, { ts: number; payload: ListPayload }>();
+const LIST_TTL = 90 * 1000;
+
 export async function GET(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const fresh = new URL(req.url).searchParams.get('fresh') === '1';
+  if (!fresh) {
+    const cached = listCache.get(advisorId);
+    if (cached && Date.now() - cached.ts < LIST_TTL) {
+      return NextResponse.json({ ...cached.payload, cached: true });
+    }
+  }
 
   const config = await getAdvisorConfig(advisorId);
   if (!config) return NextResponse.json({ error: 'Advisor not found' }, { status: 401 });
@@ -53,13 +69,9 @@ export async function GET(req: NextRequest) {
       }
     }));
 
-    return NextResponse.json({
-      connected: true,
-      emails,
-      institutions,
-      advisorEmail,
-      themes,
-    });
+    const payload = { connected: true, emails, institutions, advisorEmail, themes };
+    listCache.set(advisorId, { ts: Date.now(), payload });
+    return NextResponse.json(payload);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('Email list error:', msg);

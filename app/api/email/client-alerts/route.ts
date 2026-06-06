@@ -65,16 +65,19 @@ export async function GET(req: NextRequest) {
       // Scan subject + snippet + full body — institution emails frequently name
       // the client deeper in the body, beyond the short preview snippet.
       const haystack = `${email.subject} ${email.snippet} ${email.bodyText ?? ''}`.toLowerCase();
-      const wordIn = (w: string) => w.length > 0 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack);
+      const wordIn = (w: string) => w.length > 1 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack);
 
-      // 1) Exact full-name matches take priority — this disambiguates siblings
-      //    who share first + last names (e.g. "Lim Sheng Yee" vs "Lim Hiook Yee").
-      let matched = clientNames.filter(c => haystack.includes(c.name.toLowerCase()));
-      // 2) Fall back to first AND last as whole words only if no full-name hit.
-      if (matched.length === 0) {
-        const fl = clientNames.find(c => c.first && c.last && wordIn(c.first) && wordIn(c.last));
-        if (fl) matched = [fl];
-      }
+      // Require the WHOLE name to appear: either the full name as a phrase, or
+      // EVERY name token present as a whole word. This disambiguates siblings who
+      // share first + last (e.g. "Lim Sheng Yee" vs "Lim Hiook Yee") — the middle
+      // token ("sheng" vs "hiook") must match, so they never cross-attribute.
+      const matched = clientNames.filter(c => {
+        const n = c.name.toLowerCase().trim();
+        if (!n) return false;
+        if (haystack.includes(n)) return true;
+        const tokens = n.split(/\s+/).filter(t => t.length > 1);
+        return tokens.length > 0 && tokens.every(t => wordIn(t));
+      });
       if (matched.length === 0) continue;
 
       // One alert per distinct client named in the email (a single institution

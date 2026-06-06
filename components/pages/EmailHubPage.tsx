@@ -575,7 +575,8 @@ export default function EmailHubPage() {
     setError('');
 
     try {
-      const res  = await fetch('/api/email/list');
+      // Manual refresh bypasses the server-side cache for fresh data.
+      const res  = await fetch(`/api/email/list${isRefresh ? '?fresh=1' : ''}`);
       const data = await res.json();
 
       if (data.connected === false) {
