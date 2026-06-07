@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { listTasks } from '@/lib/tasks';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE } from '@/lib/demoData';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
@@ -321,14 +322,29 @@ async function buildClientContext(
     lines.push('Portfolio: No active holdings on record.');
   }
 
-  // Meeting notes
+  // Outstanding to-dos — the AUTHORITATIVE list (reflects done/not-done from the
+  // Tasks DB). Past meeting action items are history and may already be done, so
+  // they must NOT be presented as current to-dos — only these open tasks are.
+  let openTasks: { task: string; due: string }[] = [];
+  if (config.tasksDbId) {
+    try {
+      const t = await listTasks(config, { client: name, status: 'Open' });
+      openTasks = t.map(x => ({ task: x.task, due: x.due }));
+    } catch { /* ignore */ }
+  }
+  lines.push('');
+  lines.push('OUTSTANDING TO-DOS for this client (authoritative — these are the ONLY open items; completed ones are excluded):');
+  if (openTasks.length === 0) lines.push('  None — all tasks for this client are done.');
+  else for (const t of openTasks) lines.push(`  - ${t.task}${t.due ? ` (due ${t.due})` : ''}`);
+
+  // Meeting notes — HISTORY ONLY
   if (meetings.length > 0) {
     lines.push('');
-    lines.push(`Meeting history (last ${meetings.length} meetings):`);
+    lines.push(`Meeting history (last ${meetings.length} meetings) — for context only. Action items below are a historical record and MAY ALREADY BE DONE; do NOT list them as current to-dos (use the OUTSTANDING TO-DOS list above for that):`);
     for (const m of meetings) {
       lines.push(`\n[${m.meetingDate}${m.meetingType ? ' · ' + m.meetingType : ''}]`);
       if (m.notes)          lines.push(`  Notes: ${m.notes}`);
-      if (m.actionItems)    lines.push(`  Action items: ${m.actionItems}`);
+      if (m.actionItems)    lines.push(`  Action items (historical): ${m.actionItems}`);
       if (m.nextReviewDate) lines.push(`  Next review set: ${m.nextReviewDate}`);
     }
   } else {
@@ -369,7 +385,9 @@ const BASE_PROMPT = `You are ARIA — an AI assistant embedded in a financial co
 
 Give concise, practical, Malaysia-specific advice. Use RM for currency. Be direct and professional. Default to max 300 words unless asked for detail. Use local terms where appropriate (KWSP/EPF, OPR, PDPA, unit trust, Bursa).
 
-For calculations: use 3.5% inflation, 6–8% equity fund returns, 3–4% FD/bond returns, 5.5% EPF dividend. Show working when doing projections.`;
+For calculations: use 3.5% inflation, 6–8% equity fund returns, 3–4% FD/bond returns, 5.5% EPF dividend. Show working when doing projections.
+
+TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what to do", use ONLY the "OUTSTANDING TO-DOS" list in the client context. Meeting "Action items (historical)" are a past record and may already be completed — never present them as current/outstanding to-dos. If the outstanding list says "None", say the client is all caught up rather than repeating old meeting action items.`;
 
 export async function POST(req: NextRequest) {
   try {
