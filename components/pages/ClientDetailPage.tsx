@@ -305,6 +305,45 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
 
 interface AssetItem { id: string; name: string; client: string; itemType: string; category: string; value: number; notes: string }
 
+function NetWorthLinkBar({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/networth/generate-link', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientName }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Failed');
+      setUrl(d.url);
+    } catch (e) { alert(`Could not generate link: ${e instanceof Error ? e.message : 'error'}`); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="section" style={{ marginBottom: 16, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <button onClick={generate} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer' }}>
+        {busy ? 'Generating…' : '📤 Send Net Worth form to client'}
+      </button>
+      {url && (
+        <>
+          <input readOnly value={url} onClick={e => (e.target as HTMLInputElement).select()}
+            style={{ flex: 1, minWidth: 220, padding: '8px 10px', fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text2)' }} />
+          <button onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+            style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer' }}>
+            {copied ? '✓ Copied' : 'Copy'}
+          </button>
+          <span style={{ width: '100%', fontSize: 11, color: 'var(--text3)' }}>Link valid 7 days. Client fills it in; results appear here automatically.</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [items, setItems] = useState<AssetItem[]>([]);
   const [invValue, setInvValue] = useState(0);
@@ -337,11 +376,14 @@ function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: s
 
   const empty = items.length === 0 && invValue === 0;
   if (empty) return (
-    <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
-      <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No assets or liabilities recorded</div>
-      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Fill the Assets &amp; Liabilities import template (or add in Notion) to see net worth here.</div>
-    </div>
+    <>
+      <NetWorthLinkBar clientId={clientId} clientName={clientName} />
+      <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
+        <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No assets or liabilities recorded</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>Send the form to your client above, or fill the import template / add in Notion.</div>
+      </div>
+    </>
   );
 
   const Row = ({ i }: { i: AssetItem }) => (
@@ -358,6 +400,7 @@ function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: s
 
   return (
     <>
+      <NetWorthLinkBar clientId={clientId} clientName={clientName} />
       {/* Summary cards */}
       <div className="stat-grid" style={{ marginBottom: 16 }}>
         <div className="stat-card green">
