@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
     portfolio:        config.portfolioDbId,
     cashflow:         config.cashflowDbId,
     insurance:        config.insuranceDbId,
+    assets:           config.assetsDbId,
     insurancePlans:   config.insurancePlansDbId,
     funds:            config.fundsDbId,
   };
@@ -224,6 +225,28 @@ export async function GET(req: NextRequest) {
           tpdCover:         p['TPD Cover (MYR)']?.type === 'number'      ? p['TPD Cover (MYR)'].number ?? 0                     : 0,
           medicalClass:     p['Medical Class']?.type === 'rich_text'     ? p['Medical Class'].rich_text[0]?.plain_text ?? ''    : '',
           medicalCard:      p['Medical Card']?.type === 'rich_text'      ? p['Medical Card'].rich_text[0]?.plain_text ?? ''     : '',
+        };
+      });
+      return NextResponse.json({ data });
+    }
+
+    // ── Assets & Liabilities (net worth) ──────────────────────────────────────
+    if (type === 'assets') {
+      if (!DB.assets) return NextResponse.json({ data: [] });
+      const res = await notion.databases.query({
+        database_id: DB.assets,
+        ...scoped(),
+      });
+      const data = res.results.filter(isFullPage).map(page => {
+        const p = page.properties;
+        return {
+          id:       page.id,
+          name:     p['Name']?.type === 'title'        ? p['Name'].title[0]?.plain_text ?? ''              : '',
+          client:   p['Client']?.type === 'rich_text'  ? p['Client'].rich_text[0]?.plain_text ?? ''        : '',
+          itemType: p['Type']?.type === 'select'       ? p['Type'].select?.name ?? ''                      : '',
+          category: p['Category']?.type === 'select'   ? p['Category'].select?.name ?? ''                  : '',
+          value:    p['Value (MYR)']?.type === 'number'? p['Value (MYR)'].number ?? 0                      : 0,
+          notes:    p['Notes']?.type === 'rich_text'   ? p['Notes'].rich_text[0]?.plain_text ?? ''         : '',
         };
       });
       return NextResponse.json({ data });

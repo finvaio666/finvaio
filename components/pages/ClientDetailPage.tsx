@@ -301,6 +301,114 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
   );
 }
 
+// ── Tab: Net Worth (Assets & Liabilities) ─────────────────────────────────────
+
+interface AssetItem { id: string; name: string; client: string; itemType: string; category: string; value: number; notes: string }
+
+function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const [items, setItems] = useState<AssetItem[]>([]);
+  const [invValue, setInvValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const name = clientName.toLowerCase().trim();
+    Promise.all([
+      fetch('/api/notion?type=assets', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/notion?type=portfolio', { cache: 'no-store' }).then(r => r.json()),
+    ]).then(([a, p]) => {
+      if (Array.isArray(a.data)) {
+        setItems(a.data.filter((x: AssetItem) => (x.client || '').toLowerCase().trim() === name));
+      }
+      if (Array.isArray(p.data)) {
+        const mine = p.data.filter((h: Holding) => h.clientId === clientId || h.clientName === clientName);
+        setInvValue(mine.reduce((s: number, h: Holding) => s + (h.value || 0), 0));
+      }
+    }).finally(() => setLoading(false));
+  }, [clientId, clientName]);
+
+  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading net worth…</div>;
+
+  const assets      = items.filter(i => i.itemType === 'Asset');
+  const liabilities = items.filter(i => i.itemType === 'Liability');
+  const otherAssets = assets.reduce((s, i) => s + (i.value || 0), 0);
+  const totalLiab   = liabilities.reduce((s, i) => s + (i.value || 0), 0);
+  const totalAssets = otherAssets + invValue;       // other assets + investments
+  const netWorth    = totalAssets - totalLiab;
+
+  const empty = items.length === 0 && invValue === 0;
+  if (empty) return (
+    <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
+      <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No assets or liabilities recorded</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Fill the Assets &amp; Liabilities import template (or add in Notion) to see net worth here.</div>
+    </div>
+  );
+
+  const Row = ({ i }: { i: AssetItem }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{i.name || i.category}</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{i.category}{i.notes ? ` · ${i.notes}` : ''}</div>
+      </div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: i.itemType === 'Liability' ? 'var(--red)' : 'var(--text)' }}>
+        {i.itemType === 'Liability' ? '−' : ''}{fmtK(i.value)}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Summary cards */}
+      <div className="stat-grid" style={{ marginBottom: 16 }}>
+        <div className="stat-card green">
+          <div className="stat-icon green">📊</div>
+          <div className="stat-label">Total Assets</div>
+          <div className="stat-value">{fmtK(totalAssets)}</div>
+          <div className="stat-sub">incl. {fmtK(invValue)} investments</div>
+        </div>
+        <div className="stat-card red">
+          <div className="stat-icon red">📉</div>
+          <div className="stat-label">Total Liabilities</div>
+          <div className="stat-value" style={{ color: 'var(--red)' }}>{fmtK(totalLiab)}</div>
+          <div className="stat-sub">{liabilities.length} liabilit{liabilities.length === 1 ? 'y' : 'ies'}</div>
+        </div>
+        <div className="stat-card blue">
+          <div className="stat-icon blue">💰</div>
+          <div className="stat-label">Net Worth</div>
+          <div className="stat-value" style={{ color: netWorth >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtK(netWorth)}</div>
+          <div className="stat-sub">assets − liabilities</div>
+        </div>
+      </div>
+
+      {/* Assets */}
+      <div className="section" style={{ marginBottom: 16 }}>
+        <SectionHeader dot="var(--green)" title="Assets" sub={fmtK(totalAssets)} />
+        {/* Investments roll-up from Portfolio */}
+        {invValue > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>Investment Holdings</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>from Portfolio (live)</div>
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{fmtK(invValue)}</div>
+          </div>
+        )}
+        {assets.length > 0
+          ? assets.map(i => <Row key={i.id} i={i} />)
+          : invValue === 0 && <div style={{ padding: '14px 16px', fontSize: 12, color: 'var(--text3)' }}>No other assets recorded.</div>}
+      </div>
+
+      {/* Liabilities */}
+      <div className="section">
+        <SectionHeader dot="var(--red)" title="Liabilities" sub={fmtK(totalLiab)} />
+        {liabilities.length > 0
+          ? liabilities.map(i => <Row key={i.id} i={i} />)
+          : <div style={{ padding: '14px 16px', fontSize: 12, color: 'var(--text3)' }}>No liabilities recorded.</div>}
+      </div>
+    </>
+  );
+}
+
 // ── Tab: Insurance ────────────────────────────────────────────────────────────
 
 function InsuranceTab({ clientName }: { clientName: string }) {
@@ -647,7 +755,7 @@ function CorrespondenceTab({ clientName }: { clientName: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'portfolio' | 'insurance' | 'cashflow' | 'correspondence';
+type Tab = 'overview' | 'portfolio' | 'networth' | 'insurance' | 'cashflow' | 'correspondence';
 
 export default function ClientDetailPage({ clientId }: { clientId: string }) {
   const router = useRouter();
@@ -684,6 +792,7 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: 'overview',       label: 'Overview',       icon: '👤' },
     { id: 'portfolio',      label: 'Portfolio',      icon: '📈' },
+    { id: 'networth',       label: 'Net Worth',      icon: '💰' },
     { id: 'insurance',      label: 'Insurance',      icon: '🛡️' },
     { id: 'cashflow',       label: 'Cash Flow',      icon: '💸' },
     { id: 'correspondence', label: 'Correspondence', icon: '✉️' },
@@ -753,6 +862,7 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
       {/* ── Tab content ── */}
       {activeTab === 'overview'       && <OverviewTab       client={client} />}
       {activeTab === 'portfolio'      && <PortfolioTab      clientId={client.id} clientName={client.name} />}
+      {activeTab === 'networth'       && <NetWorthTab       clientId={client.id} clientName={client.name} />}
       {activeTab === 'insurance'      && <InsuranceTab      clientName={client.name} />}
       {activeTab === 'cashflow'       && <CashflowTab       clientId={client.id} clientName={client.name} />}
       {activeTab === 'correspondence' && <CorrespondenceTab clientName={client.name} />}

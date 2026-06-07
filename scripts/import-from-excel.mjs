@@ -38,6 +38,7 @@ const DB = {
   clients:   process.env.COMPANY_CLIENTS_DB_ID   || '362de6dd1dfe80e59275e4ce2fc046b2',
   portfolio: process.env.COMPANY_PORTFOLIO_DB_ID || '363de6dd1dfe8058b73ec7fa8bb431fb',
   insurance: process.env.COMPANY_INSURANCE_DB_ID || 'b03d83d0e5a7409684993758865cde7f',
+  assets:    process.env.COMPANY_ASSETS_DB_ID    || '',
 };
 
 // Which advisor owns the imported data — every record is tagged with this in
@@ -353,6 +354,47 @@ async function importInsurance(clientIdMap) {
   log('✅', `Insurance done — created: ${created}, updated: ${updated}, skipped: ${skipped}\n`);
 }
 
+// ── 4. ASSETS & LIABILITIES ───────────────────────────────────────────────────
+async function importAssets() {
+  if (!DB.assets) { log('⚠️ ', 'Assets DB not configured (COMPANY_ASSETS_DB_ID) — skipping.\n'); return; }
+  log('💰', 'Reading assets & liabilities from Excel…');
+  let rows;
+  try { rows = readSheet('4_Assets_Liabilities.xlsx', 'Assets Data Entry'); }
+  catch { log('⚠️ ', 'No 4_Assets_Liabilities.xlsx found — skipping.\n'); return; }
+  const headers = rows[2];
+  const data = rows.slice(4).filter(r => r[0] && String(r[0]).trim() && !String(r[0]).includes('Must match'));
+  log('📊', `Found ${data.length} asset/liability rows in Excel`);
+
+  let created = 0, skipped = 0;
+  for (const row of data) {
+    const obj = {};
+    headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
+
+    const client = String(obj['Client Name *'] ?? obj['Client Name'] ?? '').trim();
+    const name   = String(obj['Item Name *'] ?? obj['Item Name'] ?? '').trim();
+    const typeRaw = String(obj['Type *'] ?? obj['Type'] ?? '').trim().toLowerCase();
+    const itemType = typeRaw.startsWith('l') ? 'Liability' : 'Asset';
+    const category = String(obj['Category'] ?? '').trim();
+    const value = Number(String(obj['Value (MYR) *'] ?? obj['Value (MYR)'] ?? '0').replace(/[^0-9.\-]/g, '')) || 0;
+    const notes = String(obj['Notes'] ?? '').trim();
+    if (!client || !name) { skipped++; continue; }
+
+    const props = {
+      ...advisorProp,
+      'Name':        { title: [{ text: { content: name } }] },
+      'Client':      { rich_text: [{ text: { content: client } }] },
+      'Type':        { select: { name: itemType } },
+      'Value (MYR)': { number: value },
+    };
+    if (category) props['Category'] = { select: { name: category } };
+    if (notes)    props['Notes']    = { rich_text: [{ text: { content: notes } }] };
+
+    if (!DRY_RUN) { await notionCall(() => notion.pages.create({ parent: { database_id: DB.assets }, properties: props })); await sleep(350); }
+    created++;
+  }
+  log('✅', `Assets done — created: ${created}, skipped: ${skipped}\n`);
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 console.log(`\n🚀 ARIA Excel → Notion Import${DRY_RUN ? ' [DRY RUN — no writes]' : ''}`);
 console.log('━'.repeat(50));
@@ -360,6 +402,7 @@ console.log('━'.repeat(50));
 const clientIdMap = await importClients();
 await importPortfolio(clientIdMap);
 await importInsurance(clientIdMap);
+await importAssets();
 
 console.log('━'.repeat(50));
 console.log('🎉 Import complete!');

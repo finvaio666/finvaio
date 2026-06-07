@@ -6,6 +6,7 @@ export interface AdvisorConfig {
   portfolioDbId:      string;
   insuranceDbId:      string;
   cashflowDbId:       string;
+  assetsDbId:         string;  // Assets & Liabilities (net worth)
   meetingNotesDbId:   string;
   tasksDbId:          string;  // To-Do / Tasks database
   insurancePlansDbId: string;  // product catalogue — insurance plans FA can sell
@@ -71,6 +72,7 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       portfolioDbId:    rt(p, 'Portfolio DB ID')     || env.COMPANY_PORTFOLIO_DB_ID    || '',
       insuranceDbId:    rt(p, 'Insurance DB ID')     || env.COMPANY_INSURANCE_DB_ID    || '',
       cashflowDbId:     rt(p, 'Cashflow DB ID')      || env.COMPANY_CASHFLOW_DB_ID     || '',
+      assetsDbId:       rt(p, 'Assets DB ID')        || env.COMPANY_ASSETS_DB_ID       || '',
       meetingNotesDbId:   rt(p, 'Meeting Notes DB ID') || env.COMPANY_MEETING_NOTES_DB_ID || '',
       tasksDbId:          rt(p, 'Tasks DB ID')         || env.COMPANY_TASKS_DB_ID        || '',
       insurancePlansDbId: rt(p, 'Insurance Plans DB ID'),
