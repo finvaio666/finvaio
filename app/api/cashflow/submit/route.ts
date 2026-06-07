@@ -220,35 +220,28 @@ export async function POST(req: NextRequest) {
       'Advisor': { select: { name: config.name } },
     };
 
-    // Check for an existing entry with the same title (client + month), scoped
-    // to this advisor so two FAs' same-named clients don't overwrite each other.
+    // One latest snapshot per client: archive ALL prior cashflow entries for this
+    // client (any month), scoped to this advisor, then create one fresh record.
     const existing = await notion.databases.query({
       database_id: config.cashflowDbId,
       filter: {
         and: [
-          { property: 'Entry', title: { equals: entryTitle } },
+          { property: 'Entry', title: { contains: payload.clientName } },
           { property: 'Advisor', select: { equals: config.name } },
         ],
       },
-      page_size: 1,
+      page_size: 100,
     });
-
-    let pageId: string;
-    if (existing.results.length > 0) {
-      // Overwrite the existing record
-      pageId = existing.results[0].id;
-      await notion.pages.update({
-        page_id: pageId,
-        properties: properties as never,
-      });
-    } else {
-      // Create a new record
-      const page = await notion.pages.create({
-        parent: { database_id: config.cashflowDbId },
-        properties: properties as never,
-      });
-      pageId = page.id;
+    for (const pg of existing.results) {
+      await notion.pages.update({ page_id: pg.id, archived: true } as never).catch(() => {});
+      await new Promise(r => setTimeout(r, 120));
     }
+
+    const page = await notion.pages.create({
+      parent: { database_id: config.cashflowDbId },
+      properties: properties as never,
+    });
+    const pageId: string = page.id;
 
     // Optional enrichment fields — each in its own try/catch so one missing
     // property never breaks the whole submission
