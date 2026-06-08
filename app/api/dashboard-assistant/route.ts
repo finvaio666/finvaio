@@ -7,7 +7,7 @@ import { logAiUsage } from '@/lib/aiUsage';
 
 export const dynamic = 'force-dynamic';
 
-const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
+const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
 // ── Property helpers ──────────────────────────────────────────────────────────
 function rt(p: Record<string, unknown>, k: string): string {

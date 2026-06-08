@@ -8,7 +8,9 @@ import { categorizeByThemes, type Theme, type ThemeId } from './emailThemes';
 
 // Current models with fallback — newest first. Older models (1.5) are being
 // retired, so we try modern ones and fall back if a model is unavailable/overloaded.
-const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
+// 2.0-flash has no free-tier allocation (limit 0) and 1.5 is retired — use
+// models that actually have free quota, spread across the per-minute limit.
+const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
 /**
  * Generate text with automatic model fallback. Throws only if ALL models fail.

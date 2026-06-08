@@ -428,7 +428,7 @@ export async function POST(req: NextRequest) {
     const lastMessage = messages[messages.length - 1];
 
     // Try models in order — fall back on 503 overload
-    const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
     let content = '';
     let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
     let lastErr: unknown;
