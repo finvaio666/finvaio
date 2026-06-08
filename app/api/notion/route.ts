@@ -5,6 +5,13 @@ import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSUR
 
 export const dynamic = 'force-dynamic';
 
+// Short server-side cache per advisor+type. Pages (Clients, Investment,
+// Insurance, Net Worth, Cashflow) re-fetch from Notion on every load — this
+// makes navigating between them near-instant. Mutations are short-lived in the
+// cache (60s) and callers can pass ?fresh=1 to bypass.
+const dataCache = new Map<string, { ts: number; body: unknown }>();
+const DATA_TTL = 60 * 1000;
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get('type') || 'clients';
@@ -32,6 +39,15 @@ export async function GET(req: NextRequest) {
     if (type === 'cashflow')  return NextResponse.json({ data: DEMO_CASHFLOW });
     return NextResponse.json({ data: [] });
   }
+
+  // ── Cache lookup / writer (keyed by advisor + type) ──────────────────────
+  const fresh   = searchParams.get('fresh') === '1';
+  const cacheKey = `${advisorId}|${type}`;
+  if (!fresh) {
+    const c = dataCache.get(cacheKey);
+    if (c && Date.now() - c.ts < DATA_TTL) return NextResponse.json(c.body);
+  }
+  const json = (body: unknown) => { dataCache.set(cacheKey, { ts: Date.now(), body }); return NextResponse.json(body); };
 
   const notion = new Client({ auth: config.notionApiKey });
   const DB = {
@@ -86,7 +102,7 @@ export async function GET(req: NextRequest) {
           dob:         p['Date of Birth']?.type === 'date'          ? p['Date of Birth'].date?.start ?? ''                   : '',
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     if (type === 'portfolio') {
@@ -142,7 +158,7 @@ export async function GET(req: NextRequest) {
           returnPct: ret,
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     if (type === 'cashflow') {
@@ -178,7 +194,7 @@ export async function GET(req: NextRequest) {
           breakdown,
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     if (type === 'insurance') {
@@ -227,7 +243,7 @@ export async function GET(req: NextRequest) {
           medicalCard:      p['Medical Card']?.type === 'rich_text'      ? p['Medical Card'].rich_text[0]?.plain_text ?? ''     : '',
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     // ── Assets & Liabilities (net worth) ──────────────────────────────────────
@@ -249,7 +265,7 @@ export async function GET(req: NextRequest) {
           notes:    p['Notes']?.type === 'rich_text'   ? p['Notes'].rich_text[0]?.plain_text ?? ''         : '',
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     // ── Insurance product catalogue ───────────────────────────────────────────
@@ -277,7 +293,7 @@ export async function GET(req: NextRequest) {
           status:           p['Status']?.select?.name ?? 'Active',
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     // ── Investment fund catalogue ─────────────────────────────────────────────
@@ -305,7 +321,7 @@ export async function GET(req: NextRequest) {
           description:   p['Description']?.rich_text?.[0]?.plain_text ?? '',
         };
       });
-      return NextResponse.json({ data });
+      return json({ data });
     }
 
     return NextResponse.json({ error: 'Unknown type', data: null }, { status: 400 });
