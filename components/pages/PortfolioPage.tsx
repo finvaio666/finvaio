@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import PortfolioSwitchPanel from '@/components/PortfolioSwitchPanel';
 import NavUpdatePanel from '@/components/NavUpdatePanel';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
+import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFormModal';
+import { useClients } from '@/components/useClients';
 
 interface Holding {
   id: string;
@@ -44,14 +46,27 @@ export default function PortfolioPage() {
   const [activeTabId,  setTabId]       = useState<string>('');  // '' | 'All' | clientId
   const [showSwitch,   setShowSwitch]  = useState(false);
   const [showNav,      setShowNav]     = useState(false);
+  const [formOpen,     setFormOpen]    = useState(false);
+  const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
+  const { clients: allClients }        = useClients();
 
-  const loadHoldings = () => {
+  const loadHoldings = (fresh = false) => {
     setLoading(true);
-    fetch('/api/notion?type=portfolio', { cache: 'no-store' })
+    fetch(`/api/notion?type=portfolio${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(json => { if (json.data) setHoldings(json.data); })
       .finally(() => setLoading(false));
   };
+
+  async function deleteHolding(h: Holding) {
+    if (!confirm(`Delete holding "${h.name}"? This cannot be undone.`)) return;
+    await fetch(`/api/portfolio?id=${h.id}`, { method: 'DELETE' });
+    loadHoldings(true);
+  }
+  function editHolding(h: Holding) {
+    setEditing({ id: h.id, clientId: h.clientId, clientName: h.clientName, holdingName: h.name, assetClass: h.assetClass, institution: h.institution, status: h.status, currency: h.currency, valueOrig: h.valueOrig, purchaseOrig: h.purchaseOrig, fxRate: h.fxRate, maturityDate: h.maturity });
+    setFormOpen(true);
+  }
 
   useEffect(() => { loadHoldings(); }, []);
 
@@ -120,6 +135,11 @@ export default function PortfolioPage() {
             color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>✕ Clear</button>
         )}
+
+        <button onClick={() => { setEditing(null); setFormOpen(true); }} style={{
+          padding: '9px 16px', borderRadius: 'var(--r-pill)', border: 'none',
+          background: '#F37338', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+        }}>＋ Add Holding</button>
 
         {/* Action buttons — right-aligned, shown only when client selected */}
         {activeTab && (
@@ -225,6 +245,15 @@ export default function PortfolioPage() {
         />
       )}
 
+      {formOpen && (
+        <PortfolioFormModal
+          clients={allClients}
+          initial={editing}
+          onClose={() => setFormOpen(false)}
+          onSaved={() => { setFormOpen(false); loadHoldings(true); }}
+        />
+      )}
+
       {/* ── Holdings table ── */}
       {activeTab && <div className="section">
         <div className="section-header">
@@ -301,6 +330,8 @@ export default function PortfolioPage() {
                           {h.currency && h.currency !== 'MYR' && (
                             <span style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)', background: `${ccyColor(h.currency)}22`, color: ccyColor(h.currency), border: `1px solid ${ccyColor(h.currency)}44` }}>{h.currency}</span>
                           )}
+                          <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
+                          <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: 13 }}>
                           {[h.assetClass, h.institution].filter(Boolean).join(' · ')}

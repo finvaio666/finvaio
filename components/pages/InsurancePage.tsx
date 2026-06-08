@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
+import InsuranceFormModal, { type PolicyDraft } from '@/components/InsuranceFormModal';
 
 interface Policy {
   id: string;
@@ -225,13 +226,16 @@ export default function InsurancePage() {
   const [filterClientId, setFilterId] = useState<string>('');   // '' = none, 'All' = all, id = specific
   const [activeView, setView]   = useState<'policies' | 'gaps'>('policies');
   const [search, setSearch]     = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing,  setEditing]  = useState<PolicyDraft | null>(null);
 
-  const loadData = () => {
+  const loadData = (fresh = false) => {
     setLoading(true);
     setLoadError('');
+    const q = fresh ? '&fresh=1' : '';
     Promise.all([
-      fetch('/api/notion?type=insurance', { cache: 'no-store' }).then(r => r.json()),
-      fetch('/api/notion?type=clients',   { cache: 'no-store' }).then(r => r.json()),
+      fetch(`/api/notion?type=insurance${q}`, { cache: 'no-store' }).then(r => r.json()),
+      fetch(`/api/notion?type=clients${q}`,   { cache: 'no-store' }).then(r => r.json()),
     ]).then(([ins, cli]) => {
       if (ins.data) setPolicies(ins.data);
       else if (ins.error) setLoadError(ins.error);
@@ -241,6 +245,23 @@ export default function InsurancePage() {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  async function deletePolicy(p: Policy) {
+    if (!confirm(`Delete policy "${p.policyName}"? This cannot be undone.`)) return;
+    await fetch(`/api/insurance?id=${p.id}`, { method: 'DELETE' });
+    loadData(true);
+  }
+  function editPolicy(p: Policy) {
+    setEditing({
+      id: p.id, policyName: p.policyName, policyOwner: p.policyOwner, lifeAssured: p.lifeAssured,
+      insuranceType: p.insuranceType, benefits: p.benefits, status: p.status, insurer: p.insurer,
+      policyNumber: p.policyNumber, sumAssured: p.sumAssured, lifeCover: p.lifeCover, ciCover: p.ciCover,
+      paCover: p.paCover, tpdCover: p.tpdCover, annualPremium: p.annualPremium,
+      commencementDate: p.commencementDate, maturityDate: p.maturityDate, medicalCard: p.medicalCard,
+      medicalClass: p.medicalClass, beneficiary: p.beneficiary, notes: p.notes,
+    });
+    setFormOpen(true);
+  }
 
   const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
 
@@ -329,7 +350,21 @@ export default function InsurancePage() {
             background: 'var(--surface2)', color: 'var(--text3)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>✕ Clear</button>
         )}
+
+        <button onClick={() => { setEditing(null); setFormOpen(true); }} style={{
+          marginLeft: 'auto', padding: '9px 16px', borderRadius: 'var(--r-pill)', border: 'none',
+          background: '#F37338', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+        }}>＋ Add Policy</button>
       </div>
+
+      {formOpen && (
+        <InsuranceFormModal
+          clients={clients}
+          initial={editing}
+          onClose={() => setFormOpen(false)}
+          onSaved={() => { setFormOpen(false); loadData(true); }}
+        />
+      )}
 
       {/* ── Empty state — no client selected ── */}
       {!filterClient && !loading && (
@@ -396,7 +431,7 @@ export default function InsurancePage() {
       {filterClient && !loading && loadError && (
         <div className="section" style={{ padding: 32, textAlign: 'center' }}>
           <div style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>⚠️ {loadError}</div>
-          <button onClick={loadData} style={{ padding: '8px 20px', borderRadius: 'var(--r-pill)', background: 'var(--accent2)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={() => loadData()} style={{ padding: '8px 20px', borderRadius: 'var(--r-pill)', background: 'var(--accent2)', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             🔄 Retry
           </button>
         </div>
@@ -475,6 +510,8 @@ export default function InsurancePage() {
                             🧑 Life Assured: {p.lifeAssured}
                           </span>
                         )}
+                        <button onClick={() => editPolicy(p)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
+                        <button onClick={() => deletePolicy(p)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                         {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
