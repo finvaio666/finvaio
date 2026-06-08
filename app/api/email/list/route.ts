@@ -57,13 +57,11 @@ export async function GET(req: NextRequest) {
     // legitimate automated notices (e.g. e-statements, transaction confirmations).
     const emails = await listEmails(config, domains, 60);
 
-    // Phase 1 — instant keyword categorisation only (no AI here, so the list
-    // returns fast). Emails the rules can't resolve are left uncategorised and
-    // get classified by the AI in a background pass via /api/email/categorize,
-    // so the UI shows the theme groups immediately and counts fill in after.
+    // Keyword-only categorisation (no AI — conserves Gemini quota). Emails the
+    // rules can't classify fall into "Other". Instant and free.
     const themes = await getCompanyThemes();
     for (const e of emails) {
-      e.category = categorizeByThemes(themes, e.subject, e.snippet) ?? undefined;
+      e.category = categorizeByThemes(themes, e.subject, e.snippet) ?? 'other';
     }
 
     const payload = { connected: true, emails, institutions, advisorEmail, themes };
