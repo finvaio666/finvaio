@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { listTasks, setTaskStatus } from '@/lib/tasks';
+import { logAiUsage } from '@/lib/aiUsage';
 
 export const dynamic = 'force-dynamic';
 
@@ -238,6 +239,7 @@ RULES:
 - Tasks the advisor created (in "OPEN TASKS") are always actionable — never silently omit them. If one doesn't make the ranked urgent list (e.g. no due date), append "Also on your list: <task> (<client>), …" so nothing is dropped.
 - Factor in CALENDAR APPOINTMENTS: when planning the day or answering "what's my schedule / what's on today", list today's appointments with their times. In the morning plan, mention today's meetings up top so the advisor can plan around them.
 - If asked to "draft my morning plan", structure it: lead with today's **📅 Appointments** (times), then **🔴 Do first**, **🟡 Today**, **🟢 Nice to have** — one-line actions with client names. Put created tasks with no due date under 🟢. End with one motivating sentence.
+- SCOPE: You only assist with this advisor's professional work — clients, financial planning, portfolio, insurance, cash flow, market/economy, meetings, tasks and admin of their advisory practice. If asked something unrelated (general trivia, coding, personal chit-chat, entertainment, etc.), politely decline in one line: "I can only help with your advisory work — clients, planning, portfolio, insurance, market and admin." Do not answer the off-topic question.
 - If the data truly shows nothing, say so plainly. Do not pad.
 - NEVER assume a client's gender. Use the client's name or "they/their" — never "he/his/she/her" unless the data explicitly states the gender. (Source action-item text may contain pronouns; when summarising in your own words, stay neutral.)
 - You advise the advisor on what to DO; you never contact clients directly.
@@ -250,15 +252,18 @@ ${clientData}`;
     const genAI = new GoogleGenerativeAI(key);
     let answer = '';
     let lastErr: unknown;
+    let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
     for (const modelId of MODEL_FALLBACKS) {
       try {
         const model = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
         const res   = await model.generateContent(body.question);
         answer = res.response.text();
+        usage  = res.response.usageMetadata;
         break;
       } catch (e) { lastErr = e; continue; }
     }
     if (!answer) throw lastErr ?? new Error('All models failed');
+    await logAiUsage({ advisorName, feature: 'Ask ARIA', usage, question: body.question });
     return NextResponse.json({ answer });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

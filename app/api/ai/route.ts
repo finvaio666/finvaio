@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { listTasks } from '@/lib/tasks';
+import { logAiUsage } from '@/lib/aiUsage';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE } from '@/lib/demoData';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
@@ -387,6 +388,8 @@ Give concise, practical, Malaysia-specific advice. Use RM for currency. Be direc
 
 For calculations: use 3.5% inflation, 6–8% equity fund returns, 3–4% FD/bond returns, 5.5% EPF dividend. Show working when doing projections.
 
+SCOPE: Only help with the advisor's professional work — client analysis, financial/retirement/education planning, portfolio, insurance, cash flow, net worth, market/economy, and document drafting for the practice. If asked anything unrelated (general trivia, coding, personal chit-chat, entertainment), politely decline in one line: "I can only help with your financial advisory work." Do not answer the off-topic question.
+
 TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what to do", use ONLY the "OUTSTANDING TO-DOS" list in the client context. Meeting "Action items (historical)" are a past record and may already be completed — never present them as current/outstanding to-dos. If the outstanding list says "None", say the client is all caught up rather than repeating old meeting action items.`;
 
 export async function POST(req: NextRequest) {
@@ -427,6 +430,7 @@ export async function POST(req: NextRequest) {
     // Try models in order — fall back on 503 overload
     const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     let content = '';
+    let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
@@ -434,6 +438,7 @@ export async function POST(req: NextRequest) {
         const chat   = model.startChat({ history });
         const result = await chat.sendMessage(lastMessage.content);
         content = result.response.text();
+        usage   = result.response.usageMetadata;
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -447,6 +452,7 @@ export async function POST(req: NextRequest) {
     }
     if (!content) throw lastErr;
 
+    await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content });
     return NextResponse.json({ content });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
