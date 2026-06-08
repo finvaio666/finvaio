@@ -70,6 +70,20 @@ const log = (icon, msg) => console.log(`${icon} ${msg}`);
  * Reads the retry-after header when present; otherwise uses exponential backoff.
  * Max 5 retries (~30 s total wait time).
  */
+// Dedup queries filter by Advisor. For a brand-new advisor the select option
+// doesn't exist yet, which makes Notion reject the filter — treat that as "no
+// existing records" so the first import for a new FA works.
+async function queryAdvisor(args) {
+  try {
+    return await notionCall(() => notion.databases.query(args));
+  } catch (err) {
+    if (err?.code === 'validation_error' && String(err?.message || '').includes('Advisor')) {
+      return { results: [] };
+    }
+    throw err;
+  }
+}
+
 async function notionCall(fn) {
   const MAX_RETRIES = 5;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -91,8 +105,15 @@ async function notionCall(fn) {
 }
 
 // ── Read Excel ────────────────────────────────────────────────────────────────
+// DATA_DIR lets you point at a per-FA folder of filled templates, e.g.
+//   DATA_DIR="FA_Data/TAN TIAN YING"  (relative to project root, or an absolute path)
+// Falls back to the shared notion-import-templates folder.
+const DATA_DIR = process.env.DATA_DIR
+  ? (path.isAbsolute(process.env.DATA_DIR) ? process.env.DATA_DIR : path.join(ROOT, process.env.DATA_DIR))
+  : path.join(ROOT, 'notion-import-templates');
+
 function readSheet(filename, sheetName) {
-  const wb = xlsx.readFile(path.join(ROOT, 'notion-import-templates', filename));
+  const wb = xlsx.readFile(path.join(DATA_DIR, filename));
   const ws = wb.Sheets[sheetName];
   const raw = xlsx.utils.sheet_to_json(ws, { header: 1, defval: '' });
   return raw;
@@ -110,7 +131,7 @@ async function importClients() {
 
   // Get existing clients from Notion — scoped to THIS advisor so a same-named
   // client owned by another FA is never matched/overwritten.
-  const existing = await notionCall(() => notion.databases.query({ database_id: DB.clients, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } }));
+  const existing = await queryAdvisor({ database_id: DB.clients, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } });
   const existingMap = {};
   existing.results.filter(isFullPage).forEach(p => {
     const name = p.properties['Client Name']?.title?.[0]?.plain_text ?? '';
@@ -183,7 +204,7 @@ async function importPortfolio(clientIdMap) {
   log('📊', `Found ${data.length} portfolio rows in Excel`);
 
   // Get existing holdings — scoped to this advisor
-  const existing = await notionCall(() => notion.databases.query({ database_id: DB.portfolio, page_size: 100, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } }));
+  const existing = await queryAdvisor({ database_id: DB.portfolio, page_size: 100, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } });
   const existingMap = {};
   existing.results.filter(isFullPage).forEach(p => {
     const holdingName = p.properties['Holding Name']?.title?.[0]?.plain_text ?? '';
@@ -259,7 +280,7 @@ async function importInsurance(clientIdMap) {
   log('📊', `Found ${data.length} insurance rows in Excel`);
 
   // Get existing policies — scoped to this advisor
-  const existing = await notionCall(() => notion.databases.query({ database_id: DB.insurance, page_size: 100, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } }));
+  const existing = await queryAdvisor({ database_id: DB.insurance, page_size: 100, filter: { property: 'Advisor', select: { equals: ADVISOR_NAME } } });
   const existingMap = {};
   existing.results.filter(isFullPage).forEach(p => {
     const policyName   = p.properties['Policy Name']?.title?.[0]?.plain_text ?? '';
