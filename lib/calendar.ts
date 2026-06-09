@@ -82,6 +82,10 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
       ok = true;
       for (const e of res.data.items ?? []) {
         if (e.status === 'cancelled') continue;
+        // Appointments only: keep events that include at least one OTHER person
+        // (drops solo blocks, holidays, birthdays, reminders, focus time).
+        const hasOthers = (e.attendees ?? []).some(a => a.self !== true);
+        if (!hasOthers) continue;
         all.push({
           id:       e.id ?? '',
           title:    e.summary ?? '(No title)',
@@ -161,20 +165,24 @@ async function getMsEvents(refreshToken: string): Promise<CalEvent[]> {
   const token = await msCalAccessToken(refreshToken);
   const now = new Date();
   const until = new Date(now.getTime() + WINDOW_DAYS * 86400000);
-  const url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${now.toISOString()}&endDateTime=${until.toISOString()}&$orderby=start/dateTime&$top=50&$select=subject,start,end,location,isAllDay`;
+  const url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${now.toISOString()}&endDateTime=${until.toISOString()}&$orderby=start/dateTime&$top=50&$select=subject,start,end,location,isAllDay,attendees`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Asia/Kuala_Lumpur"' },
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'Graph calendar failed');
-  return (data.value ?? []).map((e: { id: string; subject?: string; start?: { dateTime?: string }; end?: { dateTime?: string }; isAllDay?: boolean; location?: { displayName?: string } }) => ({
-    id:       e.id,
-    title:    e.subject || '(No title)',
-    start:    e.start?.dateTime ?? '',
-    end:      e.end?.dateTime ?? '',
-    allDay:   !!e.isAllDay,
-    location: e.location?.displayName ?? '',
-  }));
+  return (data.value ?? [])
+    // Appointments only: keep events that have other attendees (drops solo blocks)
+    .filter((e: { attendees?: { type?: string }[] }) =>
+      (e.attendees ?? []).some(a => a.type !== 'resource'))
+    .map((e: { id: string; subject?: string; start?: { dateTime?: string }; end?: { dateTime?: string }; isAllDay?: boolean; location?: { displayName?: string } }) => ({
+      id:       e.id,
+      title:    e.subject || '(No title)',
+      start:    e.start?.dateTime ?? '',
+      end:      e.end?.dateTime ?? '',
+      allDay:   !!e.isAllDay,
+      location: e.location?.displayName ?? '',
+    }));
 }
 
 // ── Unified ─────────────────────────────────────────────────────────────────
