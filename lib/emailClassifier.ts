@@ -4,7 +4,10 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { categorizeByThemes, type Theme, type ThemeId } from './emailThemes';
+// NOTE: Email FILTERING and THEME CATEGORISATION are intentionally AI-FREE.
+// They run on keyword rules in lib/emailThemes (categorizeByThemes) inside the
+// email/list + email/categorize routes — no Gemini calls. The only AI in the
+// email pipeline is user-triggered: summaries (on open) and reply drafting.
 
 // Current models with fallback — newest first. Older models (1.5) are being
 // retired, so we try modern ones and fall back if a model is unavailable/overloaded.
@@ -32,95 +35,6 @@ export async function generateText(prompt: string): Promise<string> {
     }
   }
   throw lastErr ?? new Error('All Gemini models failed');
-}
-
-// ── Classification ────────────────────────────────────────────────────────────
-
-export interface ClassifyResult {
-  isWorkRelated: boolean;
-  confidence:    'high' | 'medium' | 'low';
-  category:      string;   // e.g. 'policy_renewal', 'statement', 'fund_update', 'other'
-  reason:        string;
-}
-
-export async function classifyEmail(
-  from:    string,
-  subject: string,
-  snippet: string,
-): Promise<ClassifyResult> {
-  const prompt = `You are an assistant for a Malaysian licensed financial advisor.
-Determine if the following email is work-related — meaning it is from an insurance company, unit trust / investment fund house, or financial regulator, and relates to client policies, funds, transactions, or compliance.
-
-From: ${from}
-Subject: ${subject}
-Snippet: ${snippet}
-
-Respond ONLY in this exact JSON format (no markdown, no explanation):
-{
-  "isWorkRelated": true,
-  "confidence": "high",
-  "category": "policy_renewal",
-  "reason": "one sentence"
-}
-
-Categories: policy_renewal, policy_lapse, fund_statement, fund_update, transaction_confirmation, client_document, compliance, general_work, spam, personal`;
-
-  try {
-    const text = (await generateText(prompt)).trim();
-    const json = text.replace(/^```json\s*|```$/g, '').trim();
-    return JSON.parse(json) as ClassifyResult;
-  } catch {
-    return { isWorkRelated: false, confidence: 'low', category: 'other', reason: 'Classification failed' };
-  }
-}
-
-// ── Theme triage (hybrid: keyword rules first, AI fallback, cached) ───────────
-
-/** AI fallback — used only when keyword rules can't decide. Returns a theme id. */
-export async function categorizeWithAI(themes: Theme[], from: string, subject: string, snippet: string): Promise<ThemeId> {
-  const validIds = themes.map(t => t.id);
-  const list = themes
-    .map(t => `- ${t.id}: ${t.label}${t.keywords?.length ? ` (e.g. ${t.keywords.slice(0, 6).join(', ')})` : ''}`)
-    .join('\n');
-  const prompt = `You triage emails for a Malaysian financial advisor. Classify the email from an insurance company / fund house into exactly ONE category id from this list.
-
-From: ${from}
-Subject: ${subject}
-Snippet: ${snippet}
-
-Categories:
-${list}
-
-Respond with ONLY the category id (one token, exactly as written above).`;
-  try {
-    const raw = (await generateText(prompt)).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    return validIds.includes(raw) ? raw : 'other';
-  } catch {
-    return 'other';
-  }
-}
-
-// Cache AI results per message id so each email is only sent to the AI once.
-const themeCache = new Map<string, { id: ThemeId; ts: number }>();
-const THEME_TTL = 24 * 60 * 60 * 1000; // 24h
-
-/** Hybrid categoriser: instant keyword rules first, cached AI fallback. */
-export async function categorizeEmail(
-  themes: Theme[],
-  messageId: string,
-  from: string,
-  subject: string,
-  snippet: string,
-): Promise<ThemeId> {
-  const ruled = categorizeByThemes(themes, subject, snippet);
-  if (ruled) return ruled;
-
-  const cached = themeCache.get(messageId);
-  if (cached && Date.now() - cached.ts < THEME_TTL) return cached.id;
-
-  const id = await categorizeWithAI(themes, from, subject, snippet);
-  themeCache.set(messageId, { id, ts: Date.now() });
-  return id;
 }
 
 // ── Summarisation ─────────────────────────────────────────────────────────────
