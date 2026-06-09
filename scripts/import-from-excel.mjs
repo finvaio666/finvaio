@@ -420,10 +420,15 @@ async function importAssets() {
 console.log(`\n🚀 ARIA Excel → Notion Import${DRY_RUN ? ' [DRY RUN — no writes]' : ''}`);
 console.log('━'.repeat(50));
 
+// IMPORT_ONLY="clients" (comma list) limits which sections run. Empty = all.
+const ONLY = (process.env.IMPORT_ONLY || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+const run = (name) => ONLY.length === 0 || ONLY.includes(name);
+if (ONLY.length) console.log(`🔎 Importing only: ${ONLY.join(', ')}`);
+
 const clientIdMap = await importClients();
-await importPortfolio(clientIdMap);
-await importInsurance(clientIdMap);
-await importAssets();
+if (run('portfolio')) await importPortfolio(clientIdMap);
+if (run('insurance')) await importInsurance(clientIdMap);
+if (run('assets'))    await importAssets();
 
 console.log('━'.repeat(50));
 console.log('🎉 Import complete!');
