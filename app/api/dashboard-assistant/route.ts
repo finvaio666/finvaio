@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
 
   const config = await getAdvisorConfig(advisorId);
   const advisorName = config?.name || 'the advisor';
-  const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
 
   // ── Intent: mark a task done from chat ──────────────────────────────────────
   // e.g. "mark Sell IFAST done for Ng Mei Ching" / "completed the EPF submission"
@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
       /\b(add|create|record|note( down)?|put down|remind me|new task|to-?do)\b/i.test(body.question) &&
       !/\b(mark|complete[d]?|finish(?:ed)?|done)\b/i.test(body.question)) {
     try {
-      const todayISO = new Date().toISOString().split('T')[0];
+      const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }); // YYYY-MM-DD in MYT
       const extractPrompt = `Today is ${today} (${todayISO}). Extract every to-do task from the advisor's message below.
 Return ONLY a JSON array (no markdown) of objects: {"task": "...", "client": "...", "due": "YYYY-MM-DD or empty"}.
 - "task": the action, concise.
