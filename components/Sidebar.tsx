@@ -42,7 +42,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const [advisor, setAdvisor]   = useState({ name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' });
   const [features, setFeatures] = useState<string[]>([]);
-  const [isAdmin,  setIsAdmin]  = useState(false);
+  // Seed from the last known role (cached client-side) so the nav doesn't
+  // flash Advisor → Admin on every page load while /api/auth/me resolves.
+  const [isAdmin,  setIsAdmin]  = useState(() =>
+    typeof window !== 'undefined' && sessionStorage.getItem('aria-role') === 'Admin'
+  );
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -54,7 +58,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           initials: d.initials || d.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
         });
         if (d.features) setFeatures(d.features);
-        if (d.role === 'Admin') setIsAdmin(true);
+        setIsAdmin(d.role === 'Admin');
+        sessionStorage.setItem('aria-role', d.role === 'Admin' ? 'Admin' : 'Advisor');
       })
       .catch(() => {});
   }, []);
