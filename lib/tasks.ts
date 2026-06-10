@@ -9,6 +9,8 @@
  *   Due        (date)        — optional
  *   Source     (rich_text)   — e.g. "Meeting 2026-05-26" or "Manual"
  *   Done Date  (date)        — set when completed
+ *   Type       (select)      — "Admin" | "Client" (optional; used to separate
+ *                               an Admin's own daily work from FA/client tasks)
  */
 
 import { Client, isFullPage } from '@notionhq/client';
@@ -22,6 +24,7 @@ export interface Task {
   due:      string;   // ISO date or ''
   source:   string;
   doneDate: string;
+  type:     string;   // "Admin" | "Client" | '' (unset = Client)
 }
 
 function rt(p: Record<string, unknown>, k: string): string {
@@ -53,7 +56,7 @@ function notionFor(config: AdvisorConfig) {
 /** List tasks, optionally filtered by client name and/or status. */
 export async function listTasks(
   config: AdvisorConfig,
-  opts: { client?: string; status?: 'Open' | 'Done' } = {},
+  opts: { client?: string; status?: 'Open' | 'Done'; type?: 'Admin' | 'Client' } = {},
 ): Promise<Task[]> {
   if (!config.tasksDbId || !config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return [];
   const notion = notionFor(config);
@@ -72,9 +75,13 @@ export async function listTasks(
       due:      dt(p, 'Due'),
       source:   rt(p, 'Source'),
       doneDate: dt(p, 'Done'),
+      type:     sel(p, 'Type'),
     };
   }).filter(t => t.task);
 
+  if (opts.type) {
+    tasks = tasks.filter(t => (opts.type === 'Admin' ? t.type === 'Admin' : t.type !== 'Admin'));
+  }
   if (opts.client) {
     const c = opts.client.toLowerCase().trim();
     tasks = tasks.filter(t => {
@@ -96,7 +103,7 @@ export async function listTasks(
 /** Create a new task. */
 export async function createTask(
   config: AdvisorConfig,
-  t: { task: string; client?: string; due?: string; source?: string },
+  t: { task: string; client?: string; due?: string; source?: string; type?: 'Admin' | 'Client' },
 ): Promise<void> {
   if (!config.tasksDbId) throw new Error('Tasks database not configured.');
   const notion = notionFor(config);
@@ -109,6 +116,9 @@ export async function createTask(
     'Advisor': { select: { name: config.name } },
   };
   if (t.due) props['Due'] = { date: { start: t.due } };
+  // Admin's own daily work vs FA/client tasks — requires a "Type" select
+  // property on the Notion Tasks DB with "Admin" / "Client" options.
+  if (t.type) props['Type'] = { select: { name: t.type } };
   await notion.pages.create({ parent: { database_id: config.tasksDbId }, properties: props as never });
 }
 
