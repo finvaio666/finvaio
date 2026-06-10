@@ -82,10 +82,10 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
       ok = true;
       for (const e of res.data.items ?? []) {
         if (e.status === 'cancelled') continue;
-        // Appointments only: keep events that include at least one OTHER person
-        // (drops solo blocks, holidays, birthdays, reminders, focus time).
-        const hasOthers = (e.attendees ?? []).some(a => a.self !== true);
-        if (!hasOthers) continue;
+        // Drop non-appointment entries: all-day blocks (holidays, birthdays,
+        // reminders) and special event types (focus time, OOO, working location).
+        const specialType = e.eventType && e.eventType !== 'default';
+        if (!e.start?.dateTime || specialType) continue;
         all.push({
           id:       e.id ?? '',
           title:    e.summary ?? '(No title)',
