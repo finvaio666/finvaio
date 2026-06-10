@@ -8,6 +8,8 @@ import {
   formatAUM, formatDate, initials,
   riskClass, segmentClass, segmentLabel, statusClass,
 } from '@/components/useClients';
+import CashflowFormModal from '@/components/CashflowFormModal';
+import NetWorthFormModal from '@/components/NetWorthFormModal';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -348,9 +350,11 @@ function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: s
   const [items, setItems] = useState<AssetItem[]>([]);
   const [invValue, setInvValue] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
 
-  useEffect(() => {
+  function load() {
     const name = clientName.toLowerCase().trim();
+    setLoading(true);
     Promise.all([
       fetch('/api/notion?type=assets', { cache: 'no-store' }).then(r => r.json()),
       fetch('/api/notion?type=portfolio', { cache: 'no-store' }).then(r => r.json()),
@@ -363,7 +367,9 @@ function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: s
         setInvValue(mine.reduce((s: number, h: Holding) => s + (h.value || 0), 0));
       }
     }).finally(() => setLoading(false));
-  }, [clientId, clientName]);
+  }
+
+  useEffect(load, [clientId, clientName]);
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading net worth…</div>;
 
@@ -374,14 +380,29 @@ function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: s
   const totalAssets = otherAssets + invValue;       // other assets + investments
   const netWorth    = totalAssets - totalLiab;
 
+  const addBar = (
+    <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+      <button onClick={() => setFormOpen(true)} style={{
+        padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff',
+        border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+      }}>＋ Add Item</button>
+    </div>
+  );
+
+  const modal = formOpen && (
+    <NetWorthFormModal clientName={clientName} items={items} onClose={() => setFormOpen(false)} onSaved={() => { setFormOpen(false); load(); }} />
+  );
+
   const empty = items.length === 0 && invValue === 0;
   if (empty) return (
     <>
       <NetWorthLinkBar clientId={clientId} clientName={clientName} />
+      {addBar}
+      {modal}
       <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
         <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No assets or liabilities recorded</div>
-        <div style={{ fontSize: 12, color: 'var(--text3)' }}>Send the form to your client above, or fill the import template / add in Notion.</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>Send the form to your client above, or add an item manually.</div>
       </div>
     </>
   );
@@ -401,6 +422,8 @@ function NetWorthTab({ clientId, clientName }: { clientId: string; clientName: s
   return (
     <>
       <NetWorthLinkBar clientId={clientId} clientName={clientName} />
+      {addBar}
+      {modal}
       {/* Summary cards */}
       <div className="stat-grid" style={{ marginBottom: 16 }}>
         <div className="stat-card green">
@@ -572,8 +595,10 @@ function CashflowTab({ clientId, clientName }: { clientId: string; clientName: s
   const [rows, setRows] = useState<CashflowRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
-  useEffect(() => {
+  function load() {
+    setLoading(true);
     fetch('/api/notion?type=cashflow', { cache: 'no-store' })
       .then(r => r.json())
       .then(json => {
@@ -588,26 +613,47 @@ function CashflowTab({ clientId, clientName }: { clientId: string; clientName: s
         }
       })
       .finally(() => setLoading(false));
-  }, [clientId, clientName]);
+  }
+
+  useEffect(load, [clientId, clientName]);
 
   const fmt = (n: number) => Math.round(n).toLocaleString();
   const avgSavings = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.savingsRate, 0) / rows.length) : 0;
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading cashflow…</div>;
 
-  if (rows.length === 0) return (
-    <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>💸</div>
-      <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No cashflow data yet</div>
-      <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>Share a cashflow form link with this client to collect their data</div>
-      <Link href="/cashflow" style={{ padding: '8px 20px', borderRadius: 'var(--r-pill)', background: 'var(--accent2)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', display: 'inline-block' }}>
-        Go to Cashflow →
-      </Link>
+  const addBar = (
+    <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+      <button onClick={() => setFormOpen(true)} style={{
+        padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff',
+        border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+      }}>＋ Add Month</button>
     </div>
+  );
+
+  const modal = formOpen && (
+    <CashflowFormModal clientName={clientName} onClose={() => setFormOpen(false)} onSaved={() => { setFormOpen(false); load(); }} />
+  );
+
+  if (rows.length === 0) return (
+    <>
+      {addBar}
+      {modal}
+      <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>💸</div>
+        <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No cashflow data yet</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>Share a cashflow form link with this client, or add a month manually</div>
+        <Link href="/cashflow" style={{ padding: '8px 20px', borderRadius: 'var(--r-pill)', background: 'var(--accent2)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none', display: 'inline-block' }}>
+          Go to Cashflow →
+        </Link>
+      </div>
+    </>
   );
 
   return (
     <>
+      {addBar}
+      {modal}
       <div className="stat-grid" style={{ marginBottom: 16 }}>
         <div className="stat-card green">
           <div className="stat-icon green">📊</div>
