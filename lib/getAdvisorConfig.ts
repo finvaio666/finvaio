@@ -25,6 +25,8 @@ export interface AdvisorConfig {
   calendarProvider:     string; // 'google' | 'microsoft'
   calendarRefreshToken: string; // OAuth2 refresh token for the connected calendar
   calendarAddress:      string; // the connected calendar account address
+  // ── Forms Library (Form Finder) ─────────────────────────────────────────────
+  driveRefreshToken:    string; // OAuth2 refresh token (drive.file scope) for PDF storage
 }
 
 /**
@@ -90,6 +92,7 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       calendarProvider:     (rt(p, 'Calendar Provider') || '').toLowerCase(),
       calendarRefreshToken: rt(p, 'Calendar Refresh Token'),
       calendarAddress:      rt(p, 'Calendar Address'),
+      driveRefreshToken:    rt(p, 'Drive Refresh Token'),
     };
 
     cache.set(advisorId, { config, ts: Date.now() });
@@ -194,6 +197,24 @@ export async function saveCalendarToken(
     clearAdvisorCache(advisorId);
   } catch (e) {
     console.error('saveCalendarToken failed:', e);
+  }
+}
+
+/** Persist the Drive connection (refresh token) used to store Forms Library PDFs. */
+export async function saveDriveToken(advisorId: string, refreshToken: string): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+  const notion = new Client({ auth: hostKey });
+  try {
+    await notion.pages.update({
+      page_id:    advisorId,
+      properties: {
+        'Drive Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+      } as never,
+    });
+    clearAdvisorCache(advisorId);
+  } catch (e) {
+    console.error('saveDriveToken failed:', e);
   }
 }
 
