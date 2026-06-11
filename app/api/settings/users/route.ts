@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
-import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, addAdvisorSelectOption } from '@/lib/getAdvisorConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +94,10 @@ export async function POST(req: NextRequest) {
         'Active':        { checkbox:  true },
       } as never,
     });
+
+    // Tag the new advisor's name as a select option on every shared DB so
+    // their imports/submissions don't fail Notion's select validation.
+    await addAdvisorSelectOption(body.name.trim());
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {

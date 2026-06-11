@@ -105,6 +105,47 @@ export function clearAdvisorCache(advisorId: string) {
 }
 
 /**
+ * Add a new advisor's name as an "Advisor" select option on every shared
+ * company DB. Without this, records tagged with the new advisor's name
+ * (imports, form submissions) fail Notion's select-option validation.
+ * Call this once when onboarding a new advisor (e.g. on user creation).
+ */
+export async function addAdvisorSelectOption(advisorName: string): Promise<void> {
+  const hostKey = process.env.NOTION_API_KEY;
+  if (!hostKey) return;
+
+  const notion = new Client({ auth: hostKey });
+  const dbIds = [
+    process.env.COMPANY_CLIENTS_DB_ID,
+    process.env.COMPANY_PORTFOLIO_DB_ID,
+    process.env.COMPANY_INSURANCE_DB_ID,
+    process.env.COMPANY_CASHFLOW_DB_ID,
+    process.env.COMPANY_ASSETS_DB_ID,
+    process.env.COMPANY_TASKS_DB_ID,
+  ].filter((id): id is string => !!id);
+
+  for (const dbId of dbIds) {
+    try {
+      const db = await notion.databases.retrieve({ database_id: dbId });
+      const prop = db.properties['Advisor'];
+      if (!prop || prop.type !== 'select') continue;
+
+      const existing = prop.select.options ?? [];
+      if (existing.some(o => o.name === advisorName)) continue;
+
+      await notion.databases.update({
+        database_id: dbId,
+        properties: {
+          'Advisor': { select: { options: [...existing, { name: advisorName }] } },
+        } as never,
+      });
+    } catch (e) {
+      console.error(`addAdvisorSelectOption: failed for DB ${dbId}:`, e);
+    }
+  }
+}
+
+/**
  * Persist the Gmail OAuth refresh token and address back to the advisor's Notion user page.
  * Uses the host Notion API key (same integration that reads the Users DB).
  */

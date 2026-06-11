@@ -13,10 +13,11 @@
 - Admin overview/clients 改成「查一次共用庫、用 Advisor 標籤歸戶」，不再逐 FA 查庫。
 - Onboarding UI（Settings ▸ Users ▸ Add New User）已存在且免填 DB → 現在 2 分鐘加一個 FA。
 - import script 加 `ADVISOR_NAME` 參數，匯入時每筆蓋章該 FA；dedup/relation 查詢也按 Advisor 範圍。
+- **2026-06-10**：`scripts/add-advisor-option.mjs` 的邏輯已併入 `POST /api/settings/users`（`lib/getAdvisorConfig.ts:addAdvisorSelectOption`）。Add New User 時會自動把該 FA 名字加進 6 個共用 DB 的 `Advisor` Select 選項，不會再出現「select option not found」（TAN TIAN YING 那次的 bug）。`add-advisor-option.mjs` 保留作為「補加舊 FA」的手動工具。
 
 ## ⚠️ Sky 待辦（部署後）
 1. 把 6 個 `COMPANY_*_DB_ID` 加到 **Vercel 環境變數**（Production/Preview）。
-2. 加新 FA：Settings ▸ Users ▸ Add New User，Full Name 要跟匯入時的 Advisor 名一致。
+2. 加新 FA：Settings ▸ Users ▸ Add New User，Full Name 要跟匯入時的 Advisor 名一致（系統會自動把名字加進各 DB 的 Advisor 選項）。
 3. 匯入該 FA 資料：`ADVISOR_NAME="Alice Tan" node scripts/import-from-excel.mjs`。
 
 ---

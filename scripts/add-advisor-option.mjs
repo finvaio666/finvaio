@@ -1,4 +1,7 @@
-// One-off: add a new "Advisor" select option to all shared Notion DBs.
+// Manual/recovery tool: add a new "Advisor" select option to all shared Notion DBs.
+// As of 2026-06-10, POST /api/settings/users (Settings > Users > Add New User)
+// does this automatically via lib/getAdvisorConfig.ts:addAdvisorSelectOption().
+// Use this script only to backfill advisors created before that change.
 // Usage: node scripts/add-advisor-option.mjs "TAN TIAN YING"
 import { Client } from '@notionhq/client';
 import { config as loadEnv } from 'dotenv';
