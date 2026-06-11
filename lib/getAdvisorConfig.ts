@@ -92,7 +92,10 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       calendarProvider:     (rt(p, 'Calendar Provider') || '').toLowerCase(),
       calendarRefreshToken: rt(p, 'Calendar Refresh Token'),
       calendarAddress:      rt(p, 'Calendar Address'),
-      driveRefreshToken:    rt(p, 'Drive Refresh Token'),
+      // Forms Library uses ONE shared company Drive for all FAs. The company
+      // token (env) takes precedence; a per-advisor token is only a fallback
+      // for an admin who deliberately connected their own Drive.
+      driveRefreshToken:    env.COMPANY_DRIVE_REFRESH_TOKEN || rt(p, 'Drive Refresh Token'),
     };
 
     cache.set(advisorId, { config, ts: Date.now() });
