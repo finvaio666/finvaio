@@ -7,7 +7,6 @@ import {
 import { MEDICAL_BENEFITS, MEDICAL_PLAN_LABEL } from '@/lib/insuranceMedicalBenefits';
 
 const fmt = (n: number) => 'RM ' + Math.round(n).toLocaleString();
-const fmt2 = (n: number) => 'RM ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const INSURER_COLOR: Record<Insurer, string> = {
   AIA: '#1F4E78', GE: '#1F6B3B', Allianz: '#6B2C8F', HLA: '#B8860B',
@@ -81,7 +80,7 @@ export default function PremiumCalculator() {
     autoTable(doc, {
       startY: y,
       head: [['Insurer', 'Product', 'Monthly', 'Annual']],
-      body: chosen.map((c) => [c.insurer, c.product, fmt2(c.monthly), fmt(c.annual)]),
+      body: chosen.map((c) => [c.insurer, c.product, fmt(c.monthly), fmt(c.annual)]),
       styles: { fontSize: 9, cellPadding: 5 },
       headStyles: { fillColor: [64, 64, 64] },
       theme: 'grid',
@@ -211,9 +210,11 @@ export default function PremiumCalculator() {
                     <span style={{ fontSize: 16 }}>{on ? '☑' : '☐'}</span>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8 }}>{r.product}</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>{fmt2(r.monthly)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text3)' }}> /mo</span></div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>{fmt(r.monthly)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text3)' }}> /mo</span></div>
                   <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmt(r.annual)} / year</div>
-                  {i === 0 && <div style={{ position: 'absolute', top: 10, right: 38, fontSize: 9, fontWeight: 700, color: '#1F6B3B', background: '#1F6B3B1A', padding: '2px 6px', borderRadius: 6 }}>LOWEST</div>}
+                  {r.verified
+                    ? <div style={{ position: 'absolute', top: 10, right: 38, fontSize: 9, fontWeight: 700, color: '#6B2C8F', background: '#6B2C8F1A', padding: '2px 6px', borderRadius: 6 }}>✓ VERIFIED</div>
+                    : i === 0 && <div style={{ position: 'absolute', top: 10, right: 38, fontSize: 9, fontWeight: 700, color: '#1F6B3B', background: '#1F6B3B1A', padding: '2px 6px', borderRadius: 6 }}>LOWEST</div>}
                   <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8, lineHeight: 1.4 }}>{r.caveat}</div>
                 </div>
               );
@@ -247,7 +248,7 @@ export default function PremiumCalculator() {
             {chosen.map((c) => (
               <div key={c.insurer} style={{ flex: '1 1 140px', border: `1px solid ${INSURER_COLOR[c.insurer]}55`, borderRadius: 10, padding: 12, background: 'var(--surface)' }}>
                 <div style={{ fontWeight: 700, color: INSURER_COLOR[c.insurer], fontSize: 13 }}>{c.insurer}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{fmt2(c.monthly)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/mo</span></div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{fmt(c.monthly)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/mo</span></div>
                 <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(c.annual)}/yr</div>
               </div>
             ))}

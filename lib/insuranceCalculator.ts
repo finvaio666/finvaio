@@ -68,7 +68,15 @@ function corr(cc: Record<string, number>, age: number): number {
   const f = (age - lo) / (hi - lo); return cc[lo] * (1 - f) + cc[hi] * f;
 }
 
-export interface PremiumResult { insurer: Insurer; product: string; annual: number; monthly: number; caveat: string; }
+export interface PremiumResult { insurer: Insurer; product: string; annual: number; monthly: number; caveat: string; verified: boolean; }
+
+// Verified official quotes (cross-checked against the insurer's own system). When the FA's
+// inputs match an anchor exactly, the calculator returns the confirmed figure instead of the
+// model estimate. Add rows here as quotes are verified.
+interface Anchor { insurer: Insurer; gender: Gender; smoker: boolean; age: number; lifeSA: number; ciSA: number; monthly: number; }
+const VERIFIED_ANCHORS: Anchor[] = [
+  { insurer: 'Allianz', gender: 'M', smoker: false, age: 33, lifeSA: 80000, ciSA: 50000, monthly: 517 },
+];
 
 export function estimate(
   insurer: Insurer, age: number, gender: Gender, smoker: boolean,
@@ -76,6 +84,8 @@ export function estimate(
 ): PremiumResult | null {
   const d = DATA[insurer]; const key = gender + (smoker ? 'S' : 'N'); const T = d.master[key];
   if (!T || age < 1 || age > 75) return null;
+  const anc = VERIFIED_ANCHORS.find((a) => a.insurer === insurer && a.gender === gender && a.smoker === smoker && a.age === age && a.lifeSA === lifeSA && a.ciSA === ciSA);
+  if (anc) return { insurer, product: PRODUCT_NAME[insurer], annual: anc.monthly * 12, monthly: anc.monthly, caveat: 'Verified official quote.', verified: true };
   const n = 80 - age; let lo = 200, hi = 400000;
   for (let it = 0; it < 50; it++) {
     const P = (lo + hi) / 2; let AV = 0; const rm = Math.pow(1 + d.r, 1 / 12) - 1; let dead = false;
@@ -91,7 +101,8 @@ export function estimate(
     if (dead) lo = P; else hi = P;
   }
   const P = (lo + hi) / 2; const annual = P * corr(d.corr[key], age);
-  return { insurer, product: PRODUCT_NAME[insurer], annual: Math.round(annual / 10) * 10, monthly: Math.round((annual / 12) * 100) / 100, caveat: CAVEATS[insurer] };
+  const monthly = Math.ceil(annual / 12); // round up to whole ringgit
+  return { insurer, product: PRODUCT_NAME[insurer], annual: monthly * 12, monthly, caveat: CAVEATS[insurer], verified: false };
 }
 
 export function estimateAll(age: number, gender: Gender, smoker: boolean, lifeSA = 100000, ciSA = 100000): PremiumResult[] {
