@@ -73,18 +73,18 @@ export interface PremiumResult { insurer: Insurer; product: string; annual: numb
 // Verified official quotes (cross-checked against the insurer's own system). When the FA's
 // inputs match an anchor exactly, the calculator returns the confirmed figure instead of the
 // model estimate. Add rows here as quotes are verified.
-interface Anchor { insurer: Insurer; gender: Gender; smoker: boolean; age: number; lifeSA: number; ciSA: number; monthly: number; }
+interface Anchor { insurer: Insurer; gender: Gender; smoker: boolean; age: number; lifeSA: number; ciSA: number; waiver: boolean; monthly: number; }
 const VERIFIED_ANCHORS: Anchor[] = [
-  { insurer: 'Allianz', gender: 'M', smoker: false, age: 33, lifeSA: 80000, ciSA: 50000, monthly: 517 },
+  { insurer: 'Allianz', gender: 'M', smoker: false, age: 33, lifeSA: 80000, ciSA: 50000, waiver: true, monthly: 517 },
 ];
 
 export function estimate(
   insurer: Insurer, age: number, gender: Gender, smoker: boolean,
-  lifeSA = 100000, ciSA = 100000,
+  lifeSA = 100000, ciSA = 100000, waiver = true,
 ): PremiumResult | null {
   const d = DATA[insurer]; const key = gender + (smoker ? 'S' : 'N'); const T = d.master[key];
   if (!T || age < 1 || age > 75) return null;
-  const anc = VERIFIED_ANCHORS.find((a) => a.insurer === insurer && a.gender === gender && a.smoker === smoker && a.age === age && a.lifeSA === lifeSA && a.ciSA === ciSA);
+  const anc = VERIFIED_ANCHORS.find((a) => a.insurer === insurer && a.gender === gender && a.smoker === smoker && a.age === age && a.lifeSA === lifeSA && a.ciSA === ciSA && a.waiver === waiver);
   if (anc) return { insurer, product: PRODUCT_NAME[insurer], annual: anc.monthly * 12, monthly: anc.monthly, caveat: 'Verified official quote.', verified: true };
   const n = 80 - age; let lo = 200, hi = 400000;
   for (let it = 0; it < 50; it++) {
@@ -92,7 +92,8 @@ export function estimate(
     for (let t = 1; t <= n; t++) {
       const a = age + t;
       const med = d.medBanded ? stepx(T.med, a) : llin(T.med, a);
-      const cm = (llin(T.life, a) * (lifeSA / 1e5) + llin(T.ci, a) * (ciSA / 1e5) + med + llin(T.wvr, a) * P) / 12;
+      const wv = waiver ? llin(T.wvr, a) * P : 0;
+      const cm = (llin(T.life, a) * (lifeSA / 1e5) + llin(T.ci, a) * (ciSA / 1e5) + med + wv) / 12;
       const ap = (P * alloc(t, d.alloc100From)) / 12;
       for (let m = 0; m < 12; m++) { AV += ap; AV -= cm; AV -= d.service; AV -= AV * (d.fmc / 12); AV *= 1 + rm; }
       if (d.loyalty && t === 20) AV += 3 * P;
@@ -105,8 +106,8 @@ export function estimate(
   return { insurer, product: PRODUCT_NAME[insurer], annual: monthly * 12, monthly, caveat: CAVEATS[insurer], verified: false };
 }
 
-export function estimateAll(age: number, gender: Gender, smoker: boolean, lifeSA = 100000, ciSA = 100000): PremiumResult[] {
-  return INSURERS.map((i) => estimate(i, age, gender, smoker, lifeSA, ciSA))
+export function estimateAll(age: number, gender: Gender, smoker: boolean, lifeSA = 100000, ciSA = 100000, waiver = true): PremiumResult[] {
+  return INSURERS.map((i) => estimate(i, age, gender, smoker, lifeSA, ciSA, waiver))
     .filter((r): r is PremiumResult => r !== null)
     .sort((a, b) => a.annual - b.annual);
 }

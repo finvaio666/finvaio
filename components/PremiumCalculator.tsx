@@ -26,6 +26,7 @@ export default function PremiumCalculator() {
   const [smoker, setSmoker] = useState(false);
   const [lifeSA, setLifeSA] = useState('100000');
   const [ciSA, setCiSA] = useState('100000');
+  const [waiver, setWaiver] = useState(true);
   const [medPlan] = useState('200');
 
   // numeric inputs are held as strings (so the field can be empty while typing) and parsed at use
@@ -38,7 +39,7 @@ export default function PremiumCalculator() {
   const [showProposal, setShowProposal] = useState(false);
 
   function calculate() {
-    const r = estimateAll(ageN, gender, smoker, lifeN, ciN);
+    const r = estimateAll(ageN, gender, smoker, lifeN, ciN, waiver);
     setResults(r);
     setPicked(new Set(r.slice(0, 3).map((x) => x.insurer))); // default = cheapest 3
     setShowProposal(false);
@@ -70,7 +71,7 @@ export default function PremiumCalculator() {
     doc.text('Prepared in ARIA  |  ' + new Date().toLocaleDateString('en-GB'), 40, 62);
 
     const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}`;
-    const cover = `Life ${fmt(lifeN)}  -  Critical Illness ${fmt(ciN)}  -  Medical Room ${medPlan}`;
+    const cover = `Life ${fmt(lifeN)}  -  Critical Illness ${fmt(ciN)}  -  Medical Room ${medPlan}  -  Waiver of premium ${waiver ? 'included' : 'excluded'}`;
     doc.setFontSize(10); doc.setTextColor(40, 40, 40);
     if (clientName) doc.text('Client: ' + clientName, 40, 84);
     doc.text(prof, 40, clientName ? 98 : 84);
@@ -184,6 +185,18 @@ export default function PremiumCalculator() {
             <option value="200">Room RM200 (RM500 deductible)</option>
           </select>
         </div>
+        <div>
+          <label style={lbl}>Waiver of premium rider</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[true, false].map((w) => (
+              <button key={String(w)} onClick={() => setWaiver(w)} style={{
+                flex: 1, padding: '9px 0', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                border: `1.5px solid ${waiver === w ? 'var(--accent2)' : 'var(--border)'}`,
+                background: waiver === w ? 'var(--accent2)' : 'var(--surface)', color: waiver === w ? '#fff' : 'var(--text3)',
+              }}>{w ? 'Included' : 'Excluded'}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <button onClick={calculate} style={{
@@ -235,7 +248,7 @@ export default function PremiumCalculator() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Proposal{clientName ? ` — ${clientName}` : ''}</div>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{gender === 'M' ? 'Male' : 'Female'} · {smoker ? 'Smoker' : 'Non-Smoker'} · Age {ageN} · Life {fmt(lifeN)} · CI {fmt(ciN)} · Medical Room {medPlan}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{gender === 'M' ? 'Male' : 'Female'} · {smoker ? 'Smoker' : 'Non-Smoker'} · Age {ageN} · Life {fmt(lifeN)} · CI {fmt(ciN)} · Medical Room {medPlan} · Waiver {waiver ? 'incl.' : 'excl.'}</div>
             </div>
             <button onClick={downloadPdf} style={{
               padding: '9px 18px', borderRadius: 'var(--r-pill)', border: 'none', background: '#F37338',
