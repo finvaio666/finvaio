@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import InsuranceFormModal, { type PolicyDraft } from '@/components/InsuranceFormModal';
-import PremiumCalculator from '@/components/PremiumCalculator';
 
 interface Policy {
   id: string;
@@ -225,7 +224,7 @@ export default function InsurancePage() {
   const [loading,  setLoading]  = useState(true);
   const [loadError, setLoadError] = useState('');
   const [filterClientId, setFilterId] = useState<string>('');   // '' = none, 'All' = all, id = specific
-  const [activeView, setView]   = useState<'policies' | 'gaps' | 'calculator'>('policies');
+  const [activeView, setView]   = useState<'policies' | 'gaps'>('policies');
   const [search, setSearch]     = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing,  setEditing]  = useState<PolicyDraft | null>(null);
@@ -368,7 +367,7 @@ export default function InsurancePage() {
       )}
 
       {/* ── Empty state — no client selected ── */}
-      {!filterClient && !loading && activeView !== 'calculator' && (
+      {!filterClient && !loading && (
         <div className="section" style={{ padding: '64px 32px', textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🛡️</div>
           <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>Select a client to view their insurance</div>
@@ -377,7 +376,7 @@ export default function InsurancePage() {
       )}
 
       {/* ── Stat cards — only when client selected ── */}
-      {filterClient && activeView !== 'calculator' && <div className="stat-grid">
+      {filterClient && <div className="stat-grid">
         <div className="stat-card blue">
           <div className="stat-icon blue">🛡️</div>
           <div className="stat-label">Clients Covered</div>
@@ -404,24 +403,23 @@ export default function InsurancePage() {
         </div>
       </div>}
 
-      {/* ── View toggle — always visible (Calculator works without a client) ── */}
+      {/* ── View toggle — only when client selected ── */}
+      {filterClient && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: 3, gap: 2 }}>
-          {(['policies', 'gaps', 'calculator'] as const).map(v => (
+          {(['policies', 'gaps'] as const).map(v => (
             <button key={v} onClick={() => setView(v)} style={{
               padding: '6px 16px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
               background: activeView === v ? 'var(--text)' : 'transparent',
               color: activeView === v ? 'var(--bg)' : 'var(--text3)',
               fontSize: 12, fontWeight: 600, transition: 'all 0.15s',
             }}>
-              {v === 'policies' ? '📋 Policies' : v === 'gaps' ? '⚠️ Coverage Gaps' : '🧮 Premium Calculator'}
+              {v === 'policies' ? '📋 Policies' : '⚠️ Coverage Gaps'}
             </button>
           ))}
         </div>
       </div>
-
-      {/* ── Premium Calculator view (no client needed) ── */}
-      {activeView === 'calculator' && <PremiumCalculator />}
+      )}
 
       {/* ── Loading / error / no policies ── */}
       {filterClient && loading && (
