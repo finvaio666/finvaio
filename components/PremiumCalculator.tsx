@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import {
-  estimateAll, PLAN_TYPES, type Gender, type Insurer, type PremiumResult,
+  estimateAll, getExclusions, PLAN_TYPES, type Exclusion, type Gender, type Insurer, type PremiumResult,
 } from '@/lib/insuranceCalculator';
 import { MEDICAL_BENEFITS, MEDICAL_PLAN_LABEL } from '@/lib/insuranceMedicalBenefits';
 
@@ -37,8 +37,10 @@ export default function PremiumCalculator() {
   const [results, setResults] = useState<PremiumResult[] | null>(null);
   const [picked, setPicked] = useState<Set<Insurer>>(new Set());
   const [showProposal, setShowProposal] = useState(false);
+  const [exclusions, setExclusions] = useState<Exclusion[]>([]);
 
   function calculate() {
+    setExclusions(getExclusions(lifeN, ciN));
     const r = estimateAll(ageN, gender, smoker, lifeN, ciN, waiver);
     setResults(r);
     setPicked(new Set(r.slice(0, 3).map((x) => x.insurer))); // default = cheapest 3
@@ -207,6 +209,16 @@ export default function PremiumCalculator() {
       {/* Results */}
       {results && (
         <div style={{ marginTop: 24 }}>
+          {exclusions.length > 0 && (
+            <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, border: '1px solid #D9920033', background: '#D992001A', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 16, lineHeight: 1.2 }}>⚠️</span>
+              <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
+                {exclusions.map((e) => (
+                  <div key={e.insurer}><strong>{e.insurer} excluded.</strong> {e.reason}</div>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
             Tick the insurers to include in the proposal (cheapest 3 pre-selected):
           </div>

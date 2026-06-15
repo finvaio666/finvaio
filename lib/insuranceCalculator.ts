@@ -106,8 +106,20 @@ export function estimate(
   return { insurer, product: PRODUCT_NAME[insurer], annual: monthly * 12, monthly, caveat: CAVEATS[insurer], verified: false };
 }
 
+// Eligibility rules — insurers excluded for a given coverage request, with the reason to show the FA.
+export interface Exclusion { insurer: Insurer; reason: string; }
+export function getExclusions(lifeSA: number, ciSA: number): Exclusion[] {
+  const ex: Exclusion[] = [];
+  if (ciSA > 0 && ciSA < 100000) {
+    ex.push({ insurer: 'GE', reason: 'GE SmartProtect You requires a minimum Critical Illness sum assured of RM100,000. It has been excluded because the requested CI is below RM100,000.' });
+  }
+  return ex;
+}
+
 export function estimateAll(age: number, gender: Gender, smoker: boolean, lifeSA = 100000, ciSA = 100000, waiver = true): PremiumResult[] {
-  return INSURERS.map((i) => estimate(i, age, gender, smoker, lifeSA, ciSA, waiver))
+  const excluded = new Set(getExclusions(lifeSA, ciSA).map((e) => e.insurer));
+  return INSURERS.filter((i) => !excluded.has(i))
+    .map((i) => estimate(i, age, gender, smoker, lifeSA, ciSA, waiver))
     .filter((r): r is PremiumResult => r !== null)
     .sort((a, b) => a.annual - b.annual);
 }
