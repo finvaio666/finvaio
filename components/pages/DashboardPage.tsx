@@ -256,6 +256,7 @@ export default function DashboardPage() {
   const [clientAlerts, setClientAlerts] = useState<ClientAlert[]>([]);
   const [openTasks,    setOpenTasks]    = useState<TaskItem[]>([]);
   const [appointments, setAppointments] = useState<CalEvent[]>([]);
+  const [calStatus,    setCalStatus]    = useState<{ connected: boolean; error?: string } | null>(null);
   const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
   const [emailThemes,  setEmailThemes]  = useState<Theme[]>(DEFAULT_THEMES);
@@ -328,8 +329,13 @@ export default function DashboardPage() {
 
     fetch('/api/calendar/events', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { if (d.events) setAppointments(d.events); })
-      .catch(() => {});
+      .then(d => {
+        if (Array.isArray(d.events)) setAppointments(d.events);
+        setCalStatus({ connected: !!d.connected, error: d.error });
+        if (d.error) console.warn('[calendar] events fetch error:', d.error);
+        else if (d.connected) console.info(`[calendar] ${d.provider || 'calendar'} connected (${d.address || '—'}) · ${Array.isArray(d.events) ? d.events.length : 0} events`);
+      })
+      .catch(e => { setCalStatus({ connected: false, error: String(e) }); console.warn('[calendar] events fetch failed:', e); });
   }, []);
 
   // ── Derived data ────────────────────────────────────────────────────────────
@@ -585,6 +591,18 @@ export default function DashboardPage() {
         </div>
       )}
 
+
+      {/* ── Calendar problem banner (connected but failing, or fetch error) ── */}
+      {calStatus && (calStatus.error || (calStatus.connected && appointments.length === 0)) && (
+        <div className="section" style={{ marginBottom: 20, borderLeft: '3px solid var(--amber, #f59e0b)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📅 Calendar not loading</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+            {calStatus.error
+              ? `Couldn't read your calendar: ${calStatus.error}. This usually means the connection expired — go to Settings → Calendar, disconnect and reconnect.`
+              : 'Connected, but no events came back. If you have upcoming appointments, reconnect in Settings → Calendar (the access may have expired).'}
+          </div>
+        </div>
+      )}
 
       {/* ── Today's Appointments (calendar) ── */}
       {appointments.length > 0 && (() => {

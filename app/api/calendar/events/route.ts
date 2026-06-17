@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
       address:   config.calendarAddress,
     });
   } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e), events: [] }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[calendar/events] ${config.calendarProvider || 'google'} fetch failed for ${config.calendarAddress || advisorId}:`, msg);
+    return NextResponse.json({ error: msg, connected: true, events: [] }, { status: 500 });
   }
 }
