@@ -1,5 +1,5 @@
 /**
- * ARIA Excel → Notion Import Script
+ * FINVA Excel → Notion Import Script
  * Reads 1_Clients_Database.xlsx, 3_Portfolio_Holdings.xlsx, Insurance_Policies_Template.xlsx
  * and upserts data into skysiew's Notion databases.
  *
@@ -417,7 +417,7 @@ async function importAssets() {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-console.log(`\n🚀 ARIA Excel → Notion Import${DRY_RUN ? ' [DRY RUN — no writes]' : ''}`);
+console.log(`\n🚀 FINVA Excel → Notion Import${DRY_RUN ? ' [DRY RUN — no writes]' : ''}`);
 console.log('━'.repeat(50));
 
 // IMPORT_ONLY="clients" (comma list) limits which sections run. Empty = all.

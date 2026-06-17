@@ -440,7 +440,7 @@ export default function InsurancePage() {
         <div className="section" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>🛡️</div>
           <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No insurance policies yet</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies directly in ARIA to get started</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies directly in FINVA to get started</div>
         </div>
       )}
 

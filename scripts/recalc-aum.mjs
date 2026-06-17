@@ -100,7 +100,7 @@ async function fetchAllClients() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-console.log(`\n🚀 ARIA — Recalculate AUM from Portfolio${DRY_RUN ? ' [DRY RUN]' : ''}`);
+console.log(`\n🚀 FINVA — Recalculate AUM from Portfolio${DRY_RUN ? ' [DRY RUN]' : ''}`);
 console.log('━'.repeat(50));
 
 log('📈', 'Fetching all portfolio holdings…');

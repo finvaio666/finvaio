@@ -58,8 +58,8 @@ export async function GET(req: NextRequest) {
     const emails = await getRecentInbound(config, domains, 14, 40);
 
     // 3. Match each email to a client by name in subject + snippet.
-    //    getRecentInbound already excludes threads labelled ARIA/Seen, so once
-    //    the FA opens a thread in ARIA it drops off this list automatically.
+    //    getRecentInbound already excludes threads labelled FINVA/Seen, so once
+    //    the FA opens a thread in FINVA it drops off this list automatically.
     const alerts: ClientAlert[] = [];
     for (const email of emails) {
       // Scan subject + snippet + full body — institution emails frequently name

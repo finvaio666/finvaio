@@ -202,7 +202,7 @@ export default function AddProductModal({ onClose, onSaved }: Props) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
                   Open the insurance brochure or fund factsheet PDF, <strong>select all text</strong> (Ctrl+A), copy, then paste below.
-                  ARIA will extract the product details automatically.
+                  FINVA will extract the product details automatically.
                 </div>
                 <textarea
                   value={pasteText}

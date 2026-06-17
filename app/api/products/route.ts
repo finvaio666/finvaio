@@ -112,7 +112,7 @@ ${text.slice(0, 8000)}
 
     if (productType === 'insurance') {
       const dbId = config.insurancePlansDbId;
-      if (!dbId) return NextResponse.json({ error: 'Insurance Plans DB not configured. Add the DB ID in your ARIA settings.' }, { status: 400 });
+      if (!dbId) return NextResponse.json({ error: 'Insurance Plans DB not configured. Add the DB ID in your FINVA settings.' }, { status: 400 });
 
       const insProps: Record<string, unknown> = {
         'Name':         { title:   [{ text: { content: String(product.name    ?? '') } }] },
@@ -134,7 +134,7 @@ ${text.slice(0, 8000)}
 
     if (productType === 'fund') {
       const dbId = config.fundsDbId;
-      if (!dbId) return NextResponse.json({ error: 'Funds DB not configured. Add the DB ID in your ARIA settings.' }, { status: 400 });
+      if (!dbId) return NextResponse.json({ error: 'Funds DB not configured. Add the DB ID in your FINVA settings.' }, { status: 400 });
 
       const fundProps: Record<string, unknown> = {
         'Name':         { title:   [{ text: { content: String(product.name       ?? '') } }] },

@@ -7,7 +7,7 @@ import React from 'react';
 // Represents: guidance, direction, trusted advisor
 export function LogoAIcon({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-label="ARIA Compass logo">
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-label="FINVA Compass logo">
       {/* Outer ring */}
       <circle cx="16" cy="16" r="13" stroke="currentColor" strokeWidth="1.5" opacity="0.5"/>
       {/* Cardinal tick marks */}
@@ -30,7 +30,7 @@ export function LogoAFull({ iconSize = 36 }: { iconSize?: number }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <LogoAIcon size={iconSize} />
       <div>
-        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>ARIA</div>
+        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>FINVA</div>
         {iconSize >= 28 && <div style={{ fontSize: iconSize * 0.21, color: 'var(--text3)', letterSpacing: '0.05em', marginTop: 2, fontWeight: 500 }}>ADVISOR INTELLIGENCE</div>}
       </div>
     </div>
@@ -42,7 +42,7 @@ export function LogoAFull({ iconSize = 36 }: { iconSize?: number }) {
 // Represents: structure, precision, premium wealth management
 export function LogoBIcon({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-label="ARIA Hexagon logo">
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-label="FINVA Hexagon logo">
       {/* Hexagon — pointy-top */}
       <polygon points="16,2 28,9 28,23 16,30 4,23 4,9"
         fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" opacity="0.85"/>
@@ -60,7 +60,7 @@ export function LogoBFull({ iconSize = 32 }: { iconSize?: number }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <LogoBIcon size={iconSize} />
       <div>
-        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '0.1em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>ARIA</div>
+        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '0.1em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>FINVA</div>
         {iconSize >= 28 && <div style={{ fontSize: iconSize * 0.21, color: 'var(--text3)', letterSpacing: '0.05em', marginTop: 2, fontWeight: 500 }}>ADVISOR INTELLIGENCE</div>}
       </div>
     </div>
@@ -74,7 +74,7 @@ export function LogoCIcon({ size = 32 }: { size?: number }) {
   const w = size;
   const h = size;
   return (
-    <svg width={w} height={h} viewBox="0 0 36 32" fill="none" aria-label="ARIA Sparkline logo">
+    <svg width={w} height={h} viewBox="0 0 36 32" fill="none" aria-label="FINVA Sparkline logo">
       {/* Area under the line */}
       <path d="M4,26 L12,18 L22,12 L32,4 L32,28 L4,28 Z" fill="var(--accent2)" opacity="0.1"/>
       {/* Trend line */}
@@ -95,7 +95,7 @@ export function LogoCFull({ iconSize = 36 }: { iconSize?: number }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <LogoCIcon size={iconSize} />
       <div>
-        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>ARIA</div>
+        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>FINVA</div>
         {iconSize >= 28 && <div style={{ fontSize: iconSize * 0.21, color: 'var(--text3)', letterSpacing: '0.05em', marginTop: 2, fontWeight: 500 }}>ADVISOR INTELLIGENCE</div>}
       </div>
     </div>
@@ -108,7 +108,7 @@ function NodeFull({ Icon, iconSize = 32 }: { Icon: (p: { size: number }) => Reac
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <Icon size={iconSize} />
       <div>
-        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>ARIA</div>
+        <div style={{ fontWeight: 800, fontSize: iconSize * 0.58, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-sans)' }}>FINVA</div>
         {iconSize >= 28 && <div style={{ fontSize: iconSize * 0.21, color: 'var(--text3)', letterSpacing: '0.05em', marginTop: 2, fontWeight: 500 }}>ADVISOR INTELLIGENCE</div>}
       </div>
     </div>

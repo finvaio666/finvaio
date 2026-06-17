@@ -206,7 +206,7 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
     <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
       <div style={{ fontSize: 36, marginBottom: 12 }}>📈</div>
       <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No holdings recorded</div>
-      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add holdings in ARIA Notion to see them here</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add holdings in FINVA Notion to see them here</div>
     </div>
   );
 
@@ -502,7 +502,7 @@ function InsuranceTab({ clientName }: { clientName: string }) {
     <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
       <div style={{ fontSize: 36, marginBottom: 12 }}>🛡️</div>
       <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No insurance policies recorded</div>
-      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies in ARIA Notion to see them here</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>Add policies in FINVA Notion to see them here</div>
     </div>
   );
 

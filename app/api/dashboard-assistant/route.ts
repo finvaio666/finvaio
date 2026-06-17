@@ -225,7 +225,7 @@ Message: "${body.question}"`;
   // Look up any client mentioned in the question (full profile, contact, todos)
   const clientData = config ? await lookupMentionedClients(config, body.question).catch(() => '') : '';
 
-  const systemPrompt = `You are ARIA, the daily co-pilot for ${advisorName}, a licensed financial advisor in Malaysia. Today is ${today}.
+  const systemPrompt = `You are FINVA, the daily co-pilot for ${advisorName}, a licensed financial advisor in Malaysia. Today is ${today}.
 
 You answer from the advisor's live data below: a dashboard snapshot of today's priorities, PLUS detailed records for any client mentioned in the question. Be concise, specific and action-oriented — like a sharp executive assistant.
 
@@ -263,7 +263,7 @@ ${clientData}`;
       } catch (e) { lastErr = e; continue; }
     }
     if (!answer) throw lastErr ?? new Error('All models failed');
-    await logAiUsage({ advisorName, feature: 'Ask ARIA', usage, question: body.question });
+    await logAiUsage({ advisorName, feature: 'Ask FINVA', usage, question: body.question });
     return NextResponse.json({ answer });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

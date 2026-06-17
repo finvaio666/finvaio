@@ -235,7 +235,7 @@ export default function ClientsPage() {
         <div style={{ fontSize: 24, marginBottom: 8 }}>➕</div>
         <div style={{ fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>Add your next client</div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
-          Add a new client in ARIA — they'll appear here instantly
+          Add a new client in FINVA — they'll appear here instantly
         </div>
         <Link href="/templates" className="section-action">Go to Templates →</Link>
       </div>

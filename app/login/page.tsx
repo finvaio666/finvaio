@@ -62,10 +62,10 @@ export default function LoginPage() {
             fontSize: 42, fontWeight: 800, letterSpacing: '-0.04em',
             color: 'var(--text)', lineHeight: 1,
           }}>
-            ARIA
+            FINVA
           </div>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            Advisor Resource &amp; Intelligence Assistant
+            Financial Intelligence Navigator &amp; Virtual Advisor
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, opacity: 0.7 }}>
             Bill Morrisons Financial Consulting
@@ -172,13 +172,13 @@ export default function LoginPage() {
                 marginTop: 4,
               }}
             >
-              {loading ? 'Signing in…' : 'Sign in to ARIA'}
+              {loading ? 'Signing in…' : 'Sign in to FINVA'}
             </button>
           </form>
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'var(--text3)' }}>
-          Protected by ARIA · Bill Morrisons Financial Consulting
+          Protected by FINVA · Bill Morrisons Financial Consulting
         </div>
       </div>
     </div>

@@ -15,8 +15,8 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ARIA — Advisor Resource & Intelligence Assistant",
-  description: "ARIA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
+  title: "FINVA — Financial Intelligence Navigator & Virtual Advisor",
+  description: "FINVA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
   manifest: "/manifest.json",
   icons: {
     icon: '/icon.svg',
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ARIA",
+    title: "FINVA",
   },
 };
 

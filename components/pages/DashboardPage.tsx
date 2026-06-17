@@ -7,7 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 
-// ─── Ask ARIA — dashboard daily co-pilot ─────────────────────────────────────
+// ─── Ask FINVA — dashboard daily co-pilot ─────────────────────────────────────
 interface PendingTask { task: string; client: string; due: string; }
 
 function AskAria({ buildContext, onTasksAdded }: { buildContext: () => string; onTasksAdded?: () => void }) {
@@ -80,7 +80,7 @@ function AskAria({ buildContext, onTasksAdded }: { buildContext: () => string; o
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <div style={{ width: 30, height: 30, borderRadius: 9, background: '#F37338', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>💬</div>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Ask ARIA</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Ask FINVA</div>
         <div style={{ fontSize: 12, color: 'var(--text3)' }}>your daily co-pilot</div>
       </div>
 
@@ -440,7 +440,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      {/* ── Ask ARIA — daily co-pilot ── */}
+      {/* ── Ask FINVA — daily co-pilot ── */}
       <AskAria buildContext={buildContext} onTasksAdded={loadTasks} />
 
       {/* ── Stat Cards ── */}

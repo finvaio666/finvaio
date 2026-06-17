@@ -9,7 +9,7 @@
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 
-const FOLDER_NAME = 'ARIA Forms Library';
+const FOLDER_NAME = 'FINVA Forms Library';
 
 function createOAuthClient() {
   return new google.auth.OAuth2(
@@ -38,7 +38,7 @@ function getDriveClient(refreshToken: string) {
 
 let cachedFolderId: string | null = null;
 
-/** Find or create the "ARIA Forms Library" folder in the connected Drive. */
+/** Find or create the "FINVA Forms Library" folder in the connected Drive. */
 async function getOrCreateFolder(refreshToken: string): Promise<string> {
   if (cachedFolderId) return cachedFolderId;
   const drive = getDriveClient(refreshToken);

@@ -84,7 +84,7 @@ function ConnectGmailPanel({ onConnect }: { onConnect: () => void }) {
       <div>
         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Connect Your Gmail</div>
         <div style={{ fontSize: 14, color: 'var(--text2)', maxWidth: 360, lineHeight: 1.6 }}>
-          Link your Gmail account so ARIA can monitor work emails from insurance companies and fund houses, and help you draft professional replies.
+          Link your Gmail account so FINVA can monitor work emails from insurance companies and fund houses, and help you draft professional replies.
         </div>
       </div>
       {error && <div style={{ color: 'var(--red)', fontSize: 13, maxWidth: 400 }}>{error}</div>}
@@ -103,7 +103,7 @@ function ConnectGmailPanel({ onConnect }: { onConnect: () => void }) {
         {loading ? 'Redirecting…' : '📧 Connect Gmail'}
       </button>
       <div style={{ fontSize: 12, color: 'var(--text3)', maxWidth: 340 }}>
-        ARIA only reads emails from whitelisted domains you configure. Your email stays private.
+        FINVA only reads emails from whitelisted domains you configure. Your email stays private.
       </div>
     </div>
   );
@@ -876,7 +876,7 @@ export default function EmailHubPage() {
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No Institutions Configured</div>
               <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 380, lineHeight: 1.6 }}>
-                ARIA only shows emails from your approved institution whitelist. Add your insurance companies and fund houses to start monitoring their emails.
+                FINVA only shows emails from your approved institution whitelist. Add your insurance companies and fund houses to start monitoring their emails.
               </div>
             </div>
             <a href="/settings" style={{ padding: '10px 22px', background: '#F37338', color: '#fff', borderRadius: 99, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>

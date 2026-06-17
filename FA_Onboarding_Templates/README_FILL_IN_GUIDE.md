@@ -1,7 +1,7 @@
-# ARIA Onboarding — Data Entry Guide
+# FINVA Onboarding — Data Entry Guide
 
 Welcome! Please fill in these 4 spreadsheets with your client data so we can
-load it into ARIA for your Beta trial. It usually takes 1–3 hours depending on
+load it into FINVA for your Beta trial. It usually takes 1–3 hours depending on
 how many clients you have.
 
 ## The 4 files
@@ -29,7 +29,7 @@ how many clients you have.
 1. **Names must be IDENTICAL across all files.**
    If a client is `Tan Wei Ming` in the Clients file, they must be spelled
    exactly `Tan Wei Ming` in the Portfolio and Insurance files too (same
-   spelling, same spacing). This is how ARIA links everything together.
+   spelling, same spacing). This is how FINVA links everything together.
 
 2. **Insurance: "Policy Owner" vs "Life Assured" are different people.**
    - **Policy Owner** = the client who owns/pays the policy (this is who it's grouped under).
@@ -50,7 +50,7 @@ how many clients you have.
 
 ## When you're done
 
-Send all 4 files back to your admin. They'll import them and create your ARIA
+Send all 4 files back to your admin. They'll import them and create your FINVA
 login. Your data will be private to you (only you and the admin can see it).
 
 Questions? Ask your admin before guessing — it's easier to fix before import.

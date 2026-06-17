@@ -1,7 +1,7 @@
-# ARIA — 各服務免費額度 vs 何時升級（成本規劃）
+# FINVA — 各服務免費額度 vs 何時升級（成本規劃）
 
 > 記錄日期：2026-07-06。數字會變動，正式決策前請以各廠商官方 pricing 頁為準。
-> 關鍵前提：ARIA 用「一個 Notion integration」讀寫，**FA 不需登入 Notion → 加 FA 不增加 Notion 人頭費**。
+> 關鍵前提：FINVA 用「一個 Notion integration」讀寫，**FA 不需登入 Notion → 加 FA 不增加 Notion 人頭費**。
 
 ## 對照表
 

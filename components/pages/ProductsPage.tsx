@@ -337,7 +337,7 @@ export default function ProductsPage() {
         {/* Description */}
         <p style={{ fontSize: 13, color: 'var(--text3)', margin: '0 0 20px', lineHeight: 1.6 }}>
           Browse available insurance plans and investment funds. Use the filters to find products that match your client's profile.
-          Products are managed in ARIA — contact your administrator to add or update listings.
+          Products are managed in FINVA — contact your administrator to add or update listings.
         </p>
 
         {/* Search bar */}
@@ -442,7 +442,7 @@ export default function ProductsPage() {
             <code style={{ fontSize: 11, background: 'var(--surface2)', padding: '1px 5px', borderRadius: 4 }}>
               Name (Title) · Insurer (Select) · Type (Select) · Min Age · Max Age · Min Sum Assured · Max Sum Assured · Est Monthly Premium (Text) · Key Features (Text) · Status (Select: Active)
             </code><br />
-            Then add the DB ID to your ARIA advisor settings as <strong>Insurance Plans DB ID</strong>.
+            Then add the DB ID to your FINVA advisor settings as <strong>Insurance Plans DB ID</strong>.
           </div>
         </div>
       )}
@@ -457,7 +457,7 @@ export default function ProductsPage() {
             <code style={{ fontSize: 11, background: 'var(--surface2)', padding: '1px 5px', borderRadius: 4 }}>
               Name (Title) · Fund House (Select) · Asset Class (Select) · Region (Select) · Risk Level (Select) · 3Y Return % (Number) · Min Investment (Number) · Sales Charge % (Number) · EPF Approved (Checkbox) · Description (Text) · Status (Select: Active)
             </code><br />
-            Then add the DB ID to your ARIA advisor settings as <strong>Funds DB ID</strong>.
+            Then add the DB ID to your FINVA advisor settings as <strong>Funds DB ID</strong>.
           </div>
         </div>
       )}

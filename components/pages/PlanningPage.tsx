@@ -1129,7 +1129,7 @@ export default function PlanningPage() {
         )}
 
         {mode === 'prospect' && (
-          <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Enter details manually below — data is not saved to ARIA</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Enter details manually below — data is not saved to FINVA</span>
         )}
       </div>
 

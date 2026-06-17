@@ -80,11 +80,11 @@ export default function InstallPrompt() {
         </svg>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text, #1a1a1a)' }}>Install ARIA</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text, #1a1a1a)' }}>Install FINVA</div>
         <div style={{ fontSize: 12, color: 'var(--text3, #888)', lineHeight: 1.4 }}>
           {isIOS
             ? <>Tap <strong>Share</strong> → <strong>Add to Home Screen</strong> for the app experience.</>
-            : 'Add ARIA to your home screen for one-tap daily access.'}
+            : 'Add FINVA to your home screen for one-tap daily access.'}
         </div>
       </div>
       {!isIOS && (

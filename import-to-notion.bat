@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
-title ARIA - Excel to Notion Import
+title FINVA - Excel to Notion Import
 
 :MENU
 cls
 echo.
 echo  =====================================================
-echo    ARIA - Excel to Notion Import Tool
+echo    FINVA - Excel to Notion Import Tool
 echo    Bill Morrisons Financial Consulting
 echo  =====================================================
 echo.
@@ -132,7 +132,7 @@ goto MENU
 :END
 cls
 echo.
-echo  ARIA Import Tool closed. Goodbye!
+echo  FINVA Import Tool closed. Goodbye!
 echo.
 timeout /t 2 >nul
 exit

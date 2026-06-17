@@ -84,10 +84,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="sidebar-logo">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <LogoD1Icon size={30} />
-            <div className="logo-mark">ARIA</div>
+            <div className="logo-mark">FINVA</div>
           </div>
           <div className="logo-sub" style={{ lineHeight: 1.5 }}>
-            Advisor Resource &amp; Intelligence Assistant
+            Financial Intelligence Navigator &amp; Virtual Advisor
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6, opacity: 0.7, letterSpacing: '0.04em' }}>
             Bill Morrisons Financial Consulting

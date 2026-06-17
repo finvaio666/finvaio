@@ -103,7 +103,7 @@ export default function AIChat({
           <span className="section-dot" style={{ background: 'var(--gold)' }} />
           AI Assistant
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>ARIA Intelligence · Live data</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>FINVA Intelligence · Live data</div>
       </div>
 
       {quickPrompts.length > 0 && (

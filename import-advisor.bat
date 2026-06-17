@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  ARIA - Import an advisor's Excel files into Notion
+REM  FINVA - Import an advisor's Excel files into Notion
 REM  Reads from:  FA_Data\<Advisor Name>\
 REM  Files:       1_Clients_Database.xlsx, 3_Portfolio_Holdings.xlsx,
 REM               Insurance_Policies_Template.xlsx, 2_CashFlow_Database.xlsx,
@@ -11,7 +11,7 @@ cd /d "%~dp0"
 
 echo(
 echo ===============================================
-echo   ARIA Advisor Import
+echo   FINVA Advisor Import
 echo ===============================================
 echo(
 

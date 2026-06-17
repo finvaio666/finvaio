@@ -147,7 +147,7 @@ export default function AdminHomePage() {
         <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--text3)' }}>
           <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
           <div style={{ fontSize: 13 }}>No enquiries yet</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>FAs will be able to raise a ticket here when ARIA can&apos;t resolve their question.</div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>FAs will be able to raise a ticket here when FINVA can&apos;t resolve their question.</div>
         </div>
       </div>
     </>

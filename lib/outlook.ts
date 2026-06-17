@@ -174,7 +174,7 @@ export async function listEmails(
   const seen = new Set<string>();
   const out: EmailSummary[] = [];
   for (const m of msgs) {
-    if ((m.categories ?? []).includes('ARIA/Closed')) continue;
+    if ((m.categories ?? []).includes('FINVA/Closed')) continue;
     const fromAddr = m.from?.emailAddress?.address ?? m.sender?.emailAddress?.address ?? '';
     const toAddr   = m.toRecipients?.[0]?.emailAddress?.address ?? '';
     // Direction-aware match so the advisor's OWN domain (always in the To of
@@ -318,7 +318,7 @@ export async function getRecentInbound(
     const fromAddr = (m.from?.emailAddress?.address ?? '').toLowerCase();
     // inbound only — from a whitelisted domain
     if (!domains.some(d => fromAddr.endsWith(`@${d}`) || fromAddr.endsWith(`.${d}`))) continue;
-    if ((m.categories ?? []).includes('ARIA/Closed') || (m.categories ?? []).includes('ARIA/Seen')) continue;
+    if ((m.categories ?? []).includes('FINVA/Closed') || (m.categories ?? []).includes('FINVA/Seen')) continue;
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
     seen.add(cid);
@@ -350,7 +350,7 @@ export async function getFollowUps(
   for (const m of msgs) {
     const toAddr = (m.toRecipients?.[0]?.emailAddress?.address ?? '').toLowerCase();
     if (!domains.some(d => toAddr.endsWith(`@${d}`) || toAddr.endsWith(`.${d}`))) continue;
-    if ((m.categories ?? []).includes('ARIA/Closed')) continue;
+    if ((m.categories ?? []).includes('FINVA/Closed')) continue;
     const cid = m.conversationId ?? m.id;
     if (seen.has(cid)) continue;
     seen.add(cid);
@@ -392,7 +392,7 @@ export async function markThreadSeen(refreshToken: string, threadId: string): Pr
   const res = await graph(token, `/me/messages?$filter=${filter}&$select=id&$top=1`);
   const data = await res.json().catch(() => ({}));
   const id = data.value?.[0]?.id;
-  if (id) await addCategory(refreshToken, id, 'ARIA/Seen');
+  if (id) await addCategory(refreshToken, id, 'FINVA/Seen');
 }
 
 export async function closeThread(refreshToken: string, threadId: string): Promise<void> {
@@ -402,7 +402,7 @@ export async function closeThread(refreshToken: string, threadId: string): Promi
   const res = await graph(token, `/me/messages?$filter=${filter}&$select=id&$top=1`);
   const data = await res.json().catch(() => ({}));
   const id = data.value?.[0]?.id;
-  if (id) await addCategory(refreshToken, id, 'ARIA/Closed');
+  if (id) await addCategory(refreshToken, id, 'FINVA/Closed');
 }
 
 export async function markAsSent(): Promise<void> {

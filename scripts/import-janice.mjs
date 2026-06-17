@@ -281,7 +281,7 @@ async function upsertInsurance(clientName, clientPageId) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-console.log(`\n🚀 ARIA Import — Janice Quek Khang Wen${DRY_RUN ? ' [DRY RUN]' : ''}`);
+console.log(`\n🚀 FINVA Import — Janice Quek Khang Wen${DRY_RUN ? ' [DRY RUN]' : ''}`);
 console.log('━'.repeat(50));
 
 const clientResult = await upsertClient();

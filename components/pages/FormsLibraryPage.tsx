@@ -92,7 +92,7 @@ function FormsLibraryInner() {
 
         {!driveConnected && (
           <div style={{ padding: '16px 20px', fontSize: 13, color: 'var(--text3)' }}>
-            Connect Google Drive to start uploading provider forms (PDFs are stored in a folder called &quot;ARIA Forms Library&quot; in your Drive).
+            Connect Google Drive to start uploading provider forms (PDFs are stored in a folder called &quot;FINVA Forms Library&quot; in your Drive).
           </div>
         )}
 

@@ -124,7 +124,7 @@ function ProfileTab({ advisorId }: { advisorId: string }) {
 
   return (
     <div>
-      <Section title="Personal Information" desc="Your display name and contact details shown in ARIA.">
+      <Section title="Personal Information" desc="Your display name and contact details shown in FINVA.">
         <Row label="Full Name" desc="Displayed in client reports and the sidebar">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
             <Input value={name} onChange={setName} placeholder="e.g. Sky Siew" />
@@ -283,7 +283,7 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div>
       {/* Email Account Connection — Gmail or Outlook */}
-      <Section title="Email Account" desc="Connect Gmail or Microsoft 365 / Outlook. ARIA reads and sends work emails on your behalf using the active account.">
+      <Section title="Email Account" desc="Connect Gmail or Microsoft 365 / Outlook. FINVA reads and sends work emails on your behalf using the active account.">
         {/* Gmail */}
         <Row
           label="📧 Gmail"
@@ -452,7 +452,7 @@ function UsersTab() {
 
   return (
     <div>
-      <Section title="User Accounts" desc="Manage who has access to ARIA. Only Admins can add or deactivate users.">
+      <Section title="User Accounts" desc="Manage who has access to FINVA. Only Admins can add or deactivate users.">
         {users.map(u => (
           <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid var(--border)', opacity: u.active ? 1 : 0.5 }}>
             <div style={{ flex: 1 }}>
@@ -608,7 +608,7 @@ function AboutTab() {
   return (
     <div>
       <Section title="System Information">
-        <Row label="Platform" desc=""><span style={{ fontSize: 13, color: 'var(--text2)' }}>ARIA — Advisor Resource & Intelligence Assistant</span></Row>
+        <Row label="Platform" desc=""><span style={{ fontSize: 13, color: 'var(--text2)' }}>FINVA — Financial Intelligence Navigator & Virtual Advisor</span></Row>
         <Row label="Company" desc=""><span style={{ fontSize: 13, color: 'var(--text2)' }}>Bill Morrisons Financial Consulting</span></Row>
         <Row label="Version" desc=""><Badge label="v1.0.0" color="#818cf8" /></Row>
         <Row label="Stack" desc=""><span style={{ fontSize: 12, color: 'var(--text3)' }}>Next.js 16 · Notion · Gemini AI · Vercel</span></Row>
@@ -675,7 +675,7 @@ function ThemesTab() {
   if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading themes…</div>;
 
   return (
-    <Section title="Email Themes" desc="Customise how ARIA auto-sorts institution emails. Order = matching priority (top wins). Keywords are comma-separated; ARIA falls back to AI when keywords don't match. “Other” is the catch-all and can't be removed.">
+    <Section title="Email Themes" desc="Customise how FINVA auto-sorts institution emails. Order = matching priority (top wins). Keywords are comma-separated; FINVA falls back to AI when keywords don't match. “Other” is the catch-all and can't be removed.">
       {themes.map((t, i) => {
         const locked = t.id === 'other';
         return (

@@ -14,7 +14,7 @@ export interface AiUsage {
 
 export async function logAiUsage(opts: {
   advisorName: string;
-  feature: string;          // 'Ask ARIA' | 'Client Chat' | 'Draft Reply' | ...
+  feature: string;          // 'Ask FINVA' | 'Client Chat' | 'Draft Reply' | ...
   usage?: AiUsage;
   question?: string;
 }): Promise<void> {

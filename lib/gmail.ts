@@ -55,12 +55,12 @@ export interface SendOptions {
   references?: string;     // References header chain
 }
 
-// ── Gmail Labels for ARIA status tracking ────────────────────────────────────
+// ── Gmail Labels for FINVA status tracking ────────────────────────────────────
 
-export const ARIA_LABELS = {
-  MONITORED: 'ARIA',           // All emails ARIA is tracking
-  CLOSED:    'ARIA/Closed',    // Manually closed by advisor
-  SENT:      'ARIA/Sent',      // Outbound emails initiated from ARIA
+export const FINVA_LABELS = {
+  MONITORED: 'FINVA',           // All emails FINVA is tracking
+  CLOSED:    'FINVA/Closed',    // Manually closed by advisor
+  SENT:      'FINVA/Sent',      // Outbound emails initiated from FINVA
 };
 
 // ── OAuth2 Setup ─────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ function createOAuthClient() {
   );
 }
 
-/** Generate the Google OAuth2 URL the advisor visits to authorise ARIA. */
+/** Generate the Google OAuth2 URL the advisor visits to authorise FINVA. */
 export function getGmailAuthUrl(advisorId: string): string {
   const client = createOAuthClient();
   return client.generateAuthUrl({
@@ -201,8 +201,8 @@ export async function listEmails(
 
   // Fetch both inbound and outbound in parallel
   const [inRes, outRes] = await Promise.all([
-    gmail.users.messages.list({ userId: 'me', q: `${inboundQ} -label:ARIA/Closed`, maxResults }),
-    gmail.users.messages.list({ userId: 'me', q: `${outboundQ} -label:ARIA/Closed`, maxResults: 20 }),
+    gmail.users.messages.list({ userId: 'me', q: `${inboundQ} -label:FINVA/Closed`, maxResults }),
+    gmail.users.messages.list({ userId: 'me', q: `${outboundQ} -label:FINVA/Closed`, maxResults: 20 }),
   ]);
 
   const inIds  = (inRes.data.messages  ?? []).map(m => m.id!);
@@ -249,7 +249,7 @@ export async function listEmails(
         (d.labelIds ?? []).includes('SENT');
 
       const labelIds = d.labelIds ?? [];
-      const isClosed = labelIds.includes('ARIA/Closed');
+      const isClosed = labelIds.includes('FINVA/Closed');
       if (isClosed) continue;
 
       // Determine direction based on who sent the FIRST message in thread
@@ -420,7 +420,7 @@ export async function getRecentInbound(
   // Institution emails (received from them, OR forwarded by the advisor to/about
   // them) in the window, excluding closed/seen. Broadened so forwarded client
   // correspondence also surfaces on the dashboard.
-  const q = `(from:(${domainQ}) OR (from:me to:(${domainQ}))) newer_than:${days}d -label:ARIA/Closed -label:ARIA/Seen`;
+  const q = `(from:(${domainQ}) OR (from:me to:(${domainQ}))) newer_than:${days}d -label:FINVA/Closed -label:FINVA/Seen`;
 
   const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults });
   const ids = (listRes.data.messages ?? []).map(m => m.id!);
@@ -497,7 +497,7 @@ export async function getFollowUps(
 
   const domainQ = domains.map(d => `@${d}`).join(' OR ');
   // Outbound emails to institutions in the last 60 days, not closed
-  const q = `from:me to:(${domainQ}) newer_than:60d -label:ARIA/Closed`;
+  const q = `from:me to:(${domainQ}) newer_than:60d -label:FINVA/Closed`;
 
   const listRes = await gmail.users.messages.list({ userId: 'me', q, maxResults: 40 });
   const ids = (listRes.data.messages ?? []).map(m => m.id!);
@@ -605,13 +605,13 @@ export async function sendEmail(
 }
 
 /**
- * Add the ARIA/Sent label to an outbound message (creates label if needed).
+ * Add the FINVA/Sent label to an outbound message (creates label if needed).
  */
 export async function markAsSent(refreshToken: string, messageId: string): Promise<void> {
   const gmail = getGmailClient(refreshToken);
 
   // Ensure label exists
-  const labelId = await ensureLabel(gmail, 'ARIA/Sent');
+  const labelId = await ensureLabel(gmail, 'FINVA/Sent');
   if (!labelId) return;
 
   await gmail.users.messages.modify({
@@ -627,7 +627,7 @@ export async function markAsSent(refreshToken: string, messageId: string): Promi
  */
 export async function closeThread(refreshToken: string, threadId: string): Promise<void> {
   const gmail = getGmailClient(refreshToken);
-  const labelId = await ensureLabel(gmail, 'ARIA/Closed');
+  const labelId = await ensureLabel(gmail, 'FINVA/Closed');
   if (!labelId) return;
 
   await gmail.users.threads.modify({
@@ -638,14 +638,14 @@ export async function closeThread(refreshToken: string, threadId: string): Promi
 }
 
 /**
- * Mark a thread as "seen in ARIA" by applying the ARIA/Seen label.
+ * Mark a thread as "seen in FINVA" by applying the FINVA/Seen label.
  * We use our own label (not Gmail's UNREAD) because forwarded emails are
  * always "read" in Gmail, which would otherwise hide them immediately.
  * Called when the advisor opens a thread so it drops off the dashboard "new" list.
  */
 export async function markThreadSeen(refreshToken: string, threadId: string): Promise<void> {
   const gmail = getGmailClient(refreshToken);
-  const labelId = await ensureLabel(gmail, 'ARIA/Seen');
+  const labelId = await ensureLabel(gmail, 'FINVA/Seen');
   if (!labelId) return;
   await gmail.users.threads.modify({
     userId: 'me',

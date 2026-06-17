@@ -1,7 +1,7 @@
 # 新增 Advisor 的 Onboarding 流程自動化
 
 > 狀態：**✅ 已完成（2026-06-11：自動補 Advisor 選項已上線，audit 確認 6 位 FA 全部正常）**
-> 背景：Sky 問「要加新 FA，他們要先準備/設定什麼才能完整接上 ARIA？」
+> 背景：Sky 問「要加新 FA，他們要先準備/設定什麼才能完整接上 FINVA？」
 > 決策：改用集中式 Notion DB（所有 FA 共用同一組庫，記錄用 `Advisor` Select 標記擁有者）。
 
 ## ✅ 已完成（集中式改造）

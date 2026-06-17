@@ -435,7 +435,7 @@ export default function NavUpdatePanel({ onClose, onSuccess }: Props) {
 
           {result && (
             <div style={{ marginBottom: 12, padding: '10px 14px', background: '#D1FAE5', borderRadius: 8, border: '1px solid #6EE7B7', fontSize: 12, color: '#065F46', fontWeight: 600 }}>
-              ✅ Updated {result.updated} holding{result.updated !== 1 ? 's' : ''} in ARIA
+              ✅ Updated {result.updated} holding{result.updated !== 1 ? 's' : ''} in FINVA
               {result.errors > 0 && ` (${result.errors} error${result.errors !== 1 ? 's' : ''})`}. Refreshing…
             </div>
           )}

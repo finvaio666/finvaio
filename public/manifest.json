@@ -1,6 +1,6 @@
 {
-  "name": "ARIA — Advisor Resource & Intelligence Assistant",
-  "short_name": "ARIA",
+  "name": "FINVA — Financial Intelligence Navigator & Virtual Advisor",
+  "short_name": "FINVA",
   "description": "Your daily co-pilot for clients, portfolio, email and tasks.",
   "start_url": "/",
   "scope": "/",

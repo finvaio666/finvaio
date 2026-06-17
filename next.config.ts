@@ -7,7 +7,7 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   // Only send the origin as referrer, no path/query info
   { key: 'Referrer-Policy',        value: 'strict-origin-when-cross-origin' },
-  // Disable browser features that ARIA doesn't need
+  // Disable browser features that FINVA doesn't need
   { key: 'Permissions-Policy',     value: 'camera=(), microphone=(), geolocation=()' },
   // Force HTTPS for 1 year (Vercel already enforces this, belt-and-suspenders)
   { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },

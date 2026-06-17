@@ -1,5 +1,5 @@
 // One-off: add the Form Finder schema to the existing "Forms Library" Notion DB
-// (already created manually by Sky, shared with the ARIA integration).
+// (already created manually by Sky, shared with the FINVA integration).
 // Usage: node scripts/create-forms-library-db.mjs
 import { Client } from '@notionhq/client';
 import { config as loadEnv } from 'dotenv';

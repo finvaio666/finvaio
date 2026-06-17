@@ -70,7 +70,7 @@ export default function PremiumCalculator() {
     doc.setFontSize(16); doc.setTextColor(26, 26, 26);
     doc.text('Insurance Premium Proposal', 40, 46);
     doc.setFontSize(9); doc.setTextColor(110, 110, 110);
-    doc.text('Prepared in ARIA  |  ' + new Date().toLocaleDateString('en-GB'), 40, 62);
+    doc.text('Prepared in FINVA  |  ' + new Date().toLocaleDateString('en-GB'), 40, 62);
 
     const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}`;
     const cover = `Life ${fmt(lifeN)}  -  Critical Illness ${fmt(ciN)}  -  Medical Room ${medPlan}  -  Waiver of premium ${waiver ? 'included' : 'excluded'}`;
