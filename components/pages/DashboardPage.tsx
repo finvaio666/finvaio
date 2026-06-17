@@ -411,13 +411,22 @@ export default function DashboardPage() {
     // OPEN TASKS is the single source of truth for to-dos (reflects done/not-done).
     L.push('\n# CALENDAR APPOINTMENTS (next 14 days)');
     if (appointments.length === 0) L.push('None.');
-    else appointments.slice(0, 15).forEach(a => {
-      const d = new Date(a.start);
-      const when = a.allDay
-        ? d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }) + ' (all day)'
-        : d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' });
-      L.push(`- ${when}: ${a.title}${a.location ? ` @ ${a.location}` : ''}`);
-    });
+    else {
+      const todayStr = new Date().toDateString();
+      const tomorrowStr = new Date(Date.now() + 86400000).toDateString();
+      appointments.slice(0, 15).forEach(a => {
+        const d = new Date(a.start);
+        // Explicit relative-day tag so the AI never has to do date arithmetic to
+        // answer "what's on today / tomorrow".
+        const ds = d.toDateString();
+        const rel = ds === todayStr ? 'TODAY, ' : ds === tomorrowStr ? 'TOMORROW, ' : '';
+        const datePart = d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' });
+        const when = a.allDay
+          ? `${rel}${datePart} (all day)`
+          : `${rel}${datePart} ${d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}`;
+        L.push(`- ${when}: ${a.title}${a.location ? ` @ ${a.location}` : ''}`);
+      });
+    }
 
     L.push('\n# OPEN TASKS — the authoritative to-do list (only these are outstanding)');
     if (openTasks.length === 0) L.push('None — all tasks done.');

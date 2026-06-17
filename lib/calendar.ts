@@ -59,11 +59,16 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
   const timeMin = new Date(now - 12 * 3600 * 1000).toISOString();
   const timeMax = new Date(now + WINDOW_DAYS * 86400000).toISOString();
 
-  // Pull from ALL the user's calendars, not just primary
+  // Pull from ALL the user's calendars, not just primary. Track which ones the
+  // user OWNS or can WRITE to — only those carry real appointments. Read-only
+  // calendars (holidays, subscribed feeds, birthdays) are excluded entirely so
+  // their all-day noise never reaches the dashboard.
   let calendarIds = ['primary'];
   try {
     const list = await cal.calendarList.list({ maxResults: 25 });
-    const ids = (list.data.items ?? []).map(c => c.id).filter(Boolean) as string[];
+    const ids = (list.data.items ?? [])
+      .filter(c => c.id && (c.accessRole === 'owner' || c.accessRole === 'writer'))
+      .map(c => c.id as string);
     if (ids.length) calendarIds = ids;
   } catch { /* fall back to primary */ }
 
@@ -82,10 +87,13 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
       ok = true;
       for (const e of res.data.items ?? []) {
         if (e.status === 'cancelled') continue;
-        // Drop non-appointment entries: all-day blocks (holidays, birthdays,
-        // reminders) and special event types (focus time, OOO, working location).
+        // Drop special event types only: birthdays, focus time, OOO, working
+        // location. Keep BOTH timed and all-day events — an all-day entry on the
+        // user's own calendar is a legitimate appointment (a full-day client
+        // meeting, an offsite, etc.) and must not be silently dropped.
         const specialType = e.eventType && e.eventType !== 'default';
-        if (!e.start?.dateTime || specialType) continue;
+        const hasStart = e.start?.dateTime || e.start?.date;
+        if (!hasStart || specialType) continue;
         all.push({
           id:       e.id ?? '',
           title:    e.summary ?? '(No title)',
