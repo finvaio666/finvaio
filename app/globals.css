@@ -1,59 +1,59 @@
 @import "tailwindcss";
 
-/* ── Mastercard-inspired design system ─────────────────────────────────────── */
+/* ── FINVA design system — Deep Navy + Intelligence Teal ────────────────────── */
 :root {
   /* Surfaces */
-  --bg:       #F3F0EE;   /* Canvas Cream — page background */
-  --bg2:      #FCFBFA;   /* Lifted Cream — nested sections */
-  --surface:  #FFFFFF;   /* White — cards, panels */
-  --surface2: #F4F4F4;   /* Soft Bone — alt rows, hover */
+  --bg:       #0B1630;   /* Deep Navy — page background */
+  --bg2:      #0F1C3F;   /* Lifted Navy — nested sections */
+  --surface:  #162040;   /* Navy surface — cards, panels */
+  --surface2: #1c2a52;   /* Alt Navy — hover, alt rows */
 
   /* Border */
-  --border: #D1CDC7;     /* Dust Taupe */
+  --border: rgba(0, 201, 167, 0.15);   /* Subtle teal border */
 
-  /* Accent — Signal Orange (UI accents, active states, eyebrow dots) */
-  --accent:     #F37338;
-  --accent2:    #CF4500;
-  --accent-dim: #FEF3EC;
+  /* Accent — Intelligence Teal */
+  --accent:     #00C9A7;
+  --accent2:    #00a889;
+  --accent-dim: rgba(0, 201, 167, 0.1);
 
   /* Semantic — Financial positive (keep green for P&L) */
-  --green:     #16A34A;
-  --green-dim: #DCFCE7;
+  --green:     #22c55e;
+  --green-dim: rgba(34, 197, 94, 0.12);
 
-  /* Semantic — Gold / Warning */
-  --gold:     #F79E1B;
-  --gold-dim: #FFF8E7;
+  /* Semantic — Premier Gold */
+  --gold:     #F0A500;
+  --gold-dim: rgba(240, 165, 0, 0.12);
 
-  /* Semantic — Blue / Info */
-  --blue:     #3860BE;
-  --blue-dim: #EFF3FC;
+  /* Semantic — Sky Blue / Info */
+  --blue:     #0EA5E9;
+  --blue-dim: rgba(14, 165, 233, 0.12);
 
   /* Semantic — Red / Negative */
-  --red:     #EB001B;
-  --red-dim: #FFF0F0;
+  --red:     #ef4444;
+  --red-dim: rgba(239, 68, 68, 0.12);
 
   /* Semantic — Purple */
-  --purple:     #7C3AED;
-  --purple-dim: #F5F0FF;
+  --purple:     #a855f7;
+  --purple-dim: rgba(168, 85, 247, 0.12);
 
   /* Text */
-  --text:  #141413;   /* Ink Black — headlines, primary */
-  --text2: #262627;   /* Charcoal — body copy */
-  --text3: #696969;   /* Slate Gray — muted, labels */
+  --text:  #F0F4FF;   /* Soft White — headlines, primary */
+  --text2: #c8d0e8;   /* Muted White — body copy */
+  --text3: #8896b8;   /* Steel Blue — labels, muted */
 
   /* Typography */
   --font-serif: var(--font-sofia), 'Sofia Sans', Arial, sans-serif;
   --font-sans:  var(--font-sofia), 'Sofia Sans', Arial, sans-serif;
   --font-mono:  var(--font-dm-mono), 'DM Mono', 'Courier New', monospace;
 
-  /* Radius — extreme rounding per Mastercard spec */
-  --r:    40px;     /* cards, hero frames */
-  --r-sm: 20px;     /* buttons, chips */
-  --r-pill: 999px;  /* nav items, full pills */
+  /* Radius */
+  --r:    40px;
+  --r-sm: 20px;
+  --r-pill: 999px;
 
   /* Elevation */
-  --shadow:    rgba(0,0,0,0.08) 0px 24px 48px;
-  --shadow-sm: rgba(0,0,0,0.04) 0px 4px 24px;
+  --shadow:    rgba(0,0,0,0.5) 0px 24px 48px;
+  --shadow-sm: rgba(0,0,0,0.35) 0px 4px 24px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -151,7 +151,7 @@ body {
 .notion-badge {
   display: flex; align-items: center; gap: 6px;
   background: var(--accent-dim);
-  border: 1px solid rgba(243,115,56,0.3);
+  border: 1px solid rgba(0,201,167,0.3);
   border-radius: var(--r-pill);
   padding: 5px 12px;
   font-size: 14px; font-weight: 600; color: var(--accent2);
@@ -239,7 +239,7 @@ body {
 }
 .section-action {
   font-size: 14px; color: var(--accent2); cursor: pointer; font-weight: 600;
-  border: 1px solid rgba(207,69,0,0.3);
+  border: 1px solid rgba(0,168,137,0.3);
   padding: 5px 12px; border-radius: var(--r-pill);
   transition: all 0.15s; background: transparent; font-family: var(--font-sans);
 }
@@ -302,7 +302,7 @@ body {
 }
 .ai-msg.user {
   background: var(--accent-dim);
-  border: 1px solid rgba(243,115,56,0.2);
+  border: 1px solid rgba(0,201,167,0.2);
   color: var(--accent2);
   align-self: flex-end; max-width: 90%;
 }

@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { LogoD1Icon } from '@/components/LogoVariants';
 
 const navItems = [
   {
@@ -83,7 +82,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <LogoD1Icon size={30} />
+            <img src="/finva-logo.svg" width={38} height={38} alt="FINVA" style={{ flexShrink: 0 }} />
             <div className="logo-mark">FINVA</div>
           </div>
           <div className="logo-sub" style={{ lineHeight: 1.5 }}>
