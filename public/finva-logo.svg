@@ -5,67 +5,38 @@
   role="img"
 >
   <title>FINVA Logo Mark</title>
-  <desc>FINVA Navigator x Network mark. Compass ring with Neural F representing the AI (gold), FA advisor (solid teal), and Client (hollow teal) relationship ecosystem.</desc>
+  <desc>FINVA Navigator x Network mark — light theme. Compass ring with Neural F; AI (orange), FA (dark), Client (hollow) relationship nodes.</desc>
 
   <!--
-    FINVA LOGO MARK — Design Handoff
-    ==================================
-    Brand: Financial Intelligence Navigator & Virtual Advisor
-    Tagline: Building the Future of Financial Trust
-
-    LAYER GUIDE (Figma):
-    ─────────────────────────────────────────────
-    layer-background       → Background circle (delete for transparent)
-    layer-grid             → Faint crosshairs (can hide/delete)
-    layer-radar-wedge      → NE sector subtle teal fill
-    layer-inner-rings      → Dashed concentric circles (tech/radar feel)
-    layer-compass-ring     → Outer ring + 8 cardinal tick marks
-    layer-relationship     → Blue dashed AI↔FA↔Client triangle
-    layer-f-backbone       → The F strokes (the FINVA platform backbone)
-    node-client            → Hollow node: Client (the recipient)
-    node-fa                → Solid teal: FA Advisor (the bridge)
-    node-ai                → Gold node: AI Intelligence (the frontier)
-    layer-ne-bearing       → Gold NE dot on ring (AI direction indicator)
+    FINVA LOGO MARK — Light Theme (matches site palette)
+    =====================================================
+    Background: transparent — sits on Canvas Cream (#F3F0EE) sidebar
+    Accent:     Signal Orange #F37338 / #CF4500
+    Ink:        #141413 (dark strokes, ring, F backbone)
+    Muted:      #D1CDC7 (Dust Taupe — minor ticks, grid)
 
     NODE MEANINGS:
-    ─────────────────────────────────────────────
-    ✦ Gold (74, 22)   = AI Intelligence  — largest glow, NE bearing
-    ● Teal (58, 50)   = FA Advisor       — solid, professional bridge
-    ○ Hollow (26, 78) = Client           — open/receptive, the purpose
+    ✦ Orange (74, 22)  = AI Intelligence  — brightest, largest glow
+    ● Dark  (58, 50)   = FA Advisor       — solid ink, the bridge
+    ○ Hollow (26, 78)  = Client           — open/receptive, the purpose
 
-    BRAND COLORS:
-    ─────────────────────────────────────────────
-    Deep Navy         #0F1C3F
-    Intelligence Teal #00C9A7
-    Sky Blue          #0EA5E9
-    Premier Gold      #F0A500
-    Soft White        #F0F4FF
-
-    GLOW NOTE FOR FIGMA:
-    ─────────────────────────────────────────────
-    Glows are simulated via concentric circles (no SVG filters).
-    In Figma: select each node group → add Drop Shadow or Layer Blur
-    to replace with native Figma effects for better rendering.
+    LAYER GUIDE (Figma):
+    layer-grid          → faint crosshairs
+    layer-radar-wedge   → NE sector orange fill
+    layer-inner-rings   → dashed concentric rings
+    layer-compass-ring  → outer ring + 8 cardinal ticks
+    layer-relationship  → dashed orange triangle AI↔FA↔Client
+    layer-f-backbone    → the F strokes (ink)
+    node-client         → hollow dark node
+    node-fa             → solid dark node (FA)
+    node-ai             → orange node (AI)
+    layer-ne-bearing    → orange dot on NE ring
   -->
 
-  <defs>
-    <radialGradient id="finva-bg-grad" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   stop-color="#0f1e42"/>
-      <stop offset="100%" stop-color="#050c1c"/>
-    </radialGradient>
-  </defs>
-
   <!-- ═══════════════════════════════════════ -->
-  <!-- BACKGROUND                             -->
+  <!-- GRID — faint crosshairs                -->
   <!-- ═══════════════════════════════════════ -->
-  <g id="layer-background">
-    <circle cx="50" cy="50" r="49" fill="url(#finva-bg-grad)"/>
-  </g>
-
-  <!-- ═══════════════════════════════════════ -->
-  <!-- GRID — faint crosshairs (tech/HUD feel) -->
-  <!-- ═══════════════════════════════════════ -->
-  <g id="layer-grid" stroke="#00C9A7" stroke-width=".6" stroke-opacity=".04">
+  <g id="layer-grid" stroke="#D1CDC7" stroke-width=".6" stroke-opacity=".55">
     <line x1="50" y1="7"    x2="50"   y2="93"/>
     <line x1="7"  y1="50"   x2="93"   y2="50"/>
     <line x1="19.6" y1="19.6" x2="80.4" y2="80.4"/>
@@ -77,155 +48,137 @@
   <!-- ═══════════════════════════════════════ -->
   <g id="layer-radar-wedge">
     <path d="M 50,50 L 50,7 A 43,43 0 0,1 80.4,19.6 Z"
-          fill="#00C9A7" fill-opacity=".055"/>
+          fill="#F37338" fill-opacity=".07"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
-  <!-- INNER RINGS — dashed concentric circles -->
+  <!-- INNER RINGS — dashed concentric        -->
   <!-- ═══════════════════════════════════════ -->
-  <g id="layer-inner-rings" fill="none" cx="50" cy="50">
+  <g id="layer-inner-rings" fill="none">
     <circle cx="50" cy="50" r="14"
-            stroke="#00C9A7" stroke-width=".55"
-            stroke-dasharray="1,2.2" stroke-opacity=".14"/>
+            stroke="#D1CDC7" stroke-width=".55"
+            stroke-dasharray="1,2.2" stroke-opacity=".7"/>
     <circle cx="50" cy="50" r="28"
-            stroke="#00C9A7" stroke-width=".7"
-            stroke-dasharray="1.5,2.5" stroke-opacity=".2"/>
+            stroke="#D1CDC7" stroke-width=".7"
+            stroke-dasharray="1.5,2.5" stroke-opacity=".7"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
   <!-- COMPASS RING                           -->
   <!-- ═══════════════════════════════════════ -->
   <g id="layer-compass-ring">
-    <!-- Glow (wider, low opacity) -->
-    <circle id="ring-glow" cx="50" cy="50" r="43"
-            fill="none" stroke="#00C9A7" stroke-width="3.2" stroke-opacity=".18"/>
     <!-- Main ring -->
-    <circle id="ring-main" cx="50" cy="50" r="43"
-            fill="none" stroke="#00C9A7" stroke-width="1.8" stroke-opacity=".78"/>
+    <circle cx="50" cy="50" r="43"
+            fill="none" stroke="#141413" stroke-width="1.6" stroke-opacity=".18"/>
 
     <!-- Cardinal ticks -->
     <g id="ticks" stroke-linecap="round">
-      <!-- N — prominent -->
-      <line id="tick-N"  x1="50"   y1="7"    x2="50"   y2="15.5"
-            stroke="#00C9A7" stroke-width="2"   stroke-opacity=".68"/>
-      <!-- E -->
-      <line id="tick-E"  x1="93"   y1="50"   x2="84.5" y2="50"
-            stroke="#00C9A7" stroke-width="1.5" stroke-opacity=".26"/>
-      <!-- S -->
-      <line id="tick-S"  x1="50"   y1="93"   x2="50"   y2="84.5"
-            stroke="#00C9A7" stroke-width="1.5" stroke-opacity=".22"/>
-      <!-- W -->
-      <line id="tick-W"  x1="7"    y1="50"   x2="15.5" y2="50"
-            stroke="#00C9A7" stroke-width="1.5" stroke-opacity=".26"/>
-      <!-- NW -->
-      <line id="tick-NW" x1="19.6" y1="19.6" x2="25.8" y2="25.8"
-            stroke="#00C9A7" stroke-width="1.1" stroke-opacity=".22"/>
-      <!-- SE -->
-      <line id="tick-SE" x1="80.4" y1="80.4" x2="74.2" y2="74.2"
-            stroke="#00C9A7" stroke-width="1.1" stroke-opacity=".18"/>
-      <!-- SW -->
-      <line id="tick-SW" x1="19.6" y1="80.4" x2="25.8" y2="74.2"
-            stroke="#00C9A7" stroke-width="1.1" stroke-opacity=".18"/>
-      <!-- NE — GOLD: AI intelligence bearing direction -->
-      <line id="tick-NE" x1="80.4" y1="19.6" x2="72.8" y2="27.2"
-            stroke="#F0A500" stroke-width="2.8" stroke-opacity=".9"/>
+      <!-- N — prominent ink -->
+      <line x1="50"   y1="7"    x2="50"   y2="15.5"
+            stroke="#141413" stroke-width="2"   stroke-opacity=".45"/>
+      <!-- E, S, W — muted -->
+      <line x1="93"   y1="50"   x2="84.5" y2="50"
+            stroke="#D1CDC7" stroke-width="1.5" stroke-opacity=".9"/>
+      <line x1="50"   y1="93"   x2="50"   y2="84.5"
+            stroke="#D1CDC7" stroke-width="1.5" stroke-opacity=".9"/>
+      <line x1="7"    y1="50"   x2="15.5" y2="50"
+            stroke="#D1CDC7" stroke-width="1.5" stroke-opacity=".9"/>
+      <!-- NW, SE, SW — faint -->
+      <line x1="19.6" y1="19.6" x2="25.8" y2="25.8"
+            stroke="#D1CDC7" stroke-width="1.1" stroke-opacity=".75"/>
+      <line x1="80.4" y1="80.4" x2="74.2" y2="74.2"
+            stroke="#D1CDC7" stroke-width="1.1" stroke-opacity=".65"/>
+      <line x1="19.6" y1="80.4" x2="25.8" y2="74.2"
+            stroke="#D1CDC7" stroke-width="1.1" stroke-opacity=".65"/>
+      <!-- NE — Signal Orange: AI intelligence bearing -->
+      <line x1="80.4" y1="19.6" x2="72.8" y2="27.2"
+            stroke="#F37338" stroke-width="2.8" stroke-opacity=".9"/>
     </g>
 
     <!-- N label -->
-    <text id="label-N" x="50" y="5.8" text-anchor="middle"
-          font-size="6.5" fill="#00C9A7"
+    <text x="50" y="5.8" text-anchor="middle"
+          font-size="6.5" fill="#141413"
           font-family="Courier New, Courier, monospace"
-          font-weight="700" fill-opacity=".68">N</text>
+          font-weight="700" fill-opacity=".4">N</text>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
   <!-- RELATIONSHIP TRIANGLE                  -->
-  <!-- AI ↔ FA ↔ Client connections           -->
+  <!-- AI ↔ FA ↔ Client                      -->
   <!-- ═══════════════════════════════════════ -->
   <g id="layer-relationship">
-    <!-- AI → FA: intelligence assists advisor -->
-    <line id="rel-ai-fa"
-          x1="74" y1="22" x2="58" y2="50"
-          stroke="#0EA5E9" stroke-width="1.2"
-          stroke-opacity=".38" stroke-dasharray="2.5,2"/>
-    <!-- FA → Client: advisor serves client -->
-    <line id="rel-fa-client"
-          x1="58" y1="50" x2="26" y2="78"
-          stroke="#0EA5E9" stroke-width="1.2"
-          stroke-opacity=".38" stroke-dasharray="2.5,2"/>
-    <!-- AI → Client: AI insights reach client directly -->
-    <line id="rel-ai-client"
-          x1="74" y1="22" x2="26" y2="78"
-          stroke="#0EA5E9" stroke-width=".8"
+    <!-- AI → FA -->
+    <line x1="74" y1="22" x2="58" y2="50"
+          stroke="#CF4500" stroke-width="1.2"
+          stroke-opacity=".35" stroke-dasharray="2.5,2"/>
+    <!-- FA → Client -->
+    <line x1="58" y1="50" x2="26" y2="78"
+          stroke="#CF4500" stroke-width="1.2"
+          stroke-opacity=".35" stroke-dasharray="2.5,2"/>
+    <!-- AI → Client (direct, thinner) -->
+    <line x1="74" y1="22" x2="26" y2="78"
+          stroke="#CF4500" stroke-width=".8"
           stroke-opacity=".18" stroke-dasharray="3,2.5"/>
     <!-- AI bearing: node to NE ring tick -->
-    <line id="rel-ai-bearing"
-          x1="74" y1="22" x2="80.4" y2="19.6"
-          stroke="#F0A500" stroke-width="1.4"
+    <line x1="74" y1="22" x2="80.4" y2="19.6"
+          stroke="#F37338" stroke-width="1.4"
           stroke-opacity=".55" stroke-dasharray="1.5,1.5"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
-  <!-- F BACKBONE — the FINVA platform        -->
+  <!-- F BACKBONE — dark ink strokes          -->
   <!-- ═══════════════════════════════════════ -->
   <g id="layer-f-backbone"
-     stroke="#00C9A7" stroke-width="7" stroke-linecap="round">
-    <line id="f-vertical"   x1="26" y1="22" x2="26" y2="78"/>
-    <line id="f-top-bar"    x1="26" y1="22" x2="74" y2="22"/>
-    <line id="f-middle-bar" x1="26" y1="50" x2="58" y2="50"/>
+     stroke="#141413" stroke-width="7" stroke-linecap="round" stroke-opacity=".75">
+    <line x1="26" y1="22" x2="26" y2="78"/>
+    <line x1="26" y1="22" x2="74" y2="22"/>
+    <line x1="26" y1="50" x2="58" y2="50"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
   <!-- CLIENT NODE — hollow, the recipient    -->
-  <!-- Position: (26, 78) — bottom of F       -->
   <!-- ═══════════════════════════════════════ -->
   <g id="node-client">
-    <circle id="client-ring" cx="26" cy="78" r="5.5"
-            fill="#050c1c" stroke="#00C9A7" stroke-width="2.2"/>
-    <circle id="client-center" cx="26" cy="78" r="1.8"
-            fill="#00C9A7" fill-opacity=".5"/>
+    <circle cx="26" cy="78" r="5.5"
+            fill="#F3F0EE" stroke="#141413" stroke-width="2.2" stroke-opacity=".65"/>
+    <circle cx="26" cy="78" r="1.8"
+            fill="#141413" fill-opacity=".3"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
-  <!-- FA NODE — solid teal, the bridge       -->
-  <!-- Position: (58, 50) — end of middle bar -->
+  <!-- FA NODE — solid dark ink, the bridge   -->
   <!-- ═══════════════════════════════════════ -->
   <g id="node-fa">
-    <!-- Glow layers (replace with Figma blur in production) -->
-    <circle cx="58" cy="50" r="11" fill="#00C9A7" fill-opacity=".05"/>
-    <circle cx="58" cy="50" r="8.5" fill="#00C9A7" fill-opacity=".1"/>
-    <circle cx="58" cy="50" r="6.5" fill="#00C9A7" fill-opacity=".18"/>
+    <!-- Subtle halo -->
+    <circle cx="58" cy="50" r="9" fill="#141413" fill-opacity=".05"/>
     <!-- Main node -->
-    <circle id="fa-main" cx="58" cy="50" r="5.5" fill="#00C9A7"/>
-    <!-- Professional inner highlight -->
-    <circle id="fa-core" cx="58" cy="50" r="2.2"
-            fill="#FFFFFF" fill-opacity=".35"/>
+    <circle cx="58" cy="50" r="5.5" fill="#141413" fill-opacity=".72"/>
+    <!-- Highlight -->
+    <circle cx="58" cy="50" r="2.2" fill="#FFFFFF" fill-opacity=".35"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
-  <!-- AI NODE — gold, the intelligence layer -->
-  <!-- Position: (74, 22) — end of top bar    -->
+  <!-- AI NODE — Signal Orange, intelligence  -->
   <!-- ═══════════════════════════════════════ -->
   <g id="node-ai">
-    <!-- Glow layers (replace with Figma blur in production) -->
-    <circle cx="74" cy="22" r="18"  fill="#F0A500" fill-opacity=".04"/>
-    <circle cx="74" cy="22" r="14"  fill="#F0A500" fill-opacity=".08"/>
-    <circle cx="74" cy="22" r="10.5" fill="#F0A500" fill-opacity=".15"/>
-    <circle cx="74" cy="22" r="8"   fill="#F0A500" fill-opacity=".26"/>
+    <!-- Glow layers -->
+    <circle cx="74" cy="22" r="16"  fill="#F37338" fill-opacity=".04"/>
+    <circle cx="74" cy="22" r="12"  fill="#F37338" fill-opacity=".08"/>
+    <circle cx="74" cy="22" r="9"   fill="#F37338" fill-opacity=".15"/>
+    <circle cx="74" cy="22" r="7"   fill="#F37338" fill-opacity=".22"/>
     <!-- Main node -->
-    <circle id="ai-main" cx="74" cy="22" r="5.5" fill="#F0A500"/>
+    <circle cx="74" cy="22" r="5.5" fill="#F37338"/>
     <!-- Bright core -->
-    <circle id="ai-core" cx="74" cy="22" r="2.2"
-            fill="#FFFFFF" fill-opacity=".96"/>
+    <circle cx="74" cy="22" r="2.2" fill="#FFFFFF" fill-opacity=".85"/>
   </g>
 
   <!-- ═══════════════════════════════════════ -->
-  <!-- NE BEARING INDICATOR on ring           -->
+  <!-- NE BEARING DOT on ring                 -->
   <!-- ═══════════════════════════════════════ -->
   <g id="layer-ne-bearing">
-    <circle cx="80.4" cy="19.6" r="6"   fill="#F0A500" fill-opacity=".15"/>
-    <circle cx="80.4" cy="19.6" r="4"   fill="#F0A500" fill-opacity=".28"/>
-    <circle id="ne-dot" cx="80.4" cy="19.6" r="2.2" fill="#F0A500"/>
+    <circle cx="80.4" cy="19.6" r="5"   fill="#F37338" fill-opacity=".15"/>
+    <circle cx="80.4" cy="19.6" r="3.5" fill="#F37338" fill-opacity=".28"/>
+    <circle cx="80.4" cy="19.6" r="2.2" fill="#F37338"/>
   </g>
 
 </svg>

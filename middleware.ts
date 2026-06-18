@@ -11,6 +11,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow static public assets (images, SVGs, fonts)
+  if (/\.(svg|png|jpg|jpeg|ico|webp|gif|woff2?|ttf)$/i.test(pathname)) {
+    return NextResponse.next();
+  }
+
   const token = req.cookies.get('aria-session')?.value;
 
   if (!token) {
@@ -45,5 +50,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon-192.png|manifest.json).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon-192.png|manifest.json|.*\\.svg|.*\\.png|.*\\.ico|.*\\.webp|.*\\.jpg|.*\\.jpeg).*)'],
 };
