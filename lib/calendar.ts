@@ -77,23 +77,25 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
   const timeMin = new Date(now - 12 * 3600 * 1000).toISOString();
   const timeMax = new Date(now + WINDOW_DAYS * 86400000).toISOString();
 
-  // Pull from ALL the user's calendars, not just primary. Track which ones the
-  // user OWNS or can WRITE to — only those carry real appointments. Read-only
-  // calendars (holidays, subscribed feeds, birthdays) are excluded entirely so
-  // their all-day noise never reaches the dashboard.
-  let calendarIds = ['primary'];
+  // Pull from ALL the user's calendars, not just primary. Keep each calendar's
+  // accessRole: we query every calendar (so timed appointments on shared/reader
+  // calendars still show), but suppress all-day events from reader-only
+  // calendars (holiday feeds, birthdays, subscribed calendars) which are noise.
+  // All-day events on the user's OWN (owner/writer) calendars are kept — they're
+  // legitimate full-day appointments.
+  let calendars: { id: string; owned: boolean }[] = [{ id: 'primary', owned: true }];
   try {
-    const list = await cal.calendarList.list({ maxResults: 25 });
-    const ids = (list.data.items ?? [])
-      .filter(c => c.id && (c.accessRole === 'owner' || c.accessRole === 'writer'))
-      .map(c => c.id as string);
-    if (ids.length) calendarIds = ids;
+    const list = await cal.calendarList.list({ maxResults: 50 });
+    const items = (list.data.items ?? [])
+      .filter(c => !!c.id)
+      .map(c => ({ id: c.id as string, owned: c.accessRole === 'owner' || c.accessRole === 'writer' }));
+    if (items.length) calendars = items;
   } catch { /* fall back to primary */ }
 
   const all: CalEvent[] = [];
   let ok = false;
   let lastErr: unknown;
-  for (const calendarId of calendarIds) {
+  for (const { id: calendarId, owned } of calendars) {
     try {
       const res = await cal.events.list({
         calendarId,
@@ -105,13 +107,13 @@ async function getGoogleEvents(refreshToken: string): Promise<CalEvent[]> {
       ok = true;
       for (const e of res.data.items ?? []) {
         if (e.status === 'cancelled') continue;
-        // Drop special event types only: birthdays, focus time, OOO, working
-        // location. Keep BOTH timed and all-day events — an all-day entry on the
-        // user's own calendar is a legitimate appointment (a full-day client
-        // meeting, an offsite, etc.) and must not be silently dropped.
+        // Drop special event types: birthdays, focus time, OOO, working location.
         const specialType = e.eventType && e.eventType !== 'default';
+        const isAllDay = !e.start?.dateTime && !!e.start?.date;
         const hasStart = e.start?.dateTime || e.start?.date;
-        if (!hasStart || specialType) continue;
+        // Keep timed events from any calendar. Keep all-day events only from the
+        // user's own calendars (suppress holiday/birthday/subscribed all-day noise).
+        if (!hasStart || specialType || (isAllDay && !owned)) continue;
         all.push({
           id:       e.id ?? '',
           title:    e.summary ?? '(No title)',
