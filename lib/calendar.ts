@@ -34,6 +34,9 @@ function googleOAuth(redirectUri = '') {
  * local dev where that env isn't set.
  */
 export function calendarRedirectUri(fallbackOrigin: string): string {
+  // 1) Exact, registered URI wins — fully deterministic, no derivation.
+  if (process.env.GOOGLE_CALENDAR_REDIRECT_URI) return process.env.GOOGLE_CALENDAR_REDIRECT_URI;
+  // 2) Else reuse the (working) Gmail flow's stable base origin.
   const base = process.env.GOOGLE_REDIRECT_URI;
   const origin = base ? new URL(base).origin : fallbackOrigin;
   return `${origin}/api/calendar/google/callback`;
