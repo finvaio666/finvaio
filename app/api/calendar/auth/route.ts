@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getGoogleCalAuthUrl, getMsCalAuthUrl } from '@/lib/calendar';
+import { getGoogleCalAuthUrl, getMsCalAuthUrl, calendarRedirectUri } from '@/lib/calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   if (provider === 'google') {
     if (!process.env.GOOGLE_CLIENT_ID) return NextResponse.json({ error: 'Google OAuth not configured.' }, { status: 500 });
-    const redirectUri = `${origin}/api/calendar/google/callback`;
+    const redirectUri = calendarRedirectUri(origin);
     return NextResponse.json({ url: getGoogleCalAuthUrl(advisorId, redirectUri) });
   } else {
     if (!process.env.MS_CLIENT_ID) return NextResponse.json({ error: 'Microsoft OAuth not configured.' }, { status: 500 });

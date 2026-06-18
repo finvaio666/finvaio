@@ -24,6 +24,21 @@ function googleOAuth(redirectUri = '') {
   return new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, redirectUri);
 }
 
+/**
+ * Build the calendar OAuth redirect URI from a STABLE base, so the auth step
+ * and the token-exchange step always produce the identical string. On Vercel,
+ * `new URL(req.url).origin` can resolve to the per-deployment hostname rather
+ * than the public alias — if auth and callback disagree, Google rejects the
+ * token exchange with `invalid_grant`. We reuse the same base as the (working)
+ * Gmail flow's GOOGLE_REDIRECT_URI, falling back to the request origin for
+ * local dev where that env isn't set.
+ */
+export function calendarRedirectUri(fallbackOrigin: string): string {
+  const base = process.env.GOOGLE_REDIRECT_URI;
+  const origin = base ? new URL(base).origin : fallbackOrigin;
+  return `${origin}/api/calendar/google/callback`;
+}
+
 export function getGoogleCalAuthUrl(advisorId: string, redirectUri: string): string {
   return googleOAuth(redirectUri).generateAuthUrl({
     access_type: 'offline',
