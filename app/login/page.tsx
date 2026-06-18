@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogoD1Icon } from '@/components/LogoVariants';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -56,7 +55,7 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           {/* D1 icon */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-            <LogoD1Icon size={64} />
+            <img src="/finva-logo.svg" width={80} height={80} alt="FINVA" />
           </div>
           <div style={{
             fontSize: 42, fontWeight: 800, letterSpacing: '-0.04em',
