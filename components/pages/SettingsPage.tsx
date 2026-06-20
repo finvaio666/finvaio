@@ -35,22 +35,61 @@ function Row({ label, desc, children }: { label: string; desc?: string; children
 function Input({ value, onChange, placeholder, type = 'text', disabled }: {
   value: string; onChange: (v: string) => void; placeholder?: string; type?: string; disabled?: boolean;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword && showPassword ? 'text' : type;
   return (
-    <input
-      type={type}
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      disabled={disabled}
-      style={{
-        padding: '7px 12px', fontSize: 13,
-        background: disabled ? 'var(--bg)' : 'var(--surface)',
-        border: '1px solid var(--border)', borderRadius: 7,
-        color: disabled ? 'var(--text3)' : 'var(--text)',
-        width: 220, boxSizing: 'border-box',
-        fontFamily: 'var(--font-sans)',
-      }}
-    />
+    <div style={{ position: 'relative', width: 220 }}>
+      <input
+        type={inputType}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        style={{
+          padding: isPassword ? '7px 36px 7px 12px' : '7px 12px', fontSize: 13,
+          background: disabled ? 'var(--bg)' : 'var(--surface)',
+          border: '1px solid var(--border)', borderRadius: 7,
+          color: disabled ? 'var(--text3)' : 'var(--text)',
+          width: '100%', boxSizing: 'border-box',
+          fontFamily: 'var(--font-sans)',
+        }}
+      />
+      {isPassword && !disabled && (
+        <button
+          type="button"
+          onMouseDown={() => setShowPassword(true)}
+          onMouseUp={() => setShowPassword(false)}
+          onMouseLeave={() => setShowPassword(false)}
+          onTouchStart={() => setShowPassword(true)}
+          onTouchEnd={() => setShowPassword(false)}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
+          title="Hold to show password"
+          style={{
+            position: 'absolute',
+            right: 4, top: '50%', transform: 'translateY(-50%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26,
+            background: 'transparent', border: 'none',
+            cursor: 'pointer', color: 'var(--text3)', padding: 0,
+          }}
+        >
+          {showPassword ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+              <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+              <line x1="2" y1="2" x2="22" y2="22" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+        </button>
+      )}
+    </div>
   );
 }
 
