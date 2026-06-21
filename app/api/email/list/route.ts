@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { getActive, listEmails } from '@/lib/emailService';
+import { getActive, listEmails, providerConfigured } from '@/lib/emailService';
 import { getCompanyInstitutions } from '@/lib/institutions';
 import { getCompanyThemes } from '@/lib/themesStore';
 import { categorizeByThemes } from '@/lib/emailThemes';
@@ -33,6 +33,21 @@ export async function GET(req: NextRequest) {
   const active = getActive(config);
   if (!active.connected) {
     return NextResponse.json({ error: 'Email not connected', connected: false }, { status: 200 });
+  }
+
+  // The account is connected but the server is missing the provider's OAuth app
+  // credentials, so the token refresh would fail with a cryptic provider error
+  // (e.g. Microsoft AADSTS900144). Surface a clear, actionable message instead.
+  if (!providerConfigured(active.provider)) {
+    const name = active.provider === 'outlook' ? 'Microsoft Outlook' : 'Google Gmail';
+    const vars = active.provider === 'outlook'
+      ? 'MS_CLIENT_ID and MS_CLIENT_SECRET'
+      : 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET';
+    return NextResponse.json({
+      error:      `${name} is not configured on the server. Add ${vars} to your environment variables.`,
+      connected:  true,
+      configured: false,
+    }, { status: 200 });
   }
 
   // Company-wide shared whitelist

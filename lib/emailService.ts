@@ -27,6 +27,18 @@ export function getActive(config: AdvisorConfig): ActiveProvider {
   };
 }
 
+/**
+ * Whether the server-side OAuth app credentials for a provider are present.
+ * Without these, the token refresh call to Google/Microsoft fails with a cryptic
+ * provider error (e.g. AADSTS900144 "must contain 'client_id'"). Callers should
+ * surface a friendly "not configured" message instead.
+ */
+export function providerConfigured(provider: 'gmail' | 'outlook'): boolean {
+  return provider === 'outlook'
+    ? !!process.env.MS_CLIENT_ID && !!process.env.MS_CLIENT_SECRET
+    : !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+}
+
 export function listEmails(config: AdvisorConfig, domains: string[], maxResults?: number): Promise<EmailSummary[]> {
   const a = getActive(config);
   return a.provider === 'outlook'

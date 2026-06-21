@@ -56,6 +56,13 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json({ data });
   } catch (e) {
+    // The "Advisor" select option is auto-created on the first meeting save. Until
+    // then, filtering by it makes Notion throw a 400 validation_error. That just
+    // means this advisor has no meetings yet — return empty quietly, no log noise.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('not found for property')) {
+      return NextResponse.json({ data: [] });
+    }
     console.error('Meetings fetch error:', e);
     return NextResponse.json({ data: [] });
   }
