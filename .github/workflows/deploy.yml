@@ -8,7 +8,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Vercel Deploy
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
         run: |
-          curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_ALVEN }}"
-          curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_SKY }}"
+          npm i -g vercel
+          vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
