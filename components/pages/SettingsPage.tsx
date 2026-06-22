@@ -331,9 +331,11 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {gmailConnected && provider === 'gmail' && <Badge label="● Active" color="#22c55e" />}
             {gmailConnected
-              ? (provider !== 'gmail'
-                  ? <button onClick={() => switchProvider('gmail')} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use Gmail</button>
-                  : <Badge label="✓ Connected" color="#22c55e" />)
+              ? <>
+                  {provider !== 'gmail' && <button onClick={() => switchProvider('gmail')} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use Gmail</button>}
+                  {provider === 'gmail' && <Badge label="✓ Connected" color="#22c55e" />}
+                  <button onClick={connectGmail} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Change account</button>
+                </>
               : <button onClick={connectGmail} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>Connect</button>
             }
           </div>
@@ -346,9 +348,11 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {outlookConnected && provider === 'outlook' && <Badge label="● Active" color="#22c55e" />}
             {outlookConnected
-              ? (provider !== 'outlook'
-                  ? <button onClick={() => switchProvider('outlook')} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use Outlook</button>
-                  : <Badge label="✓ Connected" color="#22c55e" />)
+              ? <>
+                  {provider !== 'outlook' && <button onClick={() => switchProvider('outlook')} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use Outlook</button>}
+                  {provider === 'outlook' && <Badge label="✓ Connected" color="#22c55e" />}
+                  <button onClick={connectOutlook} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Change account</button>
+                </>
               : <button onClick={connectOutlook} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: '#0078d4', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer' }}>Connect</button>
             }
           </div>
@@ -622,7 +626,8 @@ function CalendarTab() {
                 <Badge label={providerLabel} color={provider === 'microsoft' ? '#0078d4' : '#ea4335'} />
               </div>
             </Row>
-            <div style={{ padding: '12px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => connect(provider === 'microsoft' ? 'microsoft' : 'google')} style={{ padding: '7px 14px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Change account</button>
               <button onClick={disconnect} style={{ padding: '7px 14px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--red)', cursor: 'pointer' }}>Disconnect</button>
             </div>
           </>
