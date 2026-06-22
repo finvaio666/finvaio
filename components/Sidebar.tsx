@@ -41,7 +41,18 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [advisor, setAdvisor]   = useState({ name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' });
+  // Seed from the last known advisor (cached client-side) so the footer doesn't
+  // flash the default name on every page load while /api/auth/me resolves.
+  // Sidebar remounts on each navigation (each page wraps its own DashboardLayout).
+  const [advisor, setAdvisor]   = useState(() => {
+    if (typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('aria-advisor');
+      if (cached) {
+        try { return JSON.parse(cached); } catch { /* ignore */ }
+      }
+    }
+    return { name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' };
+  });
   const [features, setFeatures] = useState<string[]>([]);
   // Seed from the last known role (cached client-side) so the nav doesn't
   // flash Advisor → Admin on every page load while /api/auth/me resolves.
@@ -53,11 +64,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     fetch('/api/auth/me')
       .then(r => r.json())
       .then(d => {
-        if (d.name) setAdvisor({
-          name:     d.name,
-          role:     d.role === 'Admin' ? 'Administrator' : 'Financial Advisor',
-          initials: d.initials || d.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
-        });
+        if (d.name) {
+          const next = {
+            name:     d.name,
+            role:     d.role === 'Admin' ? 'Administrator' : 'Financial Advisor',
+            initials: d.initials || d.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
+          };
+          setAdvisor(next);
+          sessionStorage.setItem('aria-advisor', JSON.stringify(next));
+        }
         if (d.features) setFeatures(d.features);
         setIsAdmin(d.role === 'Admin');
         sessionStorage.setItem('aria-role', d.role === 'Admin' ? 'Admin' : 'Advisor');
@@ -67,6 +82,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
+    sessionStorage.removeItem('aria-advisor');
+    sessionStorage.removeItem('aria-role');
     router.push('/login');
     router.refresh();
   }
