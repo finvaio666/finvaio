@@ -10,7 +10,7 @@ import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 // ─── Ask FINVA — dashboard daily co-pilot ─────────────────────────────────────
 interface PendingTask { task: string; client: string; due: string; }
 
-function AskAria({ buildContext, onTasksAdded }: { buildContext: () => string; onTasksAdded?: () => void }) {
+function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: () => string; onTasksAdded?: () => void; dataLoading?: boolean }) {
   const [question, setQuestion] = useState('');
   const [answer,   setAnswer]   = useState('');
   const [loading,  setLoading]  = useState(false);
@@ -20,7 +20,7 @@ function AskAria({ buildContext, onTasksAdded }: { buildContext: () => string; o
 
   async function ask(q: string) {
     const query = q.trim();
-    if (!query || loading) return;
+    if (!query || loading || dataLoading) return;
     setLoading(true); setAnswer(''); setAsked(query); setQuestion(''); setPending(null);
     try {
       const res = await fetch('/api/dashboard-assistant', {
@@ -90,40 +90,46 @@ function AskAria({ buildContext, onTasksAdded }: { buildContext: () => string; o
           value={question}
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') ask(question); }}
-          placeholder="Ask anything about your day — e.g. what's urgent today?"
+          disabled={dataLoading}
+          placeholder={dataLoading ? "Loading today's data…" : "Ask anything about your day — e.g. what's urgent today?"}
           style={{
             flex: 1, padding: '10px 14px', fontSize: 13,
             background: 'var(--bg)', border: '1px solid var(--border)',
             borderRadius: 'var(--r-pill)', color: 'var(--text)', fontFamily: 'var(--font-sans)',
+            opacity: dataLoading ? 0.6 : 1,
           }}
         />
         <button
           onClick={() => ask(question)}
-          disabled={loading || !question.trim()}
+          disabled={loading || dataLoading || !question.trim()}
           style={{
             padding: '10px 20px', fontSize: 13, fontWeight: 700,
             background: '#F37338', color: '#fff', border: 'none', borderRadius: 'var(--r-pill)',
-            cursor: loading || !question.trim() ? 'not-allowed' : 'pointer',
-            opacity: loading || !question.trim() ? 0.6 : 1, whiteSpace: 'nowrap',
+            cursor: loading || dataLoading || !question.trim() ? 'not-allowed' : 'pointer',
+            opacity: loading || dataLoading || !question.trim() ? 0.6 : 1, whiteSpace: 'nowrap',
           }}
         >{loading ? '…' : 'Ask'}</button>
       </div>
 
       {/* Quick buttons */}
       {!answer && !loading && !pending && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {quick.map(q => (
-            <button
-              key={q}
-              onClick={() => ask(q)}
-              style={{
-                padding: '5px 12px', fontSize: 12, fontWeight: 600,
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 'var(--r-pill)', color: 'var(--text2)', cursor: 'pointer',
-              }}
-            >{q}</button>
-          ))}
-        </div>
+        dataLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>⏳ Pulling in today&apos;s appointments and tasks — one moment…</div>
+        ) : (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {quick.map(q => (
+              <button
+                key={q}
+                onClick={() => ask(q)}
+                style={{
+                  padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-pill)', color: 'var(--text2)', cursor: 'pointer',
+                }}
+              >{q}</button>
+            ))}
+          </div>
+        )
       )}
 
       {/* Pending tasks — review & confirm before adding */}
@@ -259,6 +265,7 @@ export default function DashboardPage() {
   const [calStatus,    setCalStatus]    = useState<{ connected: boolean; error?: string } | null>(null);
   const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
+  const [calLoading,   setCalLoading]   = useState(true);
   const [emailThemes,  setEmailThemes]  = useState<Theme[]>(DEFAULT_THEMES);
   const [emailList,    setEmailList]    = useState<{ id: string; from: string; subject: string; snippet: string; isRead: boolean; category?: string }[]>([]);
 
@@ -335,7 +342,8 @@ export default function DashboardPage() {
         if (d.error) console.warn('[calendar] events fetch error:', d.error);
         else if (d.connected) console.info(`[calendar] ${d.provider || 'calendar'} connected (${d.address || '—'}) · ${Array.isArray(d.events) ? d.events.length : 0} events`);
       })
-      .catch(e => { setCalStatus({ connected: false, error: String(e) }); console.warn('[calendar] events fetch failed:', e); });
+      .catch(e => { setCalStatus({ connected: false, error: String(e) }); console.warn('[calendar] events fetch failed:', e); })
+      .finally(() => setCalLoading(false));
   }, []);
 
   // ── Derived data ────────────────────────────────────────────────────────────
@@ -456,7 +464,7 @@ export default function DashboardPage() {
   return (
     <>
       {/* ── Ask FINVA — daily co-pilot ── */}
-      <AskAria buildContext={buildContext} onTasksAdded={loadTasks} />
+      <AskAria buildContext={buildContext} onTasksAdded={loadTasks} dataLoading={loading || dataLoading || calLoading} />
 
       {/* ── Stat Cards ── */}
       <div className="stat-grid">
