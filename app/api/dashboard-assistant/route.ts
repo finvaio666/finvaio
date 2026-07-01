@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { getUpcomingEvents, CalEvent } from '@/lib/calendar';
 import { listTasks, setTaskStatus } from '@/lib/tasks';
 import { logAiUsage } from '@/lib/aiUsage';
 
@@ -142,6 +143,32 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
   return blocks.join('\n');
 }
 
+/**
+ * Server-verified calendar block. The browser's buildContext() sends the
+ * appointment list as text, which can arrive empty or mis-tagged (calendar still
+ * loading, or client timezone parsing) — that made "draft my today plan" report 0
+ * appointments even when the dashboard visibly showed them. Fetching here, per
+ * advisor and tagged in Malaysia time, is authoritative and timing-independent.
+ */
+async function buildCalendarBlock(config: AdvisorConfig): Promise<string> {
+  let events: CalEvent[] = [];
+  try { events = await getUpcomingEvents(config); } catch { return ''; }
+  if (!events.length) return '';
+  // Compare on the local calendar day. Outlook returns KL local time (Prefer
+  // header) and Google carries an offset, so the YYYY-MM-DD prefix is already the
+  // event's local day; we tag against "today"/"tomorrow" computed in KL (UTC+8).
+  const klDay = (offsetDays = 0) =>
+    new Date(Date.now() + 8 * 3600 * 1000 + offsetDays * 86400000).toISOString().slice(0, 10);
+  const todayISO = klDay(0), tomorrowISO = klDay(1);
+  const lines = events.slice(0, 20).map(e => {
+    const dateISO = e.start.slice(0, 10);
+    const time    = e.allDay ? '(all day)' : (e.start.slice(11, 16) || '');
+    const rel     = dateISO === todayISO ? 'TODAY, ' : dateISO === tomorrowISO ? 'TOMORROW, ' : '';
+    return `- ${rel}${dateISO} ${time}: ${e.title}${e.location ? ` @ ${e.location}` : ''}`;
+  });
+  return `\n\n=== CALENDAR APPOINTMENTS (server-verified & authoritative — times in Asia/Kuala_Lumpur; today is ${todayISO}). Use THIS list for the schedule, ignoring any calendar section in the dashboard data above. ===\n${lines.join('\n')}`;
+}
+
 export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -225,6 +252,9 @@ Message: "${body.question}"`;
   // Look up any client mentioned in the question (full profile, contact, todos)
   const clientData = config ? await lookupMentionedClients(config, body.question).catch(() => '') : '';
 
+  // Authoritative, server-fetched calendar — do not rely on the browser-built list
+  const calData = config ? await buildCalendarBlock(config).catch(() => '') : '';
+
   const systemPrompt = `You are FINVA, the daily co-pilot for ${advisorName}, a licensed financial advisor in Malaysia. Today is ${today}.
 
 You answer from the advisor's live data below: a dashboard snapshot of today's priorities, PLUS detailed records for any client mentioned in the question. Be concise, specific and action-oriented — like a sharp executive assistant.
@@ -246,7 +276,7 @@ RULES:
 
 === LIVE DASHBOARD DATA ===
 ${body.context || '(no data provided)'}
-${clientData}`;
+${clientData}${calData}`;
 
   try {
     const genAI = new GoogleGenerativeAI(key);
