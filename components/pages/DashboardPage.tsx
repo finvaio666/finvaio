@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
+import MeetingCapture, { CapturePrefill } from '@/components/MeetingCapture';
 
 // ─── Ask FINVA — dashboard daily co-pilot ─────────────────────────────────────
 interface PendingTask { task: string; client: string; due: string; }
@@ -266,6 +267,7 @@ export default function DashboardPage() {
   const [completing,   setCompleting]   = useState<string[]>([]);
   const [dataLoading,  setDataLoading]  = useState(true);
   const [calLoading,   setCalLoading]   = useState(true);
+  const [capture,      setCapture]      = useState<CapturePrefill | null>(null);
   const [emailThemes,  setEmailThemes]  = useState<Theme[]>(DEFAULT_THEMES);
   const [emailList,    setEmailList]    = useState<{ id: string; from: string; subject: string; snippet: string; isRead: boolean; category?: string }[]>([]);
 
@@ -394,6 +396,38 @@ export default function DashboardPage() {
     cursor: 'pointer', transition: 'background 0.12s',
   };
 
+  // ── Meeting capture (golden loop) ───────────────────────────────────────────
+  // Match an appointment title against the roster: full name, or first+last word
+  function matchClientFromTitle(title: string) {
+    const t = title.toLowerCase();
+    return clients.find(c => {
+      const n = c.name.toLowerCase();
+      if (t.includes(n)) return true;
+      const parts = n.split(/\s+/);
+      return parts.length > 1 && t.includes(parts[0]) && t.includes(parts[parts.length - 1]);
+    }) ?? null;
+  }
+
+  function inferMeetingType(title: string): string {
+    const t = title.toLowerCase();
+    if (/annual|review/.test(t))          return 'Annual Review';
+    if (/onboard/.test(t))                return 'Onboarding';
+    if (/zoom|video|meet\b|teams/.test(t)) return 'Video Call';
+    if (/call|phone/.test(t))             return 'Phone Call';
+    return 'Follow-up';
+  }
+
+  function openCaptureFor(a: CalEvent) {
+    const c = matchClientFromTitle(a.title);
+    setCapture({
+      clientId:    c?.id ?? '',
+      clientName:  c?.name ?? '',
+      meetingDate: new Date(a.start).toLocaleDateString('en-CA'),
+      meetingType: inferMeetingType(a.title),
+      title:       a.title,
+    });
+  }
+
   // Build a live snapshot of everything actionable for the AI co-pilot
   function buildContext(): string {
     const L: string[] = [];
@@ -465,6 +499,16 @@ export default function DashboardPage() {
     <>
       {/* ── Ask FINVA — daily co-pilot ── */}
       <AskAria buildContext={buildContext} onTasksAdded={loadTasks} dataLoading={loading || dataLoading || calLoading} />
+
+      {/* ── Meeting capture modal (golden loop) ── */}
+      {capture && (
+        <MeetingCapture
+          clients={clients}
+          prefill={capture}
+          onClose={() => setCapture(null)}
+          onSaved={loadTasks}
+        />
+      )}
 
       {/* ── Stat Cards ── */}
       <div className="stat-grid">
@@ -630,7 +674,8 @@ export default function DashboardPage() {
               </div>
             </div>
             {appointments.slice(0, 6).map(a => {
-              const isToday = new Date(a.start).toDateString() === todayStr;
+              const isToday  = new Date(a.start).toDateString() === todayStr;
+              const hasBegun = new Date(a.start).getTime() <= Date.now();
               return (
                 <div key={a.id} style={{ ...rowStyle, cursor: 'default' }}>
                   <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isToday ? 'var(--accent-dim)' : 'var(--surface2)', fontSize: 16 }}>📅</div>
@@ -638,6 +683,17 @@ export default function DashboardPage() {
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
                     {a.location && <div style={{ fontSize: 12, color: 'var(--text3)' }}>📍 {a.location}</div>}
                   </div>
+                  {hasBegun && (
+                    <button
+                      onClick={() => openCaptureFor(a)}
+                      title="Log this meeting — notes, tasks and follow-up in one go"
+                      style={{
+                        padding: '5px 12px', fontSize: 12, fontWeight: 700, flexShrink: 0,
+                        background: '#F37338', color: '#fff', border: 'none',
+                        borderRadius: 'var(--r-pill)', cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >🎙️ Log</button>
+                  )}
                   <div style={{ fontSize: 12, fontWeight: 600, color: isToday ? 'var(--accent2)' : 'var(--text3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {fmtTime(a.start, a.allDay)}
                   </div>

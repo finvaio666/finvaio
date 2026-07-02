@@ -7,13 +7,17 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   // Only send the origin as referrer, no path/query info
   { key: 'Referrer-Policy',        value: 'strict-origin-when-cross-origin' },
-  // Disable browser features that FINVA doesn't need
-  { key: 'Permissions-Policy',     value: 'camera=(), microphone=(), geolocation=()' },
+  // Disable browser features that FINVA doesn't need.
+  // microphone=(self): voice meeting capture records audio on our own origin.
+  { key: 'Permissions-Policy',     value: 'camera=(), microphone=(self), geolocation=()' },
   // Force HTTPS for 1 year (Vercel already enforces this, belt-and-suspenders)
   { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
 ];
 
 const nextConfig: NextConfig = {
+  // Pin the workspace root — a stray lockfile in a parent folder otherwise makes
+  // Turbopack infer the wrong root and serve a sibling project in dev.
+  turbopack: { root: __dirname },
   headers: async () => [
     // Security headers on all routes
     {
