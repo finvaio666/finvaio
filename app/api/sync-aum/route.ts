@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, isFullPage } from '@notionhq/client';
+import { Client } from '@notionhq/client';
 import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { queryAllPages } from '@/lib/notionQueryAll';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,30 +22,22 @@ export async function POST(req: NextRequest) {
   try {
     // Step 1: Sum Value (MYR) per client from Portfolio
     const aumByClient: Record<string, number> = {};
-    let cursor: string | undefined;
-    do {
-      const res = await notion.databases.query({
-        database_id: DB.portfolio,
-        start_cursor: cursor,
-        ...(f ? { filter: f } : {}),
-      });
-      for (const page of res.results.filter(isFullPage)) {
-        const relations = page.properties['👥 Clients']?.type === 'relation'
-          ? page.properties['👥 Clients'].relation : [];
-        const valueMYR = page.properties['Value (MYR)']?.type === 'number'
-          ? page.properties['Value (MYR)'].number ?? 0 : 0;
-        for (const rel of relations) {
-          aumByClient[rel.id] = (aumByClient[rel.id] ?? 0) + valueMYR;
-        }
+    const holdingPages = await queryAllPages(notion, { database_id: DB.portfolio, ...(f ? { filter: f } : {}) });
+    for (const page of holdingPages) {
+      const relations = page.properties['👥 Clients']?.type === 'relation'
+        ? page.properties['👥 Clients'].relation : [];
+      const valueMYR = page.properties['Value (MYR)']?.type === 'number'
+        ? page.properties['Value (MYR)'].number ?? 0 : 0;
+      for (const rel of relations) {
+        aumByClient[rel.id] = (aumByClient[rel.id] ?? 0) + valueMYR;
       }
-      cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
-    } while (cursor);
+    }
 
     // Step 2: Update each client's AUM (MYR)
-    const clientRes = await notion.databases.query({ database_id: DB.clients, ...(f ? { filter: f } : {}) });
+    const clientPages = await queryAllPages(notion, { database_id: DB.clients, ...(f ? { filter: f } : {}) });
     const updated: { name: string; aum: number }[] = [];
 
-    for (const page of clientRes.results.filter(isFullPage)) {
+    for (const page of clientPages) {
       const aum = aumByClient[page.id];
       if (aum === undefined) continue;
       const name = page.properties['Client Name']?.type === 'title'

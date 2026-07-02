@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, isFullPage } from '@notionhq/client';
+import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
@@ -78,12 +79,12 @@ export async function GET(req: NextRequest) {
   try {
     if (type === 'clients') {
       if (!DB.clients) return NextResponse.json({ data: [] });
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.clients,
         ...scoped(),
         sorts: [{ property: 'Client Name', direction: 'ascending' }],
       });
-      const data = res.results.filter(isFullPage).map(page => {
+      const data = pages.map(page => {
         const p = page.properties;
         return {
           id: page.id,
@@ -109,20 +110,20 @@ export async function GET(req: NextRequest) {
       if (!DB.portfolio) return NextResponse.json({ data: [] });
 
       // Build client ID → name map first
-      const clientRes = await notion.databases.query({ database_id: DB.clients, ...scoped() });
+      const clientPages = await queryAllPages(notion, { database_id: DB.clients, ...scoped() });
       const clientMap: Record<string, string> = {};
-      clientRes.results.filter(isFullPage).forEach(page => {
+      clientPages.forEach(page => {
         const name = page.properties['Client Name']?.type === 'title'
           ? page.properties['Client Name'].title[0]?.plain_text ?? '' : '';
         if (name) clientMap[page.id] = name;
       });
 
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.portfolio,
         ...scoped(),
         sorts: [{ property: 'Holding Name', direction: 'ascending' }],
       });
-      const data = res.results.filter(isFullPage).map(page => {
+      const data = pages.map(page => {
         const p = page.properties;
         const currency      = p['Currency']?.type === 'select'  ? p['Currency'].select?.name ?? 'MYR'  : 'MYR';
         const valueOrig     = p['Value (Original Currency)']?.type === 'number' ? p['Value (Original Currency)'].number ?? 0 : 0;
@@ -163,12 +164,12 @@ export async function GET(req: NextRequest) {
 
     if (type === 'cashflow') {
       if (!DB.cashflow) return NextResponse.json({ data: [] });
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.cashflow,
         ...scoped(),
         sorts: [{ property: 'Month', direction: 'descending' }],
       });
-      const data = res.results.filter(isFullPage).map(page => {
+      const data = pages.map(page => {
         const p = page.properties;
         const income   = p['Monthly income (MYR)']?.type === 'number'    ? p['Monthly income (MYR)'].number ?? 0    : 0;
         const fixed    = p['Fixed expenses (MYR)']?.type === 'number'    ? p['Fixed expenses (MYR)'].number ?? 0    : 0;
@@ -200,20 +201,20 @@ export async function GET(req: NextRequest) {
     if (type === 'insurance') {
       if (!DB.insurance) return NextResponse.json({ data: [] });
 
-      const clientRes = await notion.databases.query({ database_id: DB.clients, ...scoped() });
+      const clientPages = await queryAllPages(notion, { database_id: DB.clients, ...scoped() });
       const clientMap: Record<string, { name: string; income: number }> = {};
-      clientRes.results.filter(isFullPage).forEach(page => {
+      clientPages.forEach(page => {
         const name   = page.properties['Client Name']?.type === 'title'  ? page.properties['Client Name'].title[0]?.plain_text ?? ''  : '';
         const income = page.properties['Monthly income (MYR)']?.type === 'number' ? page.properties['Monthly income (MYR)'].number ?? 0 : 0;
         if (name) clientMap[page.id] = { name, income };
       });
 
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.insurance,
         ...scoped(),
         sorts: [{ property: 'Policy Name', direction: 'ascending' }],
       });
-      const data = res.results.filter(isFullPage).map(page => {
+      const data = pages.map(page => {
         const p = page.properties;
         const clientRelIds = p['Clients']?.type === 'relation' ? p['Clients'].relation.map((r: { id: string }) => r.id) : [];
         const clientInfo   = clientRelIds.map((id: string) => clientMap[id]).filter(Boolean)[0];
@@ -249,11 +250,11 @@ export async function GET(req: NextRequest) {
     // ── Assets & Liabilities (net worth) ──────────────────────────────────────
     if (type === 'assets') {
       if (!DB.assets) return NextResponse.json({ data: [] });
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.assets,
         ...scoped(),
       });
-      const data = res.results.filter(isFullPage).map(page => {
+      const data = pages.map(page => {
         const p = page.properties;
         return {
           id:       page.id,
@@ -271,12 +272,12 @@ export async function GET(req: NextRequest) {
     // ── Insurance product catalogue ───────────────────────────────────────────
     if (type === 'insurance-products') {
       if (!DB.insurancePlans) return NextResponse.json({ data: [] });
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.insurancePlans,
         filter: { property: 'Status', select: { equals: 'Active' } },
         sorts: [{ property: 'Insurer', direction: 'ascending' }],
       });
-      const data = res.results.filter(isFullPage).map((page) => {
+      const data = pages.map((page) => {
         const p = page.properties as Record<string, any>;
         return {
           id:               page.id,
@@ -299,12 +300,12 @@ export async function GET(req: NextRequest) {
     // ── Investment fund catalogue ─────────────────────────────────────────────
     if (type === 'funds') {
       if (!DB.funds) return NextResponse.json({ data: [] });
-      const res = await notion.databases.query({
+      const pages = await queryAllPages(notion, {
         database_id: DB.funds,
         filter: { property: 'Status', select: { equals: 'Active' } },
         sorts: [{ property: 'Fund House', direction: 'ascending' }],
       });
-      const data = res.results.filter(isFullPage).map((page) => {
+      const data = pages.map((page) => {
         const p = page.properties as Record<string, any>;
         return {
           id:            page.id,

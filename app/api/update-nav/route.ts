@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, isFullPage } from '@notionhq/client';
+import { Client } from '@notionhq/client';
 import type { UpdatePageParameters } from '@notionhq/client/build/src/api-endpoints';
 import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { queryAllPages } from '@/lib/notionQueryAll';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,8 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   const navF  = advisorFilter(config);
-  const res   = await notion.databases.query({ database_id: PORTFOLIO_DB, page_size: 100, ...(navF ? { filter: navF } : {}) });
-  const pages = res.results.filter(isFullPage);
+  const pages = await queryAllPages(notion, { database_id: PORTFOLIO_DB, ...(navF ? { filter: navF } : {}) });
 
   const results: { fundName: string; client: string; oldValue: number; newValue: number; units: number; pageId: string }[] = [];
   const errors:  { fundName: string; client: string; error: string }[] = [];
@@ -91,17 +91,16 @@ export async function GET(req: NextRequest) {
   const CLIENTS_DB   = config.clientsDbId;
 
   const navF = advisorFilter(config);
-  const clientRes  = await notion.databases.query({ database_id: CLIENTS_DB, ...(navF ? { filter: navF } : {}) });
+  const clientPages = await queryAllPages(notion, { database_id: CLIENTS_DB, ...(navF ? { filter: navF } : {}) });
   const clientMap: Record<string, string> = {};
-  clientRes.results.filter(isFullPage).forEach(page => {
+  clientPages.forEach(page => {
     const name = page.properties['Client Name']?.type === 'title'
       ? page.properties['Client Name'].title[0]?.plain_text ?? '' : '';
     if (name) clientMap[page.id] = name;
   });
 
-  const res = await notion.databases.query({
+  const holdingPages = await queryAllPages(notion, {
     database_id: PORTFOLIO_DB,
-    page_size: 100,
     ...(navF ? { filter: navF } : {}),
     sorts: [{ property: 'Holding Name', direction: 'ascending' }],
   });
@@ -112,7 +111,7 @@ export async function GET(req: NextRequest) {
     clients: string[]; holdingCount: number;
   }> = {};
 
-  res.results.filter(isFullPage).forEach(page => {
+  holdingPages.forEach(page => {
     const p      = page.properties;
     const status = p['Status']?.type === 'select' ? p['Status'].select?.name ?? '' : '';
     if (status.toLowerCase().includes('redeem')) return;
