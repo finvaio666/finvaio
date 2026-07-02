@@ -454,6 +454,27 @@ body {
 .hamburger span { display: block; width: 22px; height: 2px; background: var(--text2); border-radius: var(--r-pill); transition: all 0.3s; }
 .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(20,20,19,0.5); z-index: 90; backdrop-filter: blur(2px); }
 
+/* ── MOBILE BOTTOM NAV (hidden on desktop) ────────────────────────────────── */
+.mobile-nav {
+  display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  justify-content: space-around; align-items: center;
+}
+.mobile-nav-item {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 10px; text-decoration: none; color: var(--text3);
+  font-size: 10.5px; font-weight: 600; border-radius: 10px; min-width: 56px;
+}
+.mobile-nav-item.active { color: var(--accent2, #F37338); }
+.mobile-nav-log {
+  width: 54px; height: 54px; border-radius: 50%; border: none; cursor: pointer;
+  background: #F37338; color: #fff; font-size: 24px; flex-shrink: 0;
+  margin-top: -22px; box-shadow: 0 4px 12px rgba(243,115,56,0.4);
+  display: flex; align-items: center; justify-content: center;
+}
+.mobile-next-appt { display: none; }
+
 /* ── RESPONSIVE ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .sidebar { transform: translateX(-100%); width: 240px; }
@@ -461,6 +482,9 @@ body {
   .sidebar-overlay.open { display: block; }
   .hamburger { display: flex; }
   .main { margin-left: 0; }
+  .mobile-nav { display: flex; }
+  .mobile-next-appt { display: block; }
+  .page-content { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
   .topbar { padding: 14px 18px; }
   .topbar-right { gap: 8px; }
   .date-badge { font-size: 12px; }

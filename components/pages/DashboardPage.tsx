@@ -495,8 +495,40 @@ export default function DashboardPage() {
     return L.join('\n');
   }
 
+  // Next relevant appointment for the mobile hero: upcoming, or begun within
+  // the last 2 hours (still fresh enough to log on the spot).
+  const nextAppt = appointments.find(a => new Date(a.start).getTime() >= Date.now() - 2 * 3600_000);
+
   return (
     <>
+      {/* ── Mobile hero: next appointment + one-tap log (hidden on desktop) ── */}
+      {nextAppt && (() => {
+        const begun   = new Date(nextAppt.start).getTime() <= Date.now();
+        const isToday = new Date(nextAppt.start).toDateString() === new Date().toDateString();
+        const when = nextAppt.allDay
+          ? (isToday ? 'Today · all day' : new Date(nextAppt.start).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · all day')
+          : `${isToday ? 'Today' : new Date(nextAppt.start).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })} · ${new Date(nextAppt.start).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}`;
+        return (
+          <div className="mobile-next-appt" style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14 }}>
+              <div style={{ fontSize: 22 }}>📅</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: begun ? 'var(--red)' : 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {begun ? '● In progress / just ended' : 'Next appointment'}
+                </div>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nextAppt.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>{when}{nextAppt.location ? ` · 📍 ${nextAppt.location}` : ''}</div>
+              </div>
+              {begun && (
+                <button onClick={() => openCaptureFor(nextAppt)} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 'var(--r-pill)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  🎙️ Log
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Ask FINVA — daily co-pilot ── */}
       <AskAria buildContext={buildContext} onTasksAdded={loadTasks} dataLoading={loading || dataLoading || calLoading} />
 
