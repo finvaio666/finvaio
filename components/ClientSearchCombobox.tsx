@@ -271,8 +271,9 @@ export default function ClientSearchCombobox({
                     {c.name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
                   </span>
 
-                  {/* Name + sub-info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Name — the priority element: guaranteed room, truncates last.
+                      Phone/email stay searchable but are not displayed. */}
+                  <div style={{ flex: 1, minWidth: 110 }}>
                     <div style={{
                       fontSize: 13, fontWeight: 600,
                       color: isSelected ? 'var(--accent2)' : 'var(--text)',
@@ -280,19 +281,16 @@ export default function ClientSearchCombobox({
                     }}>
                       {highlightMatch(c.name, query)}
                     </div>
-                    {(c.email || c.phone) && (
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>
-                        {c.phone || c.email}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Segment badge */}
+                  {/* Segment badge — shrinks/truncates before the name does */}
                   {c.segment && (
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: '2px 7px',
                       borderRadius: 99, letterSpacing: '0.04em', textTransform: 'uppercase',
-                      background: clr.bg, color: clr.color, flexShrink: 0,
+                      background: clr.bg, color: clr.color,
+                      flexShrink: 1, minWidth: 0, maxWidth: '40%',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
                       {segmentLabel(c.segment ?? '') || c.segment}
                     </span>

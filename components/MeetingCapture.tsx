@@ -275,7 +275,8 @@ export default function MeetingCapture({
         {/* ── STEP: capture ── */}
         {step === 'capture' && (
           <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {/* auto-fit: side-by-side on desktop, stacked full-width on phones */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
               <div>
                 <label style={labelStyle}>Client *</label>
                 <ClientSearchCombobox
