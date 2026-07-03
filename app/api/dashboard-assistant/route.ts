@@ -160,23 +160,43 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string, c
 const FUND_TRIGGER = /\b(funds?|holdings?|holds?|own(?:s|ing|ed)?|bought|buy(?:ing)?|purchased?|invest(?:ed|ing|ment)?|etf|reit|notes?|trusts?|units?|portfolio)\b/i;
 
 // Words too generic to identify a specific fund on their own
-const GENERIC_FUND_WORDS = new Set(['fund', 'funds', 'the', 'of', 'and', 'a', 'an', 'class', 'myr', 'usd', 'sgd', 'rm', 'bhd', 'berhad']);
+const GENERIC_FUND_WORDS = new Set(['fund', 'funds', 'the', 'of', 'and', 'a', 'an', 'class', 'myr', 'usd', 'sgd', 'rm', 'bhd', 'berhad', 'cash', 'account']);
 
 /**
- * Match distinct holding names against the question by significant words, so
- * "Principal Greater China Fund" finds "Principal Greater China Equity Fund-MYR"
- * without also dragging in "Manulife Investment Greater China Fund".
+ * Match distinct holding names against the question, in two tiers:
+ * 1. The question covers most of a holding's significant words — precise, so
+ *    "Principal Greater China Fund" finds "Principal Greater China Equity
+ *    Fund-MYR" without dragging in "Manulife Investment Greater China Fund".
+ * 2. Fallback for partial names: a distinctive two-word phrase from the
+ *    holding name appears verbatim in the question, so "the Greater China
+ *    fund" returns BOTH Greater China funds rather than nothing.
  */
 function matchHoldingNames(question: string, names: string[]): string[] {
   const q = question.toLowerCase();
-  const qTokens = new Set(q.split(/[^a-z0-9]+/));
-  return names.filter(name => {
+  const qWords = q.split(/[^a-z0-9]+/).filter(Boolean);
+  const qTokens = new Set(qWords);
+  const qNorm = ` ${qWords.join(' ')} `;
+
+  const covered = names.filter(name => {
     const n = name.toLowerCase();
-    if (q.includes(n)) return true;
+    // Names made purely of generic words ("Cash Account", "ETF", "PRS")
+    // can't be searched meaningfully — never match them.
     const sig = [...new Set(n.split(/[^a-z0-9]+/))].filter(w => w.length > 1 && !GENERIC_FUND_WORDS.has(w));
     if (sig.length === 0) return false;
+    if (q.includes(n)) return true;
     const hits = sig.filter(w => qTokens.has(w)).length;
     return hits >= Math.min(2, sig.length) && hits / sig.length >= 0.6;
+  });
+  if (covered.length > 0) return covered;
+
+  return names.filter(name => {
+    const words = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    for (let i = 0; i < words.length - 1; i++) {
+      const a = words[i], b = words[i + 1];
+      if (a.length < 2 || b.length < 2 || GENERIC_FUND_WORDS.has(a) || GENERIC_FUND_WORDS.has(b)) continue;
+      if (qNorm.includes(` ${a} ${b} `)) return true;
+    }
+    return false;
   });
 }
 
@@ -326,7 +346,7 @@ You answer from the advisor's live data below: a dashboard snapshot of today's p
 RULES:
 - Use the actual names, dates, emails and figures from the data. Never invent clients, contacts or tasks.
 - When asked for a client's email / contact / to-do list, read it from the "CLIENT:" section below and present it clearly. If a field is blank, say it isn't on record.
-- When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
+- When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If SEVERAL funds match the name the advisor used (e.g. two "Greater China" funds), present each fund's holders under its own heading and note they may want to be more specific. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
 - Prioritise by urgency: overdue first, then due-soon, then upcoming.
 - Use RM for money. Keep it tight — short bullet points, no preamble.
 - If asked "what's urgent" / "today's agenda", give a ranked action list (up to 6), each with the client name and why it matters.
