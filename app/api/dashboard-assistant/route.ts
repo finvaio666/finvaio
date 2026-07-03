@@ -4,6 +4,7 @@ import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
 import { listTasks, setTaskStatus } from '@/lib/tasks';
 import { logAiUsage } from '@/lib/aiUsage';
+import { queryAllPages } from '@/lib/notionQueryAll';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,28 +34,38 @@ function titleOf(p: Record<string, unknown>): string {
   }
   return '';
 }
+function relIds(p: Record<string, unknown>, k: string): string[] {
+  const v = p[k] as { type: string; relation?: { id: string }[] } | undefined;
+  return v?.type === 'relation' ? (v.relation ?? []).map(r => r.id) : [];
+}
 
-/**
- * Look up any client mentioned in the question and return their full profile,
- * contact details and open action items (todo list) from Notion.
- */
-async function lookupMentionedClients(config: AdvisorConfig, question: string): Promise<string> {
-  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.clientsDbId) return '';
+type ClientPage = { id: string; name: string; props: Record<string, unknown> };
+
+async function fetchClientPages(config: AdvisorConfig): Promise<ClientPage[]> {
+  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.clientsDbId) return [];
   const notion = new Client({ auth: config.notionApiKey });
-  const q = question.toLowerCase();
-
-  let clientPages: { id: string; name: string; props: Record<string, unknown> }[] = [];
   try {
     const f = advisorFilter(config);
-    const res = await notion.databases.query({ database_id: config.clientsDbId, page_size: 100, ...(f ? { filter: f } : {}) });
-    clientPages = res.results.filter(isFullPage).map(pg => {
+    const pages = await queryAllPages(notion, { database_id: config.clientsDbId, ...(f ? { filter: f } : {}) });
+    return pages.map(pg => {
       const props = pg.properties as Record<string, unknown>;
       const name = (props['Client Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.type === 'title'
         ? ((props['Client Name'] as { title: { plain_text: string }[] }).title[0]?.plain_text ?? '')
         : titleOf(props);
       return { id: pg.id, name, props };
     }).filter(c => c.name);
-  } catch { return ''; }
+  } catch { return []; }
+}
+
+/**
+ * Look up any client mentioned in the question and return their full profile,
+ * contact details and open action items (todo list) from Notion.
+ */
+async function lookupMentionedClients(config: AdvisorConfig, question: string, clientPages: ClientPage[]): Promise<string> {
+  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.clientsDbId) return '';
+  if (clientPages.length === 0) return '';
+  const notion = new Client({ auth: config.notionApiKey });
+  const q = question.toLowerCase();
 
   // Match clients whose full name OR (first AND last) appears in the question
   const wordIn = (h: string, w: string) => w.length > 1 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(h);
@@ -142,6 +153,82 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string): 
   return blocks.join('\n');
 }
 
+// ── Fund / holdings search ────────────────────────────────────────────────────
+// Inverse lookup: "which clients bought the Principal Greater China Fund?",
+// "who owns FCN under EPF?". Only runs when the question sounds holdings-related
+// so ordinary chat doesn't pay for a full portfolio query.
+const FUND_TRIGGER = /\b(funds?|holdings?|holds?|own(?:s|ing|ed)?|bought|buy(?:ing)?|purchased?|invest(?:ed|ing|ment)?|etf|reit|notes?|trusts?|units?|portfolio)\b/i;
+
+// Words too generic to identify a specific fund on their own
+const GENERIC_FUND_WORDS = new Set(['fund', 'funds', 'the', 'of', 'and', 'a', 'an', 'class', 'myr', 'usd', 'sgd', 'rm', 'bhd', 'berhad']);
+
+/**
+ * Match distinct holding names against the question by significant words, so
+ * "Principal Greater China Fund" finds "Principal Greater China Equity Fund-MYR"
+ * without also dragging in "Manulife Investment Greater China Fund".
+ */
+function matchHoldingNames(question: string, names: string[]): string[] {
+  const q = question.toLowerCase();
+  const qTokens = new Set(q.split(/[^a-z0-9]+/));
+  return names.filter(name => {
+    const n = name.toLowerCase();
+    if (q.includes(n)) return true;
+    const sig = [...new Set(n.split(/[^a-z0-9]+/))].filter(w => w.length > 1 && !GENERIC_FUND_WORDS.has(w));
+    if (sig.length === 0) return false;
+    const hits = sig.filter(w => qTokens.has(w)).length;
+    return hits >= Math.min(2, sig.length) && hits / sig.length >= 0.6;
+  });
+}
+
+/**
+ * Search the Portfolio Holdings DB for funds named in the question and list
+ * every client holding them, tagged with the asset class (Cash / EPF) so the
+ * AI can filter by category when asked.
+ */
+async function lookupFundHoldings(config: AdvisorConfig, question: string, clientPages: ClientPage[]): Promise<string> {
+  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.portfolioDbId) return '';
+  if (!FUND_TRIGGER.test(question)) return '';
+  const notion = new Client({ auth: config.notionApiKey });
+  try {
+    const f = advisorFilter(config);
+    const pages = await queryAllPages(notion, { database_id: config.portfolioDbId, ...(f ? { filter: f } : {}) });
+    const rows = pages.map(pg => {
+      const p = pg.properties as Record<string, unknown>;
+      return {
+        name:        titleOf(p),
+        assetClass:  sel(p, 'Asset class'),
+        institution: rt(p, 'Institution'),
+        status:      sel(p, 'Status'),
+        value:       num(p, 'Value (MYR)'),
+        purchase:    num(p, 'Purchase price (MYR)'),
+        clientIds:   relIds(p, '👥 Clients'),
+      };
+    }).filter(r => r.name);
+
+    const distinct = [...new Set(rows.map(r => r.name))];
+    const matched = matchHoldingNames(question, distinct);
+    if (matched.length === 0) {
+      // Give the AI the catalogue so it can say what IS on record instead of guessing
+      return `\n# FUND HOLDINGS LOOKUP\nNo holding on record matches a fund named in the question. Distinct holdings on record (${distinct.length}):\n${distinct.slice(0, 80).join('; ')}`;
+    }
+
+    const clientMap: Record<string, string> = {};
+    clientPages.forEach(c => { clientMap[c.id] = c.name; });
+
+    const blocks = ['\n# FUND HOLDINGS LOOKUP (each line: client · category · current value · cost · institution · status)'];
+    for (const name of matched.slice(0, 5)) {
+      const rs = rows.filter(r => r.name === name);
+      const total = rs.reduce((s, r) => s + r.value, 0);
+      blocks.push(`## ${name} — ${rs.length} holding(s), total RM ${Math.round(total).toLocaleString()}`);
+      for (const r of rs) {
+        const client = r.clientIds.map(id => clientMap[id]).filter(Boolean).join(', ') || '(no client linked)';
+        blocks.push(`- ${client} · ${r.assetClass || 'Uncategorised'} · RM ${Math.round(r.value).toLocaleString()} (cost RM ${Math.round(r.purchase).toLocaleString()})${r.institution ? ` · ${r.institution}` : ''}${r.status ? ` · ${r.status}` : ''}`);
+      }
+    }
+    return blocks.join('\n');
+  } catch { return ''; }
+}
+
 export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -223,7 +310,14 @@ Message: "${body.question}"`;
   }
 
   // Look up any client mentioned in the question (full profile, contact, todos)
-  const clientData = config ? await lookupMentionedClients(config, body.question).catch(() => '') : '';
+  // and any fund/holding named in it (which clients own it, Cash vs EPF).
+  const clientPages = config ? await fetchClientPages(config) : [];
+  const [clientData, fundData] = config
+    ? await Promise.all([
+        lookupMentionedClients(config, body.question, clientPages).catch(() => ''),
+        lookupFundHoldings(config, body.question, clientPages).catch(() => ''),
+      ])
+    : ['', ''];
 
   const systemPrompt = `You are FINVA, the daily co-pilot for ${advisorName}, a licensed financial advisor in Malaysia. Today is ${today}.
 
@@ -232,6 +326,7 @@ You answer from the advisor's live data below: a dashboard snapshot of today's p
 RULES:
 - Use the actual names, dates, emails and figures from the data. Never invent clients, contacts or tasks.
 - When asked for a client's email / contact / to-do list, read it from the "CLIENT:" section below and present it clearly. If a field is blank, say it isn't on record.
+- When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
 - Prioritise by urgency: overdue first, then due-soon, then upcoming.
 - Use RM for money. Keep it tight — short bullet points, no preamble.
 - If asked "what's urgent" / "today's agenda", give a ranked action list (up to 6), each with the client name and why it matters.
@@ -246,7 +341,8 @@ RULES:
 
 === LIVE DASHBOARD DATA ===
 ${body.context || '(no data provided)'}
-${clientData}`;
+${clientData}
+${fundData}`;
 
   try {
     const genAI = new GoogleGenerativeAI(key);
