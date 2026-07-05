@@ -24,6 +24,8 @@ interface Holding {
   purchase: number;
   gain: number;
   returnPct: number;
+  fameAccountNo?: string;
+  fundSource?: string;
 }
 
 const CCY_COLORS: Record<string, string> = {
@@ -39,6 +41,30 @@ const ccyColor   = (c: string) => CCY_COLORS[c]  ?? '#9CB8A0';
 const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+// Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
+// several underlying funds) so the wrapper and its funds read as one account, not
+// unrelated duplicated line items. Holdings without an account no fall into one bucket.
+function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Holding[] }[] {
+  const byAccount = new Map<string, Holding[]>();
+  const ungrouped: Holding[] = [];
+  for (const h of rows) {
+    if (h.fameAccountNo) {
+      const arr = byAccount.get(h.fameAccountNo) ?? [];
+      arr.push(h);
+      byAccount.set(h.fameAccountNo, arr);
+    } else {
+      ungrouped.push(h);
+    }
+  }
+  const groups = Array.from(byAccount.entries()).map(([acct, acctRows]) => ({
+    key: acct,
+    label: `Account ${acct}${acctRows[0].fundSource ? ` · ${acctRows[0].fundSource}` : ''}`,
+    rows: acctRows,
+  }));
+  if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });
+  return groups;
+}
 
 export default function PortfolioPage() {
   const [holdings,     setHoldings]    = useState<Holding[]>([]);
@@ -309,14 +335,27 @@ export default function PortfolioPage() {
                   </div>
                 )}
 
-                {/* Holding rows */}
-                {rows.map((h, i) => {
+                {/* Holding rows — sub-grouped by FAME account no */}
+                {(() => {
+                  const acctGroups = groupByAccount(rows);
+                  const showAcctHeaders = acctGroups.length > 1;
                   const cols = '1fr 120px 120px 90px 80px';
-                  return (
+                  return acctGroups.map(acctGroup => (
+                    <div key={acctGroup.key}>
+                      {showAcctHeaders && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 20px 5px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: 'var(--text2)' }}>{acctGroup.label}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {acctGroup.rows.length} fund{acctGroup.rows.length === 1 ? '' : 's'}</span>
+                          <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      {acctGroup.rows.map((h, i) => (
                     <div key={h.id} style={{
                       display: 'grid', gridTemplateColumns: cols,
                       padding: '13px 20px', alignItems: 'center',
-                      borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none',
+                      borderBottom: i < acctGroup.rows.length - 1 ? '1px solid var(--border)' : 'none',
                       transition: 'background 0.12s',
                     }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
@@ -324,7 +363,7 @@ export default function PortfolioPage() {
                     >
                       {/* Holding name */}
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)', flexWrap: 'wrap', paddingLeft: showAcctHeaders ? 13 : 0 }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(h.assetClass), flexShrink: 0 }} />
                           {h.name}
                           {h.currency && h.currency !== 'MYR' && (
@@ -333,12 +372,12 @@ export default function PortfolioPage() {
                           <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
                           <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: 13 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: showAcctHeaders ? 26 : 13 }}>
                           {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
                           {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(h.maturity).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                         </div>
                         {h.currency && h.currency !== 'MYR' && h.valueOrig > 0 && (
-                          <div style={{ fontSize: 10, color: ccyColor(h.currency), fontFamily: 'var(--font-mono)', marginTop: 2, paddingLeft: 13 }}>
+                          <div style={{ fontSize: 10, color: ccyColor(h.currency), fontFamily: 'var(--font-mono)', marginTop: 2, paddingLeft: showAcctHeaders ? 26 : 13 }}>
                             {h.currency} {h.valueOrig.toLocaleString()} @ {h.fxRate.toFixed(4)}
                           </div>
                         )}
@@ -364,8 +403,10 @@ export default function PortfolioPage() {
                         {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
                       </div>
                     </div>
-                  );
-                })}
+                      ))}
+                    </div>
+                  ));
+                })()}
 
                 {/* Client subtotal — only in "All" view */}
                 {activeTab === 'All' && (() => {

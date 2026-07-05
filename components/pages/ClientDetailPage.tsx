@@ -18,6 +18,7 @@ interface Holding {
   assetClass: string; institution: string; status: string; maturity: string;
   currency: string; valueOrig: number; purchaseOrig: number; fxRate: number;
   value: number; purchase: number; gain: number; returnPct: number; units: number;
+  fameAccountNo?: string; fundSource?: string;
 }
 
 interface Policy {
@@ -200,6 +201,32 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
   const totalGain     = totalValue - totalPurchase;
   const avgReturn     = totalPurchase > 0 ? ((totalGain / totalPurchase) * 100).toFixed(1) : '0.0';
 
+  // Group holdings by FAME account no (e.g. "PMART" account M018415 holds several
+  // underlying funds) so a wrapper account and its funds don't read as unrelated,
+  // duplicated line items. Holdings with no account no (older manual entries) fall
+  // into a single "Other" bucket.
+  const accountGroups: { key: string; label: string; rows: Holding[] }[] = (() => {
+    const byAccount = new Map<string, Holding[]>();
+    const ungrouped: Holding[] = [];
+    for (const h of holdings) {
+      if (h.fameAccountNo) {
+        const arr = byAccount.get(h.fameAccountNo) ?? [];
+        arr.push(h);
+        byAccount.set(h.fameAccountNo, arr);
+      } else {
+        ungrouped.push(h);
+      }
+    }
+    const groups = Array.from(byAccount.entries()).map(([acct, rows]) => ({
+      key: acct,
+      label: `Account ${acct}${rows[0].fundSource ? ` · ${rows[0].fundSource}` : ''}`,
+      rows,
+    }));
+    if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });
+    return groups;
+  })();
+  const showGroupHeaders = accountGroups.length > 1;
+
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading portfolio…</div>;
 
   if (holdings.length === 0) return (
@@ -240,24 +267,37 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
               <div style={{ textAlign: 'right' }}>Gain</div>
               <div style={{ textAlign: 'right' }}>Return</div>
             </div>
-            {holdings.map((h, i) => (
-              <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 80px 70px', padding: '12px 20px', alignItems: 'center', borderBottom: i < holdings.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
-                onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
-                onMouseOut={e => (e.currentTarget.style.background = '')}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(h.assetClass), flexShrink: 0 }} />
-                    {h.name}
+            {accountGroups.map(group => (
+              <div key={group.key}>
+                {showGroupHeaders && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 6px', background: 'var(--accent-dim)', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--text)' }}>{group.label}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {group.rows.length} fund{group.rows.length === 1 ? '' : 's'}</span>
+                    <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+                      {Math.round(group.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, paddingLeft: 13 }}>
-                    {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
-                    {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {fmtMonth(h.maturity)}</span>}
+                )}
+                {group.rows.map((h, i) => (
+                  <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 80px 70px', padding: '12px 20px', alignItems: 'center', borderBottom: i < group.rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                    onMouseOut={e => (e.currentTarget.style.background = '')}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)', paddingLeft: showGroupHeaders ? 13 : 0 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(h.assetClass), flexShrink: 0 }} />
+                        {h.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, paddingLeft: showGroupHeaders ? 26 : 13 }}>
+                        {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
+                        {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {fmtMonth(h.maturity)}</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 13 }}>{Math.round(h.value).toLocaleString()}</div>
+                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text3)' }}>{Math.round(h.purchase).toLocaleString()}</div>
+                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: h.gain >= 0 ? 'var(--green)' : 'var(--red)' }}>{h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}</div>
+                    <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{h.returnPct >= 0 ? '+' : ''}{h.returnPct}%</div>
                   </div>
-                </div>
-                <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 13 }}>{Math.round(h.value).toLocaleString()}</div>
-                <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text3)' }}>{Math.round(h.purchase).toLocaleString()}</div>
-                <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: h.gain >= 0 ? 'var(--green)' : 'var(--red)' }}>{h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}</div>
-                <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{h.returnPct >= 0 ? '+' : ''}{h.returnPct}%</div>
+                ))}
               </div>
             ))}
             {/* Grand total */}
