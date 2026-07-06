@@ -58,6 +58,12 @@ const ASSET_COLORS: Record<string, string> = {
 };
 const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 
+// "PRS Acc A" / "PRS Acc B" etc. are just different PRS sub-accounts — showing
+// the letter suffix in the group label reads as separate categories when
+// they're not. Collapse to a single "PRS Acc" label; the account number
+// already distinguishes the group.
+const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
+
 const TYPE_COLORS: Record<string, string> = {
   'ILP': '#60A5FA', 'IUL': '#818CF8', 'UL': '#A78BFA',
   'VUL': '#F59E0B', 'Term Life': '#4ADE80', 'Endowment': '#34D399',
@@ -219,7 +225,7 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
     }
     const groups = Array.from(byAccount.entries()).map(([acct, rows]) => ({
       key: acct,
-      label: `Account ${acct}${rows[0].fundSource ? ` · ${rows[0].fundSource}` : ''}`,
+      label: `Account ${acct}${rows[0].fundSource ? ` · ${normalizeFundSource(rows[0].fundSource)}` : ''}`,
       rows,
     }));
     if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });

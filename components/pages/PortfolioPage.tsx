@@ -42,6 +42,12 @@ const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
+// "PRS Acc A" / "PRS Acc B" etc. are just different PRS sub-accounts — showing
+// the letter suffix in the group label reads as separate categories when
+// they're not. Collapse to a single "PRS Acc" label; the account number
+// already distinguishes the group.
+const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
+
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
@@ -59,7 +65,7 @@ function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Ho
   }
   const groups = Array.from(byAccount.entries()).map(([acct, acctRows]) => ({
     key: acct,
-    label: `Account ${acct}${acctRows[0].fundSource ? ` · ${acctRows[0].fundSource}` : ''}`,
+    label: `Account ${acct}${acctRows[0].fundSource ? ` · ${normalizeFundSource(acctRows[0].fundSource)}` : ''}`,
     rows: acctRows,
   }));
   if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });
