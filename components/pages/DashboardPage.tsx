@@ -848,33 +848,37 @@ export default function DashboardPage() {
               <div style={{ fontSize: 28, marginBottom: 8 }}>🎂</div>
               <div style={{ fontSize: 13 }}>No birthdays in the next 30 days</div>
             </div>
-          ) : upcomingBirthdays.map(c => {
-            const days = daysUntilBirthday(c.dob) ?? 0;
-            return (
-              <div key={c.id} style={{ ...rowStyle, cursor: 'default' }}
-                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
-                onMouseOut={e  => (e.currentTarget.style.background = '')}
-              >
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--surface2)', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', fontSize: 18,
-                }}>🎂</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtShort(c.dob)}</div>
-                </div>
-                <div style={{
-                  ...pillStyle(false),
-                  background: days === 0 ? 'rgba(22,163,74,0.1)' : 'var(--surface2)',
-                  color: days === 0 ? 'var(--green)' : 'var(--text3)',
-                  border: days === 0 ? '1px solid rgba(22,163,74,0.2)' : '1px solid var(--border)',
-                }}>
-                  {days === 0 ? 'Today 🎉' : `${days}d`}
-                </div>
-              </div>
-            );
-          })}
+          ) : (
+            <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+              {upcomingBirthdays.map(c => {
+                const days = daysUntilBirthday(c.dob) ?? 0;
+                return (
+                  <div key={c.id} style={{ ...rowStyle, cursor: 'default' }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'var(--bg)')}
+                    onMouseOut={e  => (e.currentTarget.style.background = '')}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                      background: 'var(--surface2)', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                    }}>🎂</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{c.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtShort(c.dob)}</div>
+                    </div>
+                    <div style={{
+                      ...pillStyle(false),
+                      background: days === 0 ? 'rgba(22,163,74,0.1)' : 'var(--surface2)',
+                      color: days === 0 ? 'var(--green)' : 'var(--text3)',
+                      border: days === 0 ? '1px solid rgba(22,163,74,0.2)' : '1px solid var(--border)',
+                    }}>
+                      {days === 0 ? 'Today 🎉' : `${days}d`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
