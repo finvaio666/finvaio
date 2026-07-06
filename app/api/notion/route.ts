@@ -109,19 +109,21 @@ export async function GET(req: NextRequest) {
     if (type === 'portfolio') {
       if (!DB.portfolio) return NextResponse.json({ data: [] });
 
-      // Build client ID → name map first
-      const clientPages = await queryAllPages(notion, { database_id: DB.clients, ...scoped() });
+      // Client ID → name map and holdings are independent queries — run them
+      // in parallel instead of one-after-the-other to roughly halve latency.
+      const [clientPages, pages] = await Promise.all([
+        queryAllPages(notion, { database_id: DB.clients, ...scoped() }),
+        queryAllPages(notion, {
+          database_id: DB.portfolio,
+          ...scoped(),
+          sorts: [{ property: 'Holding Name', direction: 'ascending' }],
+        }),
+      ]);
       const clientMap: Record<string, string> = {};
       clientPages.forEach(page => {
         const name = page.properties['Client Name']?.type === 'title'
           ? page.properties['Client Name'].title[0]?.plain_text ?? '' : '';
         if (name) clientMap[page.id] = name;
-      });
-
-      const pages = await queryAllPages(notion, {
-        database_id: DB.portfolio,
-        ...scoped(),
-        sorts: [{ property: 'Holding Name', direction: 'ascending' }],
       });
       const data = pages.map(page => {
         const p = page.properties;
