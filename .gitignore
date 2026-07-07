@@ -47,3 +47,7 @@ next-env.d.ts
 /FA_Data
 /FA_Onboarding_Templates
 *.zip
+
+# migration planning docs — local only, not part of the app repo
+/MIGRATION.md
+/NOTION_CLEANUP.md
