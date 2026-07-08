@@ -276,16 +276,13 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
             {accountGroups.map(group => (
               <div key={group.key}>
                 {showGroupHeaders && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 6px', background: 'var(--accent-dim)', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--text)' }}>{group.label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px 7px', background: 'var(--accent-dim)', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{group.label}</span>
                     <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {group.rows.length} fund{group.rows.length === 1 ? '' : 's'}</span>
-                    <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
-                      {Math.round(group.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
-                    </span>
                   </div>
                 )}
                 {group.rows.map((h, i) => (
-                  <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 80px 70px', padding: '12px 20px', alignItems: 'center', borderBottom: i < group.rows.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.12s' }}
+                  <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 80px 70px', padding: '12px 20px', alignItems: 'center', borderBottom: '1px solid var(--border)', transition: 'background 0.12s' }}
                     onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
                     onMouseOut={e => (e.currentTarget.style.background = '')}>
                     <div>
@@ -304,6 +301,14 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
                     <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{h.returnPct >= 0 ? '+' : ''}{h.returnPct}%</div>
                   </div>
                 ))}
+                {showGroupHeaders && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)' }}>Subtotal — {group.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+                      {Math.round(group.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
+                    </span>
+                  </div>
+                )}
               </div>
             ))}
             {/* Grand total */}

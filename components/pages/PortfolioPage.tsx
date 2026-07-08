@@ -349,19 +349,16 @@ export default function PortfolioPage() {
                   return acctGroups.map(acctGroup => (
                     <div key={acctGroup.key}>
                       {showAcctHeaders && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 20px 5px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ fontWeight: 700, fontSize: 11, color: 'var(--text2)' }}>{acctGroup.label}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 6px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>{acctGroup.label}</span>
                           <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {acctGroup.rows.length} fund{acctGroup.rows.length === 1 ? '' : 's'}</span>
-                          <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
-                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
-                          </span>
                         </div>
                       )}
                       {acctGroup.rows.map((h, i) => (
                     <div key={h.id} style={{
                       display: 'grid', gridTemplateColumns: cols,
                       padding: '13px 20px', alignItems: 'center',
-                      borderBottom: i < acctGroup.rows.length - 1 ? '1px solid var(--border)' : 'none',
+                      borderBottom: '1px solid var(--border)',
                       transition: 'background 0.12s',
                     }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
@@ -410,6 +407,14 @@ export default function PortfolioPage() {
                       </div>
                     </div>
                       ))}
+                      {showAcctHeaders && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>Subtotal — {acctGroup.label}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ));
                 })()}
