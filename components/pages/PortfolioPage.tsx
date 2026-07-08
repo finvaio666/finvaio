@@ -80,6 +80,7 @@ export default function PortfolioPage() {
   const [showNav,      setShowNav]     = useState(false);
   const [formOpen,     setFormOpen]    = useState(false);
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
+  const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
   const { clients: allClients }        = useClients();
 
   const loadHoldings = (fresh = false) => {
@@ -346,15 +347,22 @@ export default function PortfolioPage() {
                   const acctGroups = groupByAccount(rows);
                   const showAcctHeaders = acctGroups.length > 1;
                   const cols = '1fr 120px 120px 90px 80px';
-                  return acctGroups.map(acctGroup => (
+                  return acctGroups.map(acctGroup => {
+                    const collapseKey = `${client}::${acctGroup.key}`;
+                    const isCollapsed = showAcctHeaders && (collapsed[collapseKey] ?? true);
+                    return (
                     <div key={acctGroup.key}>
                       {showAcctHeaders && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 6px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                        <div
+                          onClick={() => setCollapsed(prev => ({ ...prev, [collapseKey]: !(prev[collapseKey] ?? true) }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px 7px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}
+                        >
+                          <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', transform: isCollapsed ? 'none' : 'rotate(90deg)', display: 'inline-block' }}>▶</span>
                           <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>{acctGroup.label}</span>
                           <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {acctGroup.rows.length} fund{acctGroup.rows.length === 1 ? '' : 's'}</span>
                         </div>
                       )}
-                      {acctGroup.rows.map((h, i) => (
+                      {!isCollapsed && acctGroup.rows.map((h, i) => (
                     <div key={h.id} style={{
                       display: 'grid', gridTemplateColumns: cols,
                       padding: '13px 20px', alignItems: 'center',
@@ -416,7 +424,8 @@ export default function PortfolioPage() {
                         </div>
                       )}
                     </div>
-                  ));
+                    );
+                  });
                 })()}
 
                 {/* Client subtotal — only in "All" view */}

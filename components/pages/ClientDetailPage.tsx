@@ -186,6 +186,7 @@ function OverviewTab({ client }: { client: ReturnType<typeof useClients>['client
 function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch('/api/notion?type=portfolio', { cache: 'no-store' })
@@ -273,15 +274,21 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
               <div style={{ textAlign: 'right' }}>Gain</div>
               <div style={{ textAlign: 'right' }}>Return</div>
             </div>
-            {accountGroups.map(group => (
+            {accountGroups.map(group => {
+              const isCollapsed = showGroupHeaders && (collapsed[group.key] ?? true);
+              return (
               <div key={group.key}>
                 {showGroupHeaders && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px 7px', background: 'var(--accent-dim)', borderBottom: '1px solid var(--border)' }}>
+                  <div
+                    onClick={() => setCollapsed(prev => ({ ...prev, [group.key]: !(prev[group.key] ?? true) }))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: 'var(--accent-dim)', borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    <span style={{ fontSize: 11, color: 'var(--text3)', transition: 'transform 0.15s', transform: isCollapsed ? 'none' : 'rotate(90deg)', display: 'inline-block' }}>▶</span>
                     <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{group.label}</span>
                     <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {group.rows.length} fund{group.rows.length === 1 ? '' : 's'}</span>
                   </div>
                 )}
-                {group.rows.map((h, i) => (
+                {!isCollapsed && group.rows.map((h, i) => (
                   <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 80px 70px', padding: '12px 20px', alignItems: 'center', borderBottom: '1px solid var(--border)', transition: 'background 0.12s' }}
                     onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
                     onMouseOut={e => (e.currentTarget.style.background = '')}>
@@ -310,7 +317,8 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
             {/* Grand total */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 80px 70px', padding: '10px 20px', background: 'var(--surface2)', borderTop: '2px solid var(--text)', fontSize: 13, fontWeight: 700 }}>
               <div style={{ color: 'var(--text)' }}>TOTAL <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>(MYR equiv.)</span></div>
