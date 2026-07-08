@@ -302,9 +302,9 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
                   </div>
                 ))}
                 {showGroupHeaders && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)' }}>Subtotal — {group.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)' }}>Subtotal — {group.label}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
                       {Math.round(group.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
                     </span>
                   </div>

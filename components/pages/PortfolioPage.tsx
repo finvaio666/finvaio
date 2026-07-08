@@ -408,9 +408,9 @@ export default function PortfolioPage() {
                     </div>
                       ))}
                       {showAcctHeaders && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>Subtotal — {acctGroup.label}</span>
-                          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Subtotal — {acctGroup.label}</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
                             {Math.round(acctGroup.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
                           </span>
                         </div>
