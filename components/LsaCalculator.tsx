@@ -57,6 +57,13 @@ export default function LsaCalculator() {
   const chosenInsurers = chosen.map((c) => c.insurer);
   const firstQuoted = (results ?? []).find((r) => r.monthly != null)?.insurer;
 
+  // lowest / highest lifetime outlay to age 80 among quoted insurers — surfaces
+  // how GE's low stepped headline balloons into a high lifetime cost.
+  const outlayRange = useMemo(() => {
+    const vals = (results ?? []).map((r) => r.outlay80).filter((v): v is number => v != null);
+    return vals.length ? { lo: Math.min(...vals), hi: Math.max(...vals) } : null;
+  }, [results]);
+
   async function downloadPdf() {
     const { default: jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -75,11 +82,11 @@ export default function LsaCalculator() {
     let y = (clientName ? 98 : 84) + 18;
     autoTable(doc, {
       startY: y,
-      head: [['Insurer', 'Product', 'Monthly', 'Annual', 'Death benefit basis']],
-      body: chosen.map((c) => [c.insurer, c.product, fmt(c.monthly as number), fmt(c.annual as number), c.deathBasis]),
+      head: [['Insurer', 'Product', 'Monthly', 'Annual', 'Total to 80', 'Death benefit basis']],
+      body: chosen.map((c) => [c.insurer, c.product, fmt(c.monthly as number), fmt(c.annual as number), c.outlay80 != null ? fmt(c.outlay80) : '-', c.deathBasis]),
       styles: { fontSize: 9, cellPadding: 5 },
       headStyles: { fillColor: [31, 62, 100] },
-      columnStyles: { 4: { cellWidth: 150 } },
+      columnStyles: { 5: { cellWidth: 130 } },
       theme: 'grid',
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 18;
@@ -174,7 +181,8 @@ export default function LsaCalculator() {
       {results && (
         <div style={{ marginTop: 24 }}>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
-            Tick the insurers to include in the proposal (cheapest 3 with a quote pre-selected):
+            Tick the insurers to include in the proposal (cheapest 3 with a quote pre-selected).{' '}
+            <span style={{ color: 'var(--text)' }}>&ldquo;Total to age 80&rdquo;</span> is the full premium outlay over the life of the policy — the honest cost, where a low <em>stepped</em> monthly (e.g. GE) can end up the most expensive.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             {results.map((r) => {
@@ -196,6 +204,19 @@ export default function LsaCalculator() {
                     <>
                       <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>{fmt(r.monthly as number)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text3)' }}> /mo</span></div>
                       <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmt(r.annual as number)} / year</div>
+                      {r.outlay80 != null && (() => {
+                        const isLo = outlayRange && r.outlay80 === outlayRange.lo;
+                        const isHi = outlayRange && r.outlay80 === outlayRange.hi;
+                        const col = isHi ? '#B45309' : isLo ? '#1F6B3B' : 'var(--text3)';
+                        return (
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)', fontSize: 11 }}>
+                            <span style={{ color: 'var(--text3)' }}>Total to age 80: </span>
+                            <span style={{ fontWeight: 700, color: col }}>{fmt(r.outlay80)}</span>
+                            {isHi && <span style={{ color: col, fontWeight: 600 }}> · most</span>}
+                            {isLo && <span style={{ color: col, fontWeight: 600 }}> · least</span>}
+                          </div>
+                        );
+                      })()}
                     </>
                   ) : (
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text3)', padding: '8px 0' }}>{r.note ?? 'No quote'}</div>
@@ -241,6 +262,7 @@ export default function LsaCalculator() {
                 <div style={{ fontWeight: 700, color: INSURER_COLOR[c.insurer], fontSize: 13 }}>{c.insurer}</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{fmt(c.monthly as number)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/mo</span></div>
                 <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(c.annual as number)}/yr</div>
+                {c.outlay80 != null && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>Total to 80: <strong style={{ color: 'var(--text)' }}>{fmt(c.outlay80)}</strong></div>}
               </div>
             ))}
           </div>
