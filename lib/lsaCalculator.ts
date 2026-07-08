@@ -29,6 +29,15 @@ export const LSA_DEATH_BASIS: Record<LsaInsurer, string> = {
   Prudential: 'Higher of (SA + Cover Booster) or units',
 };
 
+// Sum-assured scaling exponent k, where monthly ≈ monthly(per RM1m) × (SA/1m)^k.
+// Premium is sub-linear in SA (larger cover = lower per-RM cost). Calibrated against
+// real M40 NS RM3,000,000 quotes (2026-07-08): Allianz RM2,498, HLA RM1,600,
+// Prudential RM1,673 — these exponents reproduce them to the ringgit. AIA and GE keep
+// k=1 (linear) until high-SA quotes are available for them.
+export const LSA_SA_EXPONENT: Record<LsaInsurer, number> = {
+  AIA: 1.0, Allianz: 0.992, GE: 1.0, HLA: 0.939, Prudential: 0.947,
+};
+
 // Short caveat shown on each result card.
 export const LSA_CAVEAT: Record<LsaInsurer, string> = {
   AIA: 'Level premium to 80, auto-extends to 100. Wealth Booster + Wealth Rewards.',
@@ -88,10 +97,12 @@ export function estimate(
     base.note = insurer === 'GE' && gender === 'M' ? 'No male rates published' : 'No quote available';
     return base;
   }
-  const monthly = Math.ceil((m * sa) / BASE_SA);   // round UP to whole ringgit
+  // Sub-linear sum-assured scaling: (SA/1m)^k (k=1 at BASE_SA keeps grid exact).
+  const saFactor = Math.pow(sa / BASE_SA, LSA_SA_EXPONENT[insurer]);
+  const monthly = Math.ceil(m * saFactor);   // round UP to whole ringgit
   base.monthly = monthly;
   base.annual = monthly * 12;
-  base.outlay80 = o == null ? null : Math.round((o * sa) / BASE_SA);
+  base.outlay80 = o == null ? null : Math.round(o * saFactor);
   if (insurer === 'GE') base.note = 'Year-1 stepped premium — rises steeply later; see total outlay';
   return base;
 }
