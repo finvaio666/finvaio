@@ -15,6 +15,17 @@
 
 import { Client, isFullPage } from '@notionhq/client';
 import { AdvisorConfig } from './getAdvisorConfig';
+import * as sbTasks from './repos/tasks';
+
+/**
+ * Data-source switch. When DATA_SOURCE_TASKS === 'supabase', Tasks are routed
+ * through Supabase (primary) with a best-effort Notion mirror. Any other value
+ * (incl. unset) keeps the original Notion-only path below unchanged, so setting
+ * the flag back to 'notion' is an instant rollback.
+ */
+function useSupabase(): boolean {
+  return process.env.DATA_SOURCE_TASKS === 'supabase';
+}
 
 export interface Task {
   id:       string;
@@ -58,6 +69,7 @@ export async function listTasks(
   config: AdvisorConfig,
   opts: { client?: string; status?: 'Open' | 'Done'; type?: 'Admin' | 'Client' } = {},
 ): Promise<Task[]> {
+  if (useSupabase()) return sbTasks.listTasks(config, opts);
   if (!config.tasksDbId || !config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return [];
   const notion = notionFor(config);
   // Centralized model: scope to this advisor's tasks (Admin sees all).
@@ -105,6 +117,7 @@ export async function createTask(
   config: AdvisorConfig,
   t: { task: string; client?: string; due?: string; source?: string; type?: 'Admin' | 'Client' },
 ): Promise<void> {
+  if (useSupabase()) return sbTasks.createTask(config, t);
   if (!config.tasksDbId) throw new Error('Tasks database not configured.');
   const notion = notionFor(config);
   const props: Record<string, unknown> = {
@@ -124,6 +137,7 @@ export async function createTask(
 
 /** Mark a task done or reopen it. */
 export async function setTaskStatus(config: AdvisorConfig, taskId: string, done: boolean): Promise<void> {
+  if (useSupabase()) return sbTasks.setTaskStatus(config, taskId, done);
   const notion = notionFor(config);
   const props: Record<string, unknown> = {
     'Status': { select: { name: done ? 'Done' : 'Open' } },
@@ -134,6 +148,7 @@ export async function setTaskStatus(config: AdvisorConfig, taskId: string, done:
 
 /** Delete a task (archive the Notion page). */
 export async function deleteTask(config: AdvisorConfig, taskId: string): Promise<void> {
+  if (useSupabase()) return sbTasks.deleteTask(config, taskId);
   const notion = notionFor(config);
   await notion.pages.update({ page_id: taskId, archived: true } as never);
 }
