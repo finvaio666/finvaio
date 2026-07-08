@@ -232,7 +232,9 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
     if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });
     return groups;
   })();
-  const showGroupHeaders = accountGroups.length > 1;
+  // Always show the account header, even for a single account — every
+  // client's funds should consistently read as "belonging to account X".
+  const showGroupHeaders = accountGroups.length > 0;
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading portfolio…</div>;
 

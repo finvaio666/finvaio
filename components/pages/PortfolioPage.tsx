@@ -345,7 +345,9 @@ export default function PortfolioPage() {
                 {/* Holding rows — sub-grouped by FAME account no */}
                 {(() => {
                   const acctGroups = groupByAccount(rows);
-                  const showAcctHeaders = acctGroups.length > 1;
+                  // Always show the account header, even for a single account — every
+                  // client's funds should consistently read as "belonging to account X".
+                  const showAcctHeaders = acctGroups.length > 0;
                   const cols = '1fr 120px 120px 90px 80px';
                   return acctGroups.map(acctGroup => {
                     const collapseKey = `${client}::${acctGroup.key}`;
