@@ -9,6 +9,16 @@ import pg from 'pg';
 const APPLY = process.argv.includes('--apply');
 const DB_ID = process.env.COMPANY_TASKS_DB_ID!;
 
+// Post-cutover guard: once DATA_SOURCE_TASKS=supabase, Supabase is authoritative —
+// applying would overwrite newer Supabase edits with stale Notion values.
+// NOTE: this only sees the LOCAL .env.local flag; always confirm the Vercel
+// (production) flag is still 'notion' before running --apply.
+if (APPLY && process.env.DATA_SOURCE_TASKS === 'supabase') {
+  console.error('✋ Refusing --apply: DATA_SOURCE_TASKS=supabase (post-cutover). Supabase is now');
+  console.error('   authoritative; syncing Notion → Supabase would clobber newer Supabase edits.');
+  process.exit(1);
+}
+
 type P = Record<string, unknown>;
 const rt  = (p: P, k: string) => { const v = p[k] as { type: string; rich_text?: { plain_text: string }[] }; return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : ''; };
 const sel = (p: P, k: string) => { const v = p[k] as { type: string; select?: { name: string } }; return v?.type === 'select' ? (v.select?.name ?? '') : ''; };

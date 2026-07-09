@@ -18,10 +18,13 @@ import { AdvisorConfig } from './getAdvisorConfig';
 import * as sbTasks from './repos/tasks';
 
 /**
- * Data-source switch. When DATA_SOURCE_TASKS === 'supabase', Tasks are routed
- * through Supabase (primary) with a best-effort Notion mirror. Any other value
- * (incl. unset) keeps the original Notion-only path below unchanged, so setting
- * the flag back to 'notion' is an instant rollback.
+ * Data-source switch. When DATA_SOURCE_TASKS === 'supabase', Tasks are served
+ * from Supabase ONLY (straight cutover, decided 2026-07-07) — there is NO
+ * Notion mirror; the Notion Tasks DB stays frozen as a pre-cutover backup.
+ * Any other value (incl. unset) keeps the original Notion-only path below
+ * unchanged. Flipping back to 'notion' is a READ-ONLY rollback: tasks
+ * created/updated while on Supabase do not exist in Notion and will vanish
+ * from the UI until re-synced. Never run reconcile --apply after cutover.
  */
 function useSupabase(): boolean {
   return process.env.DATA_SOURCE_TASKS === 'supabase';
