@@ -139,8 +139,9 @@ export default function LsaCalculator() {
           <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="e.g. Mr Tan" style={inp} />
         </div>
         <div>
-          <label style={lbl}>Age (entry, 20–60)</label>
+          <label style={lbl}>Age last birthday (20–60)</label>
           <input type="number" min={20} max={60} value={age} onChange={(e) => setAge(e.target.value)} style={inp} />
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>Key the client&apos;s actual age — if a Prudential/GE sheet shows ANB X, that is age X−1 here.</div>
         </div>
         <div>
           <label style={lbl}>Gender</label>
