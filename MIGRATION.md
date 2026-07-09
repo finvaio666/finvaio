@@ -1,0 +1,394 @@
+# MIGRATION — Notion → Supabase (Postgres)
+
+> 目标：把当前用 Notion 当数据库的架构，逐张表迁到 Supabase（纯 Postgres）。
+> 原则：**绞杀者模式**，一张表一张表迁，迁一张测一张，Notion 保留做后备直到验证通过。
+> 状态图例：⬜ 未开始 · 🟨 进行中 · ✅ 已测通 · ⏸ 暂停
+
+最后更新：2026-07-09
+
+---
+
+## 0. 已锁定的决策
+
+| 决策 | 结论 |
+|---|---|
+| 查询层 | **supabase-js**（server-side，service_role key） |
+| 认证 | **保留现有 JWT**（jose）；Supabase 只当纯 Postgres，不用 Supabase Auth |
+| 多租户 | `advisor_id` 列 + 服务端手动过滤（沿用现有 `advisorFilter()` 逻辑）；RLS 暂不上，留待第二阶段 |
+| 迁移策略 | 绞杀者模式，表级切换，env 开关控制走 Notion 还是 Supabase，可回滚 |
+| 清理 | Phase 4 **不删** Notion 代码，改为注释掉 + 登记到 `NOTION_CLEANUP.md`，稳定后再清 |
+
+---
+
+## 0.5 工作守则（每一步都必须遵守）
+
+> 这两条优先级最高，凌驾于「快点做完」之上。
+
+1. **每完成一个重大改动 + 测试通过后 → 提醒 Commit。**
+   - 由 Claude 在测通后主动提醒「现在可以 commit 了」，附上建议的 commit message。
+   - 每个 Phase / 每张表切换都是一个独立 commit，粒度小、可回滚。
+   - 遇到问题时可以直接 `git revert` / 回到上一个 commit，绝不在没提交的状态下堆积多个改动。
+
+2. **不碰现有逻辑。**
+   - 迁移一律用「新增」方式：新建 `lib/repos/*`、新 schema、用 `DATA_SOURCE_*` env 开关切换，旧的 Notion 路径原样保留。
+   - **如果某个改动不得不动到现有逻辑** → 先停下，把「哪里必须改、为什么、影响什么」讲清楚，通知你，由你拍板后才动。绝不擅自改现有行为。
+
+---
+
+## 1. 命名与 schema 约定
+
+- 表名、列名一律 **snake_case**（Notion 里带空格/emoji 的属性名一律清洗，如 `Value (MYR)` → `value_myr`，`👥 Clients` → `client_id`）。
+- 每张业务表都带：
+  - `id uuid primary key default gen_random_uuid()`
+  - `advisor_id uuid not null references advisors(id)` （多租户隔离键）
+  - `created_at timestamptz not null default now()`
+  - `updated_at timestamptz not null default now()`
+- Notion 的 relation → Postgres 外键（`references`）。
+- Notion 的 select → 直接存 text（如需约束再加 CHECK 或 enum）。
+- 迁移期每张业务表额外保留 `notion_page_id text unique`，用于数据搬迁时对账 + 关系映射，稳定后可删（登记在 NOTION_CLEANUP.md）。
+
+### 环境变量（新增）
+```
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+# 迁移开关：每张表用一个 flag 控制走哪边（示例）
+DATA_SOURCE_TASKS=notion        # notion | supabase
+DATA_SOURCE_CLIENTS=notion
+# ...
+```
+
+---
+
+## 2. 分阶段进度
+
+### Phase 0 — 地基（不改任何行为）  ✅ 完成 2026-07-07
+- [x] 建 Supabase 项目（region `ap-northeast-1` 东京），连接串进 `.env.local`（`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`）
+- [x] 装 `@supabase/supabase-js`
+- [x] `lib/supabase.ts`：导出 server-side 单例 client（service_role，`persistSession:false`）
+- [x] 定 migration 目录 → **`db/schema.sql`**（单文件手动跑，暂不引入 Supabase CLI；Phase 1 建 `tasks` 时正式启用）
+- [x] 冒烟测试：连通验证通过（PGRST205 探针 = 成功到达 PostgREST）
+- ✅ 通过标准：本地能连、能查 —— **已达成**
+- 💾 测通后 → 提醒 Commit（`chore: add supabase client + connection`）
+
+### Phase 1 — 试点表 Tasks  🟨 代码全部测通，生产 cutover 待执行
+- [x] `tasks` 表（Supabase 预置已存在；type CHECK 已改 FA→Client，见 db/migrations/）
+- [x] `lib/repos/tasks.ts`（数据访问层，封装 CRUD；直切模式，无 Notion mirror）
+- [x] 用 env 开关切 tasks 相关路由到 Supabase（`DATA_SOURCE_TASKS`，现 = notion/off）
+- [x] E2E 测通（scripts/e2e-tasks-http.ts，走完整 HTTP 栈）+ reconcile 对账 100% 同步（2026-07-08）
+- [x] reconcile 加 post-cutover 防呆（2026-07-09）
+- [ ] 生产 cutover（流程见 §5 第 7 步；前置：rotate Notion key + Vercel env 配置）
+- ✅ 通过标准：UI 里 Task 增删改查行为与 Notion 一致
+- 💾 测通后 → 提醒 Commit（`feat(migrate): tasks on supabase behind flag`）——已完成，commit 5dc82e7 / 4d66d7c / e1fb629 / 95009df
+
+### Phase 2 — 业务表（按依赖顺序，逐个独立测）
+> 顺序理由：被依赖的表（clients）先建，relation 才能转外键。
+
+- [ ] 2.1 `clients` ⬜ — 被依赖方，先建
+- [ ] 2.2 `portfolio` ⬜ — relation → `client_id` 外键
+- [ ] 2.3 `insurance` ⬜
+- [ ] 2.4 `assets` ⬜ — 净值 Assets & Liabilities
+- [ ] 2.5 `cashflow` ⬜ — 顺便把「archive 全部旧记录再新建」改成真 `UPSERT`
+- [ ] 2.6 `meeting_notes` ⬜
+- [ ] 2.7 `products` ⬜ — Insurance Plans + Funds 两张产品目录
+- [ ] 2.8 `ai_usage` ⬜ — 日志表，最低风险
+- [ ] 2.9 `forms_library` ⬜ — 只迁元数据/索引，PDF 本体仍在 Google Drive
+- ✅ 每张表通过标准：对应页面 CRUD 正常 + 多顾问隔离正确
+- 💾 **每张表**测通后独立 Commit（如 `feat(migrate): portfolio on supabase`），再做下一张
+
+### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜
+- [ ] Notion Users page → `advisors` 表（name / role / features / OAuth tokens）
+- [ ] 重写 `getAdvisorConfig`：不再需要 per-advisor DB ID；OAuth token 顺便**加密存储**（接安全审查第 2 项）
+- [ ] 登录、`/api/auth/*`、多顾问隔离、Admin 看全部
+- ✅ 通过标准：登录正常、数据隔离正确；此步做完即可切断 Notion 主链路
+- 💾 测通后 → 提醒 Commit（`feat(migrate): advisors/config on supabase`）
+
+### Phase 4 — 清理（暂缓执行）  ⏸
+> **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
+> 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。
+- [ ] 所有 Notion 旧路径用 `// [NOTION-LEGACY]` 标记 + 注释
+- [ ] 逐条登记进 `NOTION_CLEANUP.md`
+- [ ] （稳定后再做）移除 `@notionhq/client`、`lib/notionQueryAll.ts`、相关 env
+
+---
+
+## 3. 表清单（12 张）
+
+| # | Notion DB | 目标表 | env（现） | 关系 |
+|---|---|---|---|---|
+| 1 | Clients | `clients` | COMPANY_CLIENTS_DB_ID | 被 portfolio/insurance 等引用 |
+| 2 | Portfolio | `portfolio` | COMPANY_PORTFOLIO_DB_ID | → clients |
+| 3 | Insurance | `insurance` | COMPANY_INSURANCE_DB_ID | → clients |
+| 4 | Assets（净值） | `assets` | COMPANY_ASSETS_DB_ID | → clients |
+| 5 | Cashflow | `cashflow` | COMPANY_CASHFLOW_DB_ID | → clients |
+| 6 | Meeting Notes | `meeting_notes` | COMPANY_MEETING_NOTES_DB_ID | → clients |
+| 7 | Tasks | `tasks` | COMPANY_TASKS_DB_ID | → clients（可空） |
+| 8 | Insurance Plans | `insurance_plans` | (per-advisor) | 产品目录 |
+| 9 | Funds | `funds` | (per-advisor) | 产品目录 |
+| 10 | Users | `advisors` | NOTION_USERS_DB_ID | 多租户根 |
+| 11 | AI Usage | `ai_usage` | COMPANY_AI_USAGE_DB_ID | → advisors |
+| 12 | Forms Library | `forms_library` | COMPANY_FORMS_DB_ID | PDF 在 Drive |
+
+---
+
+## 4. 字段映射（做一张表填一张，别提前臆测）
+
+> 规则：迁某张表时，先打开对应路由把「Notion 属性名 → 列名 → 类型」列全，评审通过再写 schema。
+> 下面先放两张**已从代码核实**的作为范例，其余留空待填。
+
+### 4.x portfolio（已核实，来源 `app/api/portfolio/route.ts`）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Holding Name (title) | `holding_name` | text | |
+| Asset class (select) | `asset_class` | text | |
+| Institution (rich_text) | `institution` | text | |
+| Status (select) | `status` | text | |
+| Currency (select) | `currency` | text | |
+| Value (Original Currency) | `value_orig` | numeric | |
+| Purchase price (original currency) | `purchase_orig` | numeric | |
+| FX Rate to MYR | `fx_rate` | numeric | 默认 1 |
+| Value (MYR) | `value_myr` | numeric | |
+| Purchase price (MYR) | `purchase_myr` | numeric | |
+| Units | `units` | numeric | |
+| Maturity date (date) | `maturity_date` | date | 可空 |
+| FAME Account No (rich_text) | `fame_account_no` | text | 只读路由用；写路由未覆盖 |
+| Fund Source (rich_text) | `fund_source` | text | 只读路由用；写路由未覆盖 |
+| Advisor (select) | `advisor_id` | uuid FK | 由名称映射到 id |
+| 👥 Clients (relation) | `client_id` | uuid FK | 可空 |
+
+### 4.y advisors（已核实，来源 `lib/getAdvisorConfig.ts`）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Name (title) | `name` | text | |
+| Role (select) | `role` | text | Admin / Advisor |
+| Features | `features` | text[] | 逗号串 → 数组 |
+| Email Provider | `email_provider` | text | gmail / outlook |
+| Gmail Refresh Token | `gmail_refresh_token` | text | **加密存** |
+| Gmail Address | `gmail_address` | text | |
+| Outlook Refresh Token | `outlook_refresh_token` | text | **加密存** |
+| Outlook Address | `outlook_address` | text | |
+| Calendar Provider/Token/Address | `calendar_*` | text | Token **加密存** |
+| Drive Refresh Token | `drive_refresh_token` | text | **加密存** |
+| Institutions JSON | `institutions` | jsonb | |
+| (登录) Username / Password Hash | `username` / `password_hash` | text | 来自 Users DB |
+| ~~各 *DB ID~~ | — | — | 迁移后**废弃**，单一 schema 不再需要 |
+
+### 4.1 clients（来源 `app/api/notion/route.ts` GET + `app/api/admin/clients` + `app/api/meetings` 回写）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Client Name (title) | `name` | text | |
+| Status (select) | `status` | text | |
+| Client Segment (select) | `segment` | text | |
+| AUM (MYR) (number) | `aum_myr` | numeric | admin 路由还兼容 `AUM`/`Total AUM` 旧名——迁移时统一成这一列 |
+| Monthly income (MYR) (number) | `monthly_income_myr` | numeric | |
+| Risk Profile (select) | `risk_profile` | text | admin 兼容 `Risk` 旧名 |
+| Next review date (date) | `next_review_date` | date | meetings POST 会回写此列 |
+| Last review date (date) | `last_review_date` | date | meetings POST 会回写此列 |
+| Onboarding date (date) | `onboarding_date` | date | |
+| Financial goals (multi_select) | `financial_goals` | text[] | |
+| Phone (phone_number) | `phone` | text | admin 兼容 `Phone Number`/`Mobile` |
+| Email (email) | `email` | text | admin 兼容 `Email Address` |
+| Date of Birth (date) | `date_of_birth` | date | 生日提醒用 |
+| Advisor (select) | `advisor_id` | uuid FK | |
+
+> **决策点 A —— 统一客户表列名（结论：采纳，风险近乎零）**
+>
+> **根因**：读客户字段分两派——「规范派」（`notion`/`ai`/`reports`/`sync-aum`/`meetings`，也是所有**写入**用的名字）用标准列名；「回退派」仅 3 处（`admin/clients`、`admin/overview`、`dashboard-assistant`）带一串 `||` 别名兜底（`Total AUM`/`Risk`/`Mobile`/`Email Address`/`Client Status`/`Next Review`）。
+> **关键**：这些别名**只被读、从不被写**——是「每顾问独立 DB」时代的遗留。
+> **已确认**：现在是**单一共享 Clients DB（集中模式）** → 别名列几乎肯定不存在，回退是**死代码**，统一后风险≈0。
+> **顺带修 bug**：`admin/clients` 读 `Next Review`，但全 app 写 `Next review date` → 该列对 app 客户长期为空；统一到 `next_review_date` 后自动修好。
+> **改动影响**：迁移后删掉那 3 处 `||` 兜底链，全部直读规范列；运行时零影响，只是更简单、数据不再可能分叉。
+> **一次性动作**：import 前跑一次「列名审计」确认共享 DB 实际列名（保险），导完对一下每顾问 AUM 合计即可。规范列名 = 见上表。
+
+### 4.2 insurance（来源 `app/api/insurance/route.ts` + notion GET）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Policy Name (title) | `policy_name` | text | |
+| Policy Owner (rich_text) | `policy_owner` | text | |
+| Life Assured (rich_text) | `life_assured` | text | |
+| Insurance Type (select) | `insurance_type` | text | |
+| Benefits (multi_select) | `benefits` | text[] | |
+| Status (select) | `status` | text | |
+| Insurer (rich_text) | `insurer` | text | |
+| Policy Number (rich_text) | `policy_number` | text | |
+| Sum Assured (MYR) | `sum_assured_myr` | numeric | |
+| Life Cover (MYR) | `life_cover_myr` | numeric | |
+| CI Cover (MYR) | `ci_cover_myr` | numeric | |
+| PA Cover (MYR) | `pa_cover_myr` | numeric | |
+| TPD Cover (MYR) | `tpd_cover_myr` | numeric | |
+| Annual Premium (MYR) | `annual_premium_myr` | numeric | |
+| Beneficiary (rich_text) | `beneficiary` | text | |
+| Medical Class (rich_text) | `medical_class` | text | |
+| Medical Card (rich_text) | `medical_card` | text | |
+| Notes (rich_text) | `notes` | text | |
+| Commencement Date (date) | `commencement_date` | date | |
+| Maturity Date (date) | `maturity_date` | date | |
+| Advisor (select) | `advisor_id` | uuid FK | |
+| Clients (relation) | `client_id` | uuid FK | 注意属性名是 `Clients`（无 emoji），与 portfolio 的 `👥 Clients` 不同 |
+
+### 4.3 assets（净值；来源 `app/api/networth/route.ts` + notion GET，分类枚举见 `lib/networthForm.ts`）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Name (title) | `name` | text | 行项目名，如 "Saving Accounts" |
+| Client (rich_text) | `client_name` | text | ⚠️ 存的是**客户名字符串**，不是 relation |
+| Type (select) | `item_type` | text | Asset / Liability |
+| Category (select) | `category` | text | 枚举见下 |
+| Value (MYR) (number) | `value_myr` | numeric | |
+| Notes (rich_text) | `notes` | text | 含 `advisor-entry` 标记，用于「重存时替换旧行」 |
+| Advisor (select) | `advisor_id` | uuid FK | |
+
+> Category 枚举：Cash & Deposits / Other Investment / Other Asset / EPF / Retirement / Property / Business（资产）；Credit Card / Car Loan / Personal Loan / Study Loan / Mortgage / Other Liability（负债）。
+> **决策点 B —— assets/tasks 客户关联（结论：采纳）**
+> 现状：`Client` 存**客户名字符串**，非外键。
+> 定案：Postgres 加 `client_id uuid`（迁移时按名字解析到 clients）+ **保留 `client_name text` 兜底**（名字对不上、或客户已删时仍可显示）。
+> 迁移脚本：名字解析失败的行**记进日志**供人工核对，不静默丢弃。tasks 表同此处理。
+
+### 4.4 cashflow（来源 `app/api/cashflow/route.ts` + submit + notion GET）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Entry (title) | `entry` | text | "ClientName — Month Year" |
+| Month (date) | `month` | date | |
+| Monthly income (MYR) | `monthly_income_myr` | numeric | 汇总值 |
+| Fixed expenses (MYR) | `fixed_expenses_myr` | numeric | 汇总值 |
+| Variable expenses (MYR) | `variable_expenses_myr` | numeric | 汇总值 |
+| EPF contribution (MYR) | `epf_contribution_myr` | numeric | 汇总值 |
+| Notes (rich_text = JSON) | `breakdown` | jsonb | ⚠️ 目前把逐项 breakdown JSON 塞在 Notes 里 |
+| Advisor (select) | `advisor_id` | uuid FK | |
+
+> **决策点 C —— cashflow 明细存储（结论：采纳）**
+> 现状：逐项 breakdown JSON 塞在 `Notes` 文本里。
+> 定案：改成独立 `breakdown jsonb` 列（干净、可查询）；汇总值仍保留为独立 numeric 列（income/fixed/variable/epf）。
+> upsert 键 = client + month + advisor（对应现在的 `Entry` 标题去重逻辑）。
+> 迁移脚本：把 Notes 里的 JSON 解析后写进 `breakdown`；解析失败的行记日志。
+
+### 4.5 meeting_notes（来源 `app/api/meetings/route.ts`）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Name (title) | `title` | text | "Client — Type — Date" |
+| Client Name (rich_text) | `client_name` | text | 可选列 |
+| Client (relation) | `client_id` | uuid FK | 可选列，可空 |
+| Meeting Date (date) | `meeting_date` | date | |
+| Meeting Type (select) | `meeting_type` | text | |
+| Notes (rich_text) | `notes` | text | |
+| Action Items (rich_text) | `action_items` | text | tasks 同步会解析它 |
+| Next Review Date (date) | `next_review_date` | date | |
+| Advisor (select) | `advisor_id` | uuid FK | |
+
+### 4.6 tasks（来源 `lib/tasks.ts`）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Task (title) | `task` | text | |
+| Client (rich_text) | `client_name` | text | 名字字符串（同 assets） |
+| Status (select) | `status` | text | Open / Done |
+| Due (date) | `due` | date | 可空 |
+| Source (rich_text) | `source` | text | 如 "Meeting 2026-05-26" / "Manual" |
+| Done (date) | `done_date` | date | 完成时写入（代码属性名是 `Done`，非注释里的 `Done Date`） |
+| Type (select) | `type` | text | Admin / Client（空=Client） |
+| Advisor (select) | `advisor_id` | uuid FK | |
+
+### 4.7a insurance_plans（产品目录；来源 `app/api/products` + notion GET）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Name (title) | `name` | text | |
+| Insurer (select) | `insurer` | text | 读路由兼容 rich_text |
+| Type (select) | `type` | text | Life/CI/Medical/… |
+| Min Age / Max Age (number) | `min_age` / `max_age` | int | |
+| Min/Max Sum Assured (number) | `min_sum_assured` / `max_sum_assured` | numeric | |
+| Est Monthly Premium (rich_text) | `est_monthly_premium` | text | 如 "RM 150–400" |
+| Key Features (rich_text) | `key_features` | text | |
+| EPF Approved (checkbox) | `epf_approved` | boolean | |
+| Status (select) | `status` | text | Active/… |
+| — | `advisor_id` | uuid FK | ⚠️ 见决策点 D |
+
+### 4.7b funds（产品目录）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Name (title) | `name` | text | |
+| Fund House (select) | `fund_house` | text | |
+| Asset Class (select) | `asset_class` | text | |
+| Region (select) | `region` | text | |
+| Risk Level (select) | `risk_level` | text | |
+| 3Y Return % (number) | `return_3y_pct` | numeric | |
+| Min Investment (number) | `min_investment` | numeric | |
+| Sales Charge % (number) | `sales_charge_pct` | numeric | |
+| EPF Approved (checkbox) | `epf_approved` | boolean | |
+| Status (select) | `status` | text | |
+| Description (rich_text) | `description` | text | |
+| — | `advisor_id` | uuid FK | ⚠️ 见决策点 D |
+
+> **决策点 D —— 产品目录归属（结论：采纳）**
+> 现状：insurance_plans / funds 是**每顾问独立 Notion DB**（DB ID 存用户页，无 env 后备），记录本身**无 Advisor 标签**。
+> 定案：统一 schema 加 `advisor_id`；迁移时靠「记录来自哪个顾问的 DB」推断归属并回填。
+> 注意：迁移脚本需**遍历每个有填产品 DB ID 的顾问**，逐库导入并打上对应 advisor_id。
+
+### 4.8 ai_usage（来源 `lib/aiUsage.ts`）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Entry (title) | `entry` | text | "Advisor · Feature · 时间" |
+| Advisor (select) | `advisor_id` | uuid FK | 目前存名字，迁移解析成 id |
+| Feature (select) | `feature` | text | Ask FINVA / Client Chat / … |
+| Input Tokens (number) | `input_tokens` | int | |
+| Output Tokens (number) | `output_tokens` | int | |
+| Total Tokens (number) | `total_tokens` | int | |
+| Date (date) | `logged_at` | timestamptz | |
+| Question (rich_text) | `question` | text | 可选，截断 280 字 |
+
+### 4.9 forms_library（来源 `app/api/admin/forms-library/route.ts`；PDF 本体在 Google Drive）
+| Notion 属性 | 列 | 类型 | 备注 |
+|---|---|---|---|
+| Name (title) | `name` | text | |
+| Provider (select) | `provider` | text | |
+| Category (select) | `category` | text | 可空 |
+| Tags (multi_select) | `tags` | text[] | |
+| Form Type (select) | `form_type` | text | Fillable PDF / Scanned |
+| PDF URL (rich_text) | `pdf_url` | text | 指向 Drive 文件 |
+| Field Mapping (rich_text = JSON) | `field_mapping` | jsonb | AcroForm 字段映射 |
+| Active (checkbox) | `active` | boolean | |
+| Last Updated (date) | `last_updated` | date | |
+
+> 说明：forms_library 是**公司级共享、仅 Admin 可管**，无 Advisor 标签，也无客户关联；PDF 存 Google Drive，本表只迁元数据/索引。
+
+---
+
+## 5. 数据搬迁计划（代码都通了再执行）
+
+一个 **一次性、可重跑（幂等）、带 dry-run** 的 Node 脚本：
+
+1. **导出**：用 Notion API `queryAllPages` 全量拉每张 DB。
+2. **映射**：按第 4 节对照表把属性 → 列。
+3. **关系两趟导入**：
+   - 第一趟导 `clients`，记录 `notion_page_id → clients.id` 映射。
+   - 第二趟导 portfolio/insurance/… 时用该映射填 `client_id`。
+4. **advisor 转换**：`Advisor` select 值 → `advisors.id`。
+5. **保真**：保留 `created_time`、Notes 里的 JSON breakdown 等。
+6. **对账**：逐表比对行数 + 抽样比对金额合计。
+7. **切换（cutover）** —— 按此顺序执行，消灭"写入丢失窗口"：
+   1. 代码先全部部署到生产（flag 仍 = `notion`，行为不变）。
+   2. 选低使用时段，确认没人在用（solo 团队：直接问一圈）。
+   3. 跑 `reconcile --apply`（最后增量；此刻起到翻 flag 前，任何 Notion 写入都会丢，所以下一步要立刻做）。
+   4. **立即**在 Vercel 改 `DATA_SOURCE_<TABLE>=supabase` 并 **redeploy**（⚠️ Vercel 改 env 不会自动生效，必须 redeploy，全程 ≈ 1–2 分钟）。
+   5. 验证：UI 冒烟 + Vercel function logs 无报错。
+   6. 观察期后退役该表的 Notion 写入路径（登记 NOTION_CLEANUP.md）。
+   - ⚠️ **cutover 之后严禁再跑 `reconcile --apply`**——会用 Notion 旧值覆盖 Supabase 新数据。脚本已加防呆（检测到 `DATA_SOURCE_TASKS=supabase` 拒绝 --apply），但防呆只能看到本地 .env.local，生产 flag 状态要自己核对。
+
+---
+
+## 6. 回滚（⚠️ 只对"读"无损，不是全量无损）
+
+- 每张表切换由 `DATA_SOURCE_<TABLE>` env 控制；Phase 4 之前 Notion 代码完整保留。
+- **但要清楚代价**：直切架构下 Notion 在 cutover 后是**冻结**的（没有 mirror 同步）。翻回 `notion` 的瞬间，切换期间在 Supabase 新建/完成/删除的数据全部从 UI 消失（它们只存在于 Supabase，没丢，但看不见）。
+- 所以：**回滚窗口 = 切换后 1–2 天内**。越晚回滚，Notion 越旧、代价越大。过了观察期就只往前走，不回头。
+- 真要回滚时：先翻 flag 止血 → 再人工把切换期间的 Supabase 增量补回 Notion（量小手动补；`notion_id IS NULL` 的行就是切换后新建的）。
+- 回滚操作本身 = Vercel 改 env + redeploy，≈ 1–2 分钟，**不是秒级**。
+
+---
+
+## 7. 备份（⚠️ Phase 2 迁 clients 前必须解决）
+
+> Notion 自带版本历史 + 回收站；Postgres **什么都没有**。Supabase free tier 无 PITR、无每日备份（Pro 才有）。
+> 且新代码的删除是硬 `DELETE`（Notion 时代是 archive 可恢复）——误删即永久丢失。
+
+- tasks 一张表风险可接受（数据量小、可从冻结的 Notion 重建）。
+- **clients / portfolio / insurance 是真实财务数据，cutover 任何一张之前，必须先落实其一**：
+  - [ ] 最简方案：cron 定时 `pg_dump`（本机 launchd 或 GitHub Actions 每日跑，dump 存本地/Drive）
+  - [ ] 或升级 Supabase Pro（每日备份 + 7 天 PITR）
+- Phase 4 退役 Notion 后，Notion 的"隐性备份"也没了——届时备份方案必须已在运行。
