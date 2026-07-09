@@ -118,7 +118,7 @@ export default function LsaCalculator() {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14;
     doc.setFontSize(7); doc.setTextColor(130, 130, 130);
     const disc = doc.splitTextToSize(
-      'Important: Premiums are estimates interpolated from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured; they are not official quotations and must be confirmed against the insurer system before issue. GE uses a STEPPED premium (low now, rising steeply with age) and has no male rates. Death-benefit basis and free riders differ materially between insurers — read the comparison above. For advisory discussion only.',
+      'Important: Premiums are estimates interpolated from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE uses a STEPPED premium (low now, rising steeply with age) and has no male rates. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
       W - 80,
     );
     doc.text(disc, 40, y);
@@ -299,7 +299,7 @@ export default function LsaCalculator() {
           </div>
 
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 12, lineHeight: 1.5 }}>
-            Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured — not official quotations; confirm against the insurer system before issue. GE uses a stepped premium (rises steeply with age) and has no male rates. Death-benefit basis and free riders differ materially — see comparison. For advisory discussion only.
+            Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA, Prudential; AIA &amp; GE scale linearly pending high-SA quotes) — not official quotations; confirm against the insurer system before issue. GE uses a stepped premium (rises steeply with age) and has no male rates. Death-benefit basis and free riders differ materially — see comparison. For advisory discussion only.
           </div>
         </div>
       )}
