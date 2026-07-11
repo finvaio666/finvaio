@@ -31,11 +31,15 @@ export const LSA_DEATH_BASIS: Record<LsaInsurer, string> = {
 
 // Sum-assured scaling exponent k, where monthly ≈ monthly(per RM1m) × (SA/1m)^k.
 // Premium is sub-linear in SA (larger cover = lower per-RM cost). Calibrated against
-// real M40 NS RM3,000,000 quotes (2026-07-08): Allianz RM2,498, HLA RM1,600,
-// Prudential RM1,673 — these exponents reproduce them to the ringgit. AIA and GE keep
+// real M NS RM3,000,000 quotes (2026-07-08): Allianz RM2,498 (age nearest 40),
+// HLA RM1,600 (entry age 40), Prudential RM1,673 — these exponents reproduce them
+// to the ringgit at the MATCHED age. Note the age bases: the Prudential quote showed
+// "ANB 40" (DOB 01/12/1986), i.e. actual age 39 last birthday, so its exponent is
+// calibrated at grid age 39, not 40 (Prudential prices on age NEXT birthday; the grid
+// bucket N already corresponds to a true age-N client = ANB N+1). AIA and GE keep
 // k=1 (linear) until high-SA quotes are available for them.
 export const LSA_SA_EXPONENT: Record<LsaInsurer, number> = {
-  AIA: 1.0, Allianz: 0.992, GE: 1.0, HLA: 0.939, Prudential: 0.947,
+  AIA: 1.0, Allianz: 0.992, GE: 1.0, HLA: 0.939, Prudential: 0.9864,
 };
 
 // Short caveat shown on each result card.
