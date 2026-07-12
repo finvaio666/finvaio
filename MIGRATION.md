@@ -84,7 +84,14 @@ DATA_SOURCE_CLIENTS=notion
 ### Phase 2 — 业务表（按依赖顺序，逐个独立测）
 > 顺序理由：被依赖的表（clients）先建，relation 才能转外键。
 
-- [ ] 2.1 `clients` ⬜ — 被依赖方，先建
+- [ ] 2.1 `clients` 🟨 — 被依赖方，先建
+  - [x] `lib/clients.ts` 读抽象 + `lib/repos/clients.ts`(Supabase 层)+ `DATA_SOURCE_CLIENTS` flag(默认 off)
+  - [x] 试点路由 `app/api/admin/clients` 改走抽象层(其余 ~9 个消费路由待逐个转)
+  - [x] 补 7 列(nric/epf/occupation/client_type/invested_capital/fame_accounts/fame_sync_date)
+  - [x] `scripts/reconcile-clients.ts` 全量导入:285 条 Notion→Supabase(正确属性映射;空 select→null)
+  - [ ] 其余 ~9 个 clients 消费路由转抽象层(portfolio/insurance/meetings/sync-aum/update-nav/ai/dashboard-assistant/email/getAdvisorConfig)
+  - [ ] AUM:portfolio(2.2)迁完后 recalc 回填(现 265 条 aum=null)
+  - ⚠️ 全部路由转完 + AUM 回填后才能纳入统一 cutover(id 语义随源切换)
 - [ ] 2.2 `portfolio` ⬜ — relation → `client_id` 外键
 - [ ] 2.3 `insurance` ⬜
 - [ ] 2.4 `assets` ⬜ — 净值 Assets & Liabilities
