@@ -70,14 +70,14 @@ DATA_SOURCE_CLIENTS=notion
 - ✅ 通过标准：本地能连、能查 —— **已达成**
 - 💾 测通后 → 提醒 Commit（`chore: add supabase client + connection`）
 
-### Phase 1 — 试点表 Tasks  🟨 代码全部测通，生产 cutover 待执行
+### Phase 1 — 试点表 Tasks  🟩 代码测通 + Preview 验证通过（生产 cutover 并入末尾统一切换）
 - [x] `tasks` 表（Supabase 预置已存在；type CHECK 已改 FA→Client，见 db/migrations/）
 - [x] `lib/repos/tasks.ts`（数据访问层，封装 CRUD；直切模式，无 Notion mirror）
 - [x] 用 env 开关切 tasks 相关路由到 Supabase（`DATA_SOURCE_TASKS`，现 = notion/off）
 - [x] E2E 测通（scripts/e2e-tasks-http.ts，走完整 HTTP 栈）+ reconcile 对账 100% 同步（2026-07-08）
 - [x] reconcile 加 post-cutover 防呆（2026-07-09）
 - [x] **Preview 验证通过（supabase.finva.io，2026-07-12）**：该域名绑 `feature-switch-to-supabase` 分支，Vercel env 已配好（`SUPABASE_URL`/`SERVICE_ROLE_KEY`/`DATA_SOURCE_TASKS=supabase`/`AUTH_SECRET` 与本地一致）。只读探针：GET /api/tasks 200、23/23 全来自 Supabase。写路径 E2E 打线上部署栈全绿（建/读/标完成/删，type=Client、notion_id=null、self-clean 归零，0 残留）。
-- [ ] 生产 cutover（app.finva.io / main；流程见 §5 第 7 步；前置：`feature-switch-to-supabase`→main 合并 + app.finva.io 的 Vercel env 配置。注：泄露的旧 Notion key 非生产 key，rotate 与 cutover 解耦）
+- [ ] 生产 cutover —— **不单独切**。按下方策略并入整个 migration 完成后的一次性 cutover（见 §5 顶部「切换策略」）。tasks 侧代码 + preview 已就绪，等其余表都 ready。
 - ✅ 通过标准：UI 里 Task 增删改查行为与 Notion 一致
 - 💾 测通后 → 提醒 Commit（`feat(migrate): tasks on supabase behind flag`）——已完成，commit 5dc82e7 / 4d66d7c / e1fb629 / 95009df
 
@@ -351,6 +351,14 @@ DATA_SOURCE_CLIENTS=notion
 ---
 
 ## 5. 数据搬迁计划（代码都通了再执行）
+
+> **切换策略（2026-07-12 定）：整体在 preview 完成，末尾一次性 cutover —— 不逐表切生产。**
+> 所有表都在 `feature-switch-to-supabase` 分支开发，在 **supabase.finva.io**（绑该分支）逐个验证。
+> 全部表 ready + 测通、且 §7 备份方案已上线后，才 `feature-switch-to-supabase` → **main** 一次合并、
+> 一次 cutover 到 app.finva.io。在那之前**绝不合并、不碰 app.finva.io / dev.finva.io**（都在运行中）。
+> 下方第 7 步的「立即翻 flag」时序针对最终那次统一 cutover；每张表的 preview 验证不涉及生产。
+
+
 
 一个 **一次性、可重跑（幂等）、带 dry-run** 的 Node 脚本：
 
