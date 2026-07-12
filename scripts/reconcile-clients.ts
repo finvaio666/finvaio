@@ -30,6 +30,8 @@ const rt = (p: P, k: string) => { const v = p[k] as { type: string; rich_text?: 
 const em = (p: P, k: string) => { const v = p[k] as { type: string; email?: string | null }; return v?.type === 'email' ? (v.email ?? '') : ''; };
 const ph = (p: P, k: string) => { const v = p[k] as { type: string; phone_number?: string | null }; return v?.type === 'phone_number' ? (v.phone_number ?? '') : ''; };
 const sel = (p: P, k: string) => { const v = p[k] as { type: string; select?: { name: string } | null }; return v?.type === 'select' ? (v.select?.name ?? '') : ''; };
+// select-or-null: empty Notion selects → null (satisfies enum CHECK constraints, e.g. client_segment/risk_profile)
+const selN = (p: P, k: string): string | null => sel(p, k) || null;
 const ms = (p: P, k: string) => { const v = p[k] as { type: string; multi_select?: { name: string }[] }; return v?.type === 'multi_select' ? (v.multi_select ?? []).map(o => o.name) : []; };
 const nnum = (p: P, k: string): number | null => { const v = p[k] as { type: string; number?: number | null }; return v?.type === 'number' ? (v.number ?? null) : null; };
 const dt = (p: P, k: string): string | null => { const v = p[k] as { type: string; date?: { start: string } | null }; return v?.type === 'date' ? ((v.date?.start ?? '').slice(0, 10) || null) : null; };
@@ -52,11 +54,11 @@ function recFromNotion(pg: PageObjectResponse): Rec {
     phone:                ph(p, 'Phone'),
     email:                em(p, 'Email'),
     date_of_birth:        dt(p, 'Date of Birth'),
-    client_segment:       sel(p, 'Client Segment'),
-    risk_profile:         sel(p, 'Risk Profile'),
+    client_segment:       selN(p, 'Client Segment'),
+    risk_profile:         selN(p, 'Risk Profile'),
     monthly_income_myr:   nnum(p, 'Monthly income (MYR)'),
     financial_goals:      ms(p, 'Financial goals'),
-    status:               sel(p, 'Status'),
+    status:               selN(p, 'Status'),
     onboarding_date:      dt(p, 'Onboarding date'),
     last_review_date:     dt(p, 'Last review date'),
     next_review_date:     dt(p, 'Next review date'),
@@ -64,7 +66,7 @@ function recFromNotion(pg: PageObjectResponse): Rec {
     fame_accounts:        rt(p, 'FAME Accounts'),
     invested_capital_myr: nnum(p, 'Invested Capital (MYR)'),
     fame_sync_date:       dt(p, 'FAME Sync Date'),
-    client_type:          sel(p, 'Client Type'),
+    client_type:          selN(p, 'Client Type'),
     nric_reg_no:          rt(p, 'NRIC / Reg No'),
     epf_account_no:       rt(p, 'EPF Account No'),
     occupation:           rt(p, 'Occupation'),
