@@ -86,11 +86,16 @@ DATA_SOURCE_CLIENTS=notion
 
 - [ ] 2.1 `clients` 🟨 — 被依赖方，先建
   - [x] `lib/clients.ts` 读抽象 + `lib/repos/clients.ts`(Supabase 层)+ `DATA_SOURCE_CLIENTS` flag(默认 off)
-  - [x] 试点路由 `app/api/admin/clients` 改走抽象层(其余 ~9 个消费路由待逐个转)
   - [x] 补 7 列(nric/epf/occupation/client_type/invested_capital/fame_accounts/fame_sync_date)
   - [x] `scripts/reconcile-clients.ts` 全量导入:285 条 Notion→Supabase(正确属性映射;空 select→null)
-  - [ ] 其余 ~9 个 clients 消费路由转抽象层(portfolio/insurance/meetings/sync-aum/update-nav/ai/dashboard-assistant/email/getAdvisorConfig)
-  - [ ] AUM:portfolio(2.2)迁完后 recalc 回填(现 265 条 aum=null)
+  - [x] **纯 clients 读路由全部转抽象层**:`admin/clients`、`email/client-alerts`、`admin/overview`、`notion?type=clients`。顺带修好既有 bug(phone/email 之前按 rich_text 读→空;现按 email/phone_number 正确类型)。
+  - [ ] `getAdvisorConfig`:**非 clients 消费方**(只存 clientsDbId),不用转。
+  - [ ] **跨表/写路由 → 随各自搭档表迁,不在 2.1 单转**(单转会造成 uuid vs Notion relation 对不上):
+    - `ai` / `dashboard-assistant`:跨表读(client + portfolio/insurance,靠 Notion relation)→ 随 2.2/2.3
+    - `sync-aum`:AUM 重算本身(读 portfolio 写 clients)→ 2.2 portfolio（即"AUM 回填"那步）
+    - `update-nav`:NAV 写(portfolio+clients)→ 2.2
+    - `meetings`:建 meeting_note + 回写 client review 日期 → 2.6 meetings（届时给抽象层加 write 方法）
+  - [ ] AUM:portfolio(2.2)迁完后由 sync-aum 改写版 recalc 回填(现 265 条 aum=null)
   - ⚠️ 全部路由转完 + AUM 回填后才能纳入统一 cutover(id 语义随源切换)
 - [ ] 2.2 `portfolio` ⬜ — relation → `client_id` 外键
 - [ ] 2.3 `insurance` ⬜
