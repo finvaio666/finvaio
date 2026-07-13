@@ -110,7 +110,10 @@ DATA_SOURCE_CLIENTS=notion
   - [x] `lib/insurance.ts` 抽象 + `lib/repos/insurance.ts` + `DATA_SOURCE_INSURANCE` flag
   - [x] 转 `notion?type=insurance`(join clients 拿 name+income);两路径验证一致(sum assured 13,424,000)
   - 🔧 摸查时发现并修复:首次 clients 导入漏了 20 个真客户(名字后填),重跑 reconcile-clients → 305
-- [ ] 2.4 `assets` ⬜ — 净值 Assets & Liabilities
+- [x] 2.4 `assets` 🟩 — 净值 Assets & Liabilities（`client` 是名字串,非 relation）
+  - [x] 种子已完全同步(Notion 8 = Supabase 8,0 diff — 无需导入)
+  - [x] `lib/assets.ts` + `lib/repos/assets.ts` + `DATA_SOURCE_ASSETS` + `reconcile-assets.ts`
+  - [x] 转 `notion?type=assets`;两路径验证一致(8 项,sum 3,450,000)
 - [ ] 2.5 `cashflow` ⬜ — 顺便把「archive 全部旧记录再新建」改成真 `UPSERT`
 - [ ] 2.6 `meeting_notes` ⬜
 - [ ] 2.7 `products` ⬜ — Insurance Plans + Funds 两张产品目录
