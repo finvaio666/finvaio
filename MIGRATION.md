@@ -103,7 +103,7 @@ DATA_SOURCE_CLIENTS=notion
   - [x] `scripts/reconcile-portfolio.ts` 全量导入:1038 条(1019 insert + 19 update + 88 删陈旧种子;引用完整性满分)
   - [x] 转 `notion?type=portfolio`:clients+holdings **join on notion_id** → clientId 跨模式一致(解开跨表 id 难题)
   - [ ] 跨表路由(依赖 clients+portfolio 都在 Supabase):`ai`、`dashboard-assistant`、`sync-aum`(AUM 重算)、`update-nav`
-  - [ ] AUM 回填:sync-aum 改写版从 portfolio_holdings 重算 clients.aum_myr(现 clients 265 条 aum=null)
+  - [x] **AUM 回填完成**(`scripts/backfill-client-aum.ts`):从 portfolio_holdings 重算 240 个有持仓客户的 aum_myr(221 个补上 null);无持仓 45 个不动(TEO 保留 2M、44 个留 null)。clients.aum_myr 合计 9,550,350。
 - [ ] 2.3 `insurance` ⬜
 - [ ] 2.4 `assets` ⬜ — 净值 Assets & Liabilities
 - [ ] 2.5 `cashflow` ⬜ — 顺便把「archive 全部旧记录再新建」改成真 `UPSERT`
