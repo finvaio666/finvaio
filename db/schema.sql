@@ -72,7 +72,44 @@ create table if not exists clients (
 create index if not exists clients_advisor_idx on clients (advisor);
 create index if not exists clients_notion_idx  on clients (notion_id);
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- portfolio_holdings  (Phase 2, table 2.2) — mirrors lib/portfolio.ts.
+-- Migration authority = Notion (1038 holdings). Relation to clients is stored as
+-- client_notion_id text (= clients.notion_id), NOT a uuid FK. geography/fame_*/
+-- fund_source added 2026-07-13 (see db/migrations/2026-07-13-portfolio-add-missing-columns.sql).
+-- Formula columns (Return %, Gain/Loss) are NOT stored — derived from price/value.
+-- ─────────────────────────────────────────────────────────────────────────
+create table if not exists portfolio_holdings (
+  id                      uuid        primary key default gen_random_uuid(),
+  notion_id               text,                    -- source Notion page id
+  holding_name            text,                    -- Notion "Holding Name" (title)
+  client_notion_id        text,                    -- Notion "👥 Clients" relation[0] → clients.notion_id
+  asset_class             text,                    -- Notion "Asset class" (select)
+  product_name            text,                    -- Notion "Product name" (rich_text)
+  institution             text,                    -- Notion "Institution" (rich_text)
+  currency                text,                    -- CHECK: MYR/AUD/SGD/USD (or null)
+  fx_rate_to_myr          numeric,
+  units                   numeric,
+  purchase_price_original numeric,
+  purchase_price_myr      numeric,
+  value_original_currency numeric,
+  value_myr               numeric,
+  start_date              date,
+  maturity_date           date,
+  status                  text,
+  advisor                 text,                    -- owning advisor (name)
+  created_at              timestamptz default now(),
+  -- added 2026-07-13 (Notion fields missing from the original seed):
+  geography               text,                    -- Notion "Geography" (rich_text)
+  fame_account_no         text,                    -- Notion "FAME Account No" (rich_text)
+  fund_source             text,                    -- Notion "Fund Source" (rich_text)
+  fame_sync_date          date                     -- Notion "FAME Sync Date"
+);
+create index if not exists portfolio_client_idx  on portfolio_holdings (client_notion_id);
+create index if not exists portfolio_advisor_idx on portfolio_holdings (advisor);
+create index if not exists portfolio_notion_idx  on portfolio_holdings (notion_id);
+
 -- Other tables already live in Supabase (not re-declared here yet):
---   portfolio_holdings, insurance_policies, assets_liabilities,
---   cashflow_planner, meeting_notes, ai_usage_log, forms_library, users
+--   insurance_policies, assets_liabilities, cashflow_planner,
+--   meeting_notes, ai_usage_log, forms_library, users
 -- (product catalogs insurance_plans / funds not yet created).
