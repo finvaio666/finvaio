@@ -4,6 +4,7 @@ import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { listPolicies } from '@/lib/insurance';
+import { listAssets } from '@/lib/assets';
 import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
@@ -228,22 +229,15 @@ export async function GET(req: NextRequest) {
     // ── Assets & Liabilities (net worth) ──────────────────────────────────────
     if (type === 'assets') {
       if (!DB.assets) return NextResponse.json({ data: [] });
-      const pages = await queryAllPages(notion, {
-        database_id: DB.assets,
-        ...scoped(),
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        return {
-          id:       page.id,
-          name:     p['Name']?.type === 'title'        ? p['Name'].title[0]?.plain_text ?? ''              : '',
-          client:   p['Client']?.type === 'rich_text'  ? p['Client'].rich_text[0]?.plain_text ?? ''        : '',
-          itemType: p['Type']?.type === 'select'       ? p['Type'].select?.name ?? ''                      : '',
-          category: p['Category']?.type === 'select'   ? p['Category'].select?.name ?? ''                  : '',
-          value:    p['Value (MYR)']?.type === 'number'? p['Value (MYR)'].number ?? 0                      : 0,
-          notes:    p['Notes']?.type === 'rich_text'   ? p['Notes'].rich_text[0]?.plain_text ?? ''         : '',
-        };
-      });
+      const data = (await listAssets(config)).map(a => ({
+        id:       a.id,
+        name:     a.name,
+        client:   a.client,
+        itemType: a.type,
+        category: a.category,
+        value:    a.valueMyr,
+        notes:    a.notes,
+      }));
       return json({ data });
     }
 
