@@ -5,6 +5,7 @@ import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { listPolicies } from '@/lib/insurance';
 import { listAssets } from '@/lib/assets';
+import { listCashflow } from '@/lib/cashflow';
 import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
@@ -150,38 +151,9 @@ export async function GET(req: NextRequest) {
 
     if (type === 'cashflow') {
       if (!DB.cashflow) return NextResponse.json({ data: [] });
-      const pages = await queryAllPages(notion, {
-        database_id: DB.cashflow,
-        ...scoped(),
-        sorts: [{ property: 'Month', direction: 'descending' }],
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        const income   = p['Monthly income (MYR)']?.type === 'number'    ? p['Monthly income (MYR)'].number ?? 0    : 0;
-        const fixed    = p['Fixed expenses (MYR)']?.type === 'number'    ? p['Fixed expenses (MYR)'].number ?? 0    : 0;
-        const variable = p['Variable expenses (MYR)']?.type === 'number' ? p['Variable expenses (MYR)'].number ?? 0 : 0;
-        const epf      = p['EPF contribution (MYR)']?.type === 'number'  ? p['EPF contribution (MYR)'].number ?? 0  : 0;
-        const surplus  = income - fixed - variable - epf;
-        const savingsRate = income > 0 ? Math.round((surplus / income) * 100) : 0;
-
-        // Parse breakdown JSON stored in Notes field (if present)
-        let breakdown: Record<string, Record<string, number>> | null = null;
-        try {
-          const notesRaw = p['Notes']?.type === 'rich_text'
-            ? (p['Notes'] as { type: string; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? ''
-            : '';
-          if (notesRaw.startsWith('{')) breakdown = JSON.parse(notesRaw);
-        } catch { /* no breakdown stored */ }
-
-        return {
-          id:       page.id,
-          entry:    p['Entry']?.type === 'title' ? p['Entry'].title[0]?.plain_text ?? '' : '',
-          month:    p['Month']?.type === 'date'  ? p['Month'].date?.start ?? ''           : '',
-          income, fixed, variable, epf, surplus, savingsRate,
-          breakdown,
-        };
-      });
-      return json({ data });
+      // Cashflow via the data-source abstraction (Notion or Supabase per flag).
+      // Already sorted by month desc; surplus/savingsRate/breakdown computed inside.
+      return json({ data: await listCashflow(config) });
     }
 
     if (type === 'insurance') {
