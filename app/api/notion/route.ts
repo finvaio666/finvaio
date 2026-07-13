@@ -3,6 +3,7 @@ import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
+import { listPolicies } from '@/lib/insurance';
 import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
@@ -185,49 +186,42 @@ export async function GET(req: NextRequest) {
     if (type === 'insurance') {
       if (!DB.insurance) return NextResponse.json({ data: [] });
 
-      const clientPages = await queryAllPages(notion, { database_id: DB.clients, ...scoped() });
+      // Clients + policies via the data-source abstraction; join on notion_id.
+      const [clients, policies] = await Promise.all([listClients(config), listPolicies(config)]);
       const clientMap: Record<string, { name: string; income: number }> = {};
-      clientPages.forEach(page => {
-        const name   = page.properties['Client Name']?.type === 'title'  ? page.properties['Client Name'].title[0]?.plain_text ?? ''  : '';
-        const income = page.properties['Monthly income (MYR)']?.type === 'number' ? page.properties['Monthly income (MYR)'].number ?? 0 : 0;
-        if (name) clientMap[page.id] = { name, income };
-      });
+      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { name: c.name, income: c.monthlyIncome };
 
-      const pages = await queryAllPages(notion, {
-        database_id: DB.insurance,
-        ...scoped(),
-        sorts: [{ property: 'Policy Name', direction: 'ascending' }],
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        const clientRelIds = p['Clients']?.type === 'relation' ? p['Clients'].relation.map((r: { id: string }) => r.id) : [];
-        const clientInfo   = clientRelIds.map((id: string) => clientMap[id]).filter(Boolean)[0];
-        return {
-          id:               page.id,
-          policyName:       p['Policy Name']?.type === 'title'          ? p['Policy Name'].title[0]?.plain_text ?? ''          : '',
-          clientName:       clientInfo?.name ?? '',
-          clientIncome:     clientInfo?.income ?? 0,
-          insuranceType:    p['Insurance Type']?.type === 'select'       ? p['Insurance Type'].select?.name ?? ''               : '',
-          benefits:         p['Benefits']?.type === 'multi_select'       ? p['Benefits'].multi_select.map((b: { name: string }) => b.name) : [],
-          status:           p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                       : '',
-          insurer:          p['Insurer']?.type === 'rich_text'           ? p['Insurer'].rich_text[0]?.plain_text ?? ''           : '',
-          policyNumber:     p['Policy Number']?.type === 'rich_text'     ? p['Policy Number'].rich_text[0]?.plain_text ?? ''    : '',
-          sumAssured:       p['Sum Assured (MYR)']?.type === 'number'    ? p['Sum Assured (MYR)'].number ?? 0                   : 0,
-          annualPremium:    p['Annual Premium (MYR)']?.type === 'number' ? p['Annual Premium (MYR)'].number ?? 0                : 0,
-          commencementDate: p['Commencement Date']?.type === 'date'      ? p['Commencement Date'].date?.start ?? ''             : '',
-          maturityDate:     p['Maturity Date']?.type === 'date'          ? p['Maturity Date'].date?.start ?? ''                 : '',
-          beneficiary:      p['Beneficiary']?.type === 'rich_text'       ? p['Beneficiary'].rich_text[0]?.plain_text ?? ''      : '',
-          notes:            p['Notes']?.type === 'rich_text'             ? p['Notes'].rich_text[0]?.plain_text ?? ''            : '',
-          policyOwner:      p['Policy Owner']?.type === 'rich_text'      ? p['Policy Owner'].rich_text[0]?.plain_text ?? ''     : '',
-          lifeAssured:      p['Life Assured']?.type === 'rich_text'      ? p['Life Assured'].rich_text[0]?.plain_text ?? ''     : '',
-          lifeCover:        p['Life Cover (MYR)']?.type === 'number'     ? p['Life Cover (MYR)'].number ?? 0                    : 0,
-          ciCover:          p['CI Cover (MYR)']?.type === 'number'       ? p['CI Cover (MYR)'].number ?? 0                      : 0,
-          paCover:          p['PA Cover (MYR)']?.type === 'number'       ? p['PA Cover (MYR)'].number ?? 0                      : 0,
-          tpdCover:         p['TPD Cover (MYR)']?.type === 'number'      ? p['TPD Cover (MYR)'].number ?? 0                     : 0,
-          medicalClass:     p['Medical Class']?.type === 'rich_text'     ? p['Medical Class'].rich_text[0]?.plain_text ?? ''    : '',
-          medicalCard:      p['Medical Card']?.type === 'rich_text'      ? p['Medical Card'].rich_text[0]?.plain_text ?? ''     : '',
-        };
-      });
+      const data = policies
+        .slice()
+        .sort((a, b) => a.policyName.localeCompare(b.policyName))
+        .map(pol => {
+          const client = clientMap[pol.clientNotionId];
+          return {
+            id:               pol.id,
+            policyName:       pol.policyName,
+            clientName:       client?.name ?? '',
+            clientIncome:     client?.income ?? 0,
+            insuranceType:    pol.insuranceType,
+            benefits:         pol.benefits,
+            status:           pol.status,
+            insurer:          pol.insurer,
+            policyNumber:     pol.policyNumber,
+            sumAssured:       pol.sumAssured,
+            annualPremium:    pol.annualPremium,
+            commencementDate: pol.commencementDate,
+            maturityDate:     pol.maturityDate,
+            beneficiary:      pol.beneficiary,
+            notes:            pol.notes,
+            policyOwner:      pol.policyOwner,
+            lifeAssured:      pol.lifeAssured,
+            lifeCover:        pol.lifeCover,
+            ciCover:          pol.ciCover,
+            paCover:          pol.paCover,
+            tpdCover:         pol.tpdCover,
+            medicalClass:     pol.medicalClass,
+            medicalCard:      pol.medicalCard,
+          };
+        });
       return json({ data });
     }
 
