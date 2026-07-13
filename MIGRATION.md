@@ -97,7 +97,13 @@ DATA_SOURCE_CLIENTS=notion
     - `meetings`:建 meeting_note + 回写 client review 日期 → 2.6 meetings（届时给抽象层加 write 方法）
   - [ ] AUM:portfolio(2.2)迁完后由 sync-aum 改写版 recalc 回填(现 265 条 aum=null)
   - ⚠️ 全部路由转完 + AUM 回填后才能纳入统一 cutover(id 语义随源切换)
-- [ ] 2.2 `portfolio` ⬜ — relation → `client_id` 外键
+- [ ] 2.2 `portfolio` 🟨 — 关联用 `client_notion_id`(= clients.notion_id),非 uuid FK
+  - [x] `lib/portfolio.ts` 读抽象 + `lib/repos/portfolio.ts`(分页,过 PostgREST 1000 行上限)+ `DATA_SOURCE_PORTFOLIO` flag
+  - [x] 补 4 列(geography/fame_account_no/fund_source/fame_sync_date;跳过公式列)
+  - [x] `scripts/reconcile-portfolio.ts` 全量导入:1038 条(1019 insert + 19 update + 88 删陈旧种子;引用完整性满分)
+  - [x] 转 `notion?type=portfolio`:clients+holdings **join on notion_id** → clientId 跨模式一致(解开跨表 id 难题)
+  - [ ] 跨表路由(依赖 clients+portfolio 都在 Supabase):`ai`、`dashboard-assistant`、`sync-aum`(AUM 重算)、`update-nav`
+  - [ ] AUM 回填:sync-aum 改写版从 portfolio_holdings 重算 clients.aum_myr(现 clients 265 条 aum=null)
 - [ ] 2.3 `insurance` ⬜
 - [ ] 2.4 `assets` ⬜ — 净值 Assets & Liabilities
 - [ ] 2.5 `cashflow` ⬜ — 顺便把「archive 全部旧记录再新建」改成真 `UPSERT`
