@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { listClients } from '@/lib/clients';
 import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
@@ -78,31 +79,25 @@ export async function GET(req: NextRequest) {
 
   try {
     if (type === 'clients') {
-      if (!DB.clients) return NextResponse.json({ data: [] });
-      const pages = await queryAllPages(notion, {
-        database_id: DB.clients,
-        ...scoped(),
-        sorts: [{ property: 'Client Name', direction: 'ascending' }],
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        return {
-          id: page.id,
-          name:        p['Client Name']?.type === 'title'           ? p['Client Name'].title[0]?.plain_text ?? ''            : '',
-          status:      p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                         : '',
-          segment:     p['Client Segment']?.type === 'select'       ? p['Client Segment'].select?.name ?? ''                 : '',
-          aum:         p['AUM (MYR)']?.type === 'number'            ? p['AUM (MYR)'].number ?? 0                             : 0,
-          income:      p['Monthly income (MYR)']?.type === 'number' ? p['Monthly income (MYR)'].number ?? 0                  : 0,
-          risk:        p['Risk Profile']?.type === 'select'         ? p['Risk Profile'].select?.name ?? ''                   : '',
-          nextReview:  p['Next review date']?.type === 'date'       ? p['Next review date'].date?.start ?? ''                : '',
-          lastReview:  p['Last review date']?.type === 'date'       ? p['Last review date'].date?.start ?? ''                : '',
-          onboarding:  p['Onboarding date']?.type === 'date'        ? p['Onboarding date'].date?.start ?? ''                 : '',
-          goals:       p['Financial goals']?.type === 'multi_select'? p['Financial goals'].multi_select.map(g => g.name)    : [],
-          phone:       p['Phone']?.type === 'phone_number'          ? p['Phone'].phone_number ?? ''                          : '',
-          email:       p['Email']?.type === 'email'                 ? p['Email'].email ?? ''                                 : '',
-          dob:         p['Date of Birth']?.type === 'date'          ? p['Date of Birth'].date?.start ?? ''                   : '',
-        };
-      });
+      // Clients via the data-source abstraction (Notion or Supabase per flag).
+      const data = (await listClients(config))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(c => ({
+          id:         c.id,
+          name:       c.name,
+          status:     c.status,
+          segment:    c.segment,
+          aum:        c.aum,
+          income:     c.monthlyIncome,
+          risk:       c.risk,
+          nextReview: c.nextReview,
+          lastReview: c.lastReview,
+          onboarding: c.onboardingDate,
+          goals:      c.financialGoals,
+          phone:      c.phone,
+          email:      c.email,
+          dob:        c.dob,
+        }));
       return json({ data });
     }
 

@@ -2,7 +2,7 @@
  * lib/clients.ts
  * Chokepoint for reading Clients, backed by a Notion "Clients" database.
  *
- * Phase 2 pilot (table 2.1): clients reads were scattered across ~10 API routes,
+ * Phase 2 (table 2.1): clients reads were scattered across ~10 API routes,
  * each doing its own Notion query + inline mapping. This module centralizes that
  * read so a single flag can switch the data source, exactly like lib/tasks.ts.
  *
@@ -11,6 +11,11 @@
  * Clients DB stays frozen as a pre-cutover backup. Any other value (incl. unset)
  * keeps the original Notion path below unchanged. Flipping back to 'notion' is a
  * READ-ONLY rollback.
+ *
+ * Notion mapping uses the REAL property types: Email=email, Phone=phone_number,
+ * 'Next review date' / 'Last review date' / 'Onboarding date' / 'Date of Birth'.
+ * (The old admin/clients route read Phone/Email as rich_text → always blank; that
+ * latent bug is fixed here now that this is the single source of the mapping.)
  *
  * ⚠️ The `id` field differs by source (Notion page id vs Supabase uuid). Every
  * clients-consuming route must be converted before the flag is flipped in any
@@ -22,25 +27,30 @@ import { AdvisorConfig } from './getAdvisorConfig';
 import * as sbClients from './repos/clients';
 
 export interface ClientRecord {
-  id:          string;   // Notion page id (notion path) OR Supabase uuid (supabase path)
-  notionId:    string;   // dashless 32-hex, '' if unknown
-  name:        string;
-  advisorName: string;
-  aum:         number;
-  risk:        string;
-  segment:     string;
-  status:      string;
-  nextReview:  string;   // ISO date or ''
-  phone:       string;
-  email:       string;
-  lastEdited:  string;   // Notion page last_edited_time; '' from Supabase (no such column yet)
+  id:             string;   // Notion page id (notion path) OR Supabase uuid (supabase path)
+  notionId:       string;   // dashless 32-hex, '' if unknown
+  name:           string;
+  advisorName:    string;
+  aum:            number;
+  risk:           string;
+  segment:        string;
+  status:         string;
+  nextReview:     string;   // ISO date or ''
+  lastReview:     string;
+  onboardingDate: string;
+  dob:            string;
+  monthlyIncome:  number;
+  financialGoals: string[];
+  phone:          string;
+  email:          string;
+  lastEdited:     string;   // Notion page last_edited_time; '' from Supabase (no such column yet)
 }
 
 function useSupabase(): boolean {
   return process.env.DATA_SOURCE_CLIENTS === 'supabase';
 }
 
-// ── Notion property readers (mirror the existing admin/clients route mapping) ──
+// ── Notion property readers (real property types of the Clients DB) ──
 function rt(p: Record<string, unknown>, k: string): string {
   const v = p[k] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
   return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : '';
@@ -52,6 +62,18 @@ function num(p: Record<string, unknown>, k: string): number {
 function sel(p: Record<string, unknown>, k: string): string {
   const v = p[k] as { type: string; select?: { name: string } } | undefined;
   return v?.type === 'select' ? (v.select?.name ?? '') : '';
+}
+function ms(p: Record<string, unknown>, k: string): string[] {
+  const v = p[k] as { type: string; multi_select?: { name: string }[] } | undefined;
+  return v?.type === 'multi_select' ? (v.multi_select ?? []).map(o => o.name) : [];
+}
+function email(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; email?: string | null } | undefined;
+  return v?.type === 'email' ? (v.email ?? '') : '';
+}
+function phone(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; phone_number?: string | null } | undefined;
+  return v?.type === 'phone_number' ? (v.phone_number ?? '') : '';
 }
 function titleOf(p: Record<string, unknown>): string {
   for (const val of Object.values(p)) {
@@ -94,18 +116,23 @@ export async function listClients(
       if (!isFullPage(cp)) continue;
       const p = cp.properties as Record<string, unknown>;
       out.push({
-        id:          cp.id,
-        notionId:    cp.id.replace(/-/g, ''),
-        name:        titleOf(p),
-        advisorName: sel(p, 'Advisor'),
-        aum:         num(p, 'AUM') || num(p, 'Total AUM') || num(p, 'AUM (MYR)'),
-        risk:        sel(p, 'Risk Profile') || sel(p, 'Risk'),
-        segment:     sel(p, 'Segment') || sel(p, 'Client Segment'),
-        status:      sel(p, 'Status') || sel(p, 'Client Status'),
-        nextReview:  dateOf(p, 'Next Review'),
-        phone:       rt(p, 'Phone') || rt(p, 'Phone Number') || rt(p, 'Mobile'),
-        email:       rt(p, 'Email') || rt(p, 'Email Address'),
-        lastEdited:  cp.last_edited_time,
+        id:             cp.id,
+        notionId:       cp.id.replace(/-/g, ''),
+        name:           titleOf(p),
+        advisorName:    sel(p, 'Advisor'),
+        aum:            num(p, 'AUM (MYR)'),
+        risk:           sel(p, 'Risk Profile'),
+        segment:        sel(p, 'Client Segment'),
+        status:         sel(p, 'Status'),
+        nextReview:     dateOf(p, 'Next review date'),
+        lastReview:     dateOf(p, 'Last review date'),
+        onboardingDate: dateOf(p, 'Onboarding date'),
+        dob:            dateOf(p, 'Date of Birth'),
+        monthlyIncome:  num(p, 'Monthly income (MYR)'),
+        financialGoals: ms(p, 'Financial goals'),
+        phone:          phone(p, 'Phone'),
+        email:          email(p, 'Email'),
+        lastEdited:     cp.last_edited_time,
       });
     }
     cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;

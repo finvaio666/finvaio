@@ -27,25 +27,35 @@ interface Row {
   client_segment: string | null;
   risk_profile: string | null;
   aum_myr: number | string | null;
+  monthly_income_myr: number | string | null;
+  financial_goals: string[] | null;
   status: string | null;
   next_review_date: string | null;
+  last_review_date: string | null;
+  onboarding_date: string | null;
+  date_of_birth: string | null;
   advisor: string | null;
 }
 
 function toClient(r: Row): ClientRecord {
   return {
-    id:          r.id,
-    notionId:    r.notion_id ?? '',
-    name:        r.client_name ?? '',
-    advisorName: r.advisor ?? '',
-    aum:         r.aum_myr != null ? Number(r.aum_myr) : 0,
-    risk:        r.risk_profile ?? '',
-    segment:     r.client_segment ?? '',
-    status:      r.status ?? '',
-    nextReview:  r.next_review_date ?? '',
-    phone:       r.phone ?? '',
-    email:       r.email ?? '',
-    lastEdited:  '',   // no last_edited column in Supabase clients yet
+    id:             r.id,
+    notionId:       r.notion_id ?? '',
+    name:           r.client_name ?? '',
+    advisorName:    r.advisor ?? '',
+    aum:            r.aum_myr != null ? Number(r.aum_myr) : 0,
+    risk:           r.risk_profile ?? '',
+    segment:        r.client_segment ?? '',
+    status:         r.status ?? '',
+    nextReview:     r.next_review_date ?? '',
+    lastReview:     r.last_review_date ?? '',
+    onboardingDate: r.onboarding_date ?? '',
+    dob:            r.date_of_birth ?? '',
+    monthlyIncome:  r.monthly_income_myr != null ? Number(r.monthly_income_myr) : 0,
+    financialGoals: r.financial_goals ?? [],
+    phone:          r.phone ?? '',
+    email:          r.email ?? '',
+    lastEdited:     '',   // no last_edited column in Supabase clients yet
   };
 }
 
@@ -56,7 +66,7 @@ export async function listClients(
 ): Promise<ClientRecord[]> {
   const sb = getSupabase();
   let q = sb.from(TABLE).select(
-    'id, notion_id, client_name, phone, email, client_segment, risk_profile, aum_myr, status, next_review_date, advisor',
+    'id, notion_id, client_name, phone, email, client_segment, risk_profile, aum_myr, monthly_income_myr, financial_goals, status, next_review_date, last_review_date, onboarding_date, date_of_birth, advisor',
   );
   // Centralized model: scope to this advisor (Admin sees all; Admin may narrow to one FA).
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
