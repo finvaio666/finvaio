@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
+import { listHoldings } from '@/lib/portfolio';
 import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
@@ -106,58 +107,42 @@ export async function GET(req: NextRequest) {
 
       // Client ID → name map and holdings are independent queries — run them
       // in parallel instead of one-after-the-other to roughly halve latency.
-      const [clientPages, pages] = await Promise.all([
-        queryAllPages(notion, { database_id: DB.clients, ...scoped() }),
-        queryAllPages(notion, {
-          database_id: DB.portfolio,
-          ...scoped(),
-          sorts: [{ property: 'Holding Name', direction: 'ascending' }],
-        }),
-      ]);
-      const clientMap: Record<string, string> = {};
-      clientPages.forEach(page => {
-        const name = page.properties['Client Name']?.type === 'title'
-          ? page.properties['Client Name'].title[0]?.plain_text ?? '' : '';
-        if (name) clientMap[page.id] = name;
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        const currency      = p['Currency']?.type === 'select'  ? p['Currency'].select?.name ?? 'MYR'  : 'MYR';
-        const valueOrig     = p['Value (Original Currency)']?.type === 'number' ? p['Value (Original Currency)'].number ?? 0 : 0;
-        const purchaseOrig  = p['Purchase price (original currency)']?.type === 'number' ? p['Purchase price (original currency)'].number ?? 0 : 0;
-        const fxRate        = p['FX Rate to MYR']?.type === 'number' ? p['FX Rate to MYR'].number ?? 1 : 1;
-        const value    = p['Value (MYR)']?.type === 'number'          ? p['Value (MYR)'].number ?? (valueOrig * fxRate)           : (valueOrig * fxRate);
-        const purchase = p['Purchase price (MYR)']?.type === 'number' ? p['Purchase price (MYR)'].number ?? (purchaseOrig * fxRate) : (purchaseOrig * fxRate);
-        const gain     = value - purchase;
-        const ret      = purchase > 0 ? Math.round((gain / purchase) * 100) : 0;
+      // Clients + holdings via the data-source abstraction; join on notion_id so
+      // clientId is consistent across Notion (page id) and Supabase (uuid).
+      const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
+      const clientMap: Record<string, { id: string; name: string }> = {};
+      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { id: c.id, name: c.name };
 
-        const clientRelIds = p['👥 Clients']?.type === 'relation' ? p['👥 Clients'].relation.map(r => r.id) : [];
-        const clientName   = clientRelIds.map(id => clientMap[id] ?? '').filter(Boolean).join(', ');
-        const clientId     = clientRelIds[0] ?? '';
-        const units        = p['Units']?.type === 'number' ? p['Units'].number ?? 0 : 0;
-
-        return {
-          id: page.id,
-          clientId,
-          units,
-          name:          p['Holding Name']?.type === 'title'     ? p['Holding Name'].title[0]?.plain_text ?? ''        : '',
-          clientName,
-          assetClass:    p['Asset class']?.type === 'select'     ? p['Asset class'].select?.name ?? ''                 : '',
-          institution:   p['Institution']?.type === 'rich_text'  ? p['Institution'].rich_text[0]?.plain_text ?? ''     : '',
-          fameAccountNo: p['FAME Account No']?.type === 'rich_text' ? p['FAME Account No'].rich_text[0]?.plain_text ?? '' : '',
-          fundSource:    p['Fund Source']?.type === 'rich_text'  ? p['Fund Source'].rich_text[0]?.plain_text ?? ''     : '',
-          status:      p['Status']?.type === 'select'          ? p['Status'].select?.name ?? ''                      : '',
-          maturity:    p['Maturity date']?.type === 'date'     ? p['Maturity date'].date?.start ?? ''                 : '',
-          currency,
-          valueOrig,
-          purchaseOrig,
-          fxRate,
-          value,
-          purchase,
-          gain,
-          returnPct: ret,
-        };
-      });
+      const data = holdings
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(h => {
+          const value    = h.valueMyr    || h.valueOriginal    * h.fxRate;
+          const purchase = h.purchaseMyr || h.purchaseOriginal * h.fxRate;
+          const gain     = value - purchase;
+          const client   = clientMap[h.clientNotionId];
+          return {
+            id:            h.id,
+            clientId:      client?.id ?? '',
+            units:         h.units,
+            name:          h.name,
+            clientName:    client?.name ?? '',
+            assetClass:    h.assetClass,
+            institution:   h.institution,
+            fameAccountNo: h.fameAccountNo,
+            fundSource:    h.fundSource,
+            status:        h.status,
+            maturity:      h.maturityDate,
+            currency:      h.currency || 'MYR',
+            valueOrig:     h.valueOriginal,
+            purchaseOrig:  h.purchaseOriginal,
+            fxRate:        h.fxRate,
+            value,
+            purchase,
+            gain,
+            returnPct:     purchase > 0 ? Math.round((gain / purchase) * 100) : 0,
+          };
+        });
       return json({ data });
     }
 

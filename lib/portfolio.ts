@@ -1,0 +1,124 @@
+/**
+ * lib/portfolio.ts
+ * Chokepoint for reading Portfolio holdings (Phase 2, table 2.2).
+ *
+ * Data-source switch. When DATA_SOURCE_PORTFOLIO === 'supabase', holdings are
+ * served from Supabase ONLY (straight cutover); otherwise the Notion path below
+ * is used unchanged.
+ *
+ * The client link is exposed as `clientNotionId` (dashless Notion id). Callers
+ * join to clients ON notion_id — NOT on the row id — so the resolved clientId
+ * stays consistent whether clients come from Notion (page id) or Supabase (uuid).
+ * This is what lets cross-table routes work in either data-source mode.
+ */
+
+import { Client, isFullPage } from '@notionhq/client';
+import { AdvisorConfig } from './getAdvisorConfig';
+import * as sbPortfolio from './repos/portfolio';
+
+export interface PortfolioHolding {
+  id:               string;   // Notion page id (notion path) OR Supabase uuid
+  notionId:         string;
+  clientNotionId:   string;   // join key → clients.notionId
+  name:             string;
+  assetClass:       string;
+  productName:      string;
+  institution:      string;
+  currency:         string;
+  fxRate:           number;
+  units:            number;
+  purchaseOriginal: number;
+  purchaseMyr:      number;
+  valueOriginal:    number;
+  valueMyr:         number;
+  startDate:        string;
+  maturityDate:     string;
+  status:           string;
+  advisorName:      string;
+  geography:        string;
+  fameAccountNo:    string;
+  fundSource:       string;
+  fameSyncDate:     string;
+}
+
+function useSupabase(): boolean {
+  return process.env.DATA_SOURCE_PORTFOLIO === 'supabase';
+}
+
+// ── Notion property readers (real property types of the Portfolio DB) ──
+function rt(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
+  return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : '';
+}
+function num(p: Record<string, unknown>, k: string): number {
+  const v = p[k] as { type: string; number?: number | null } | undefined;
+  return v?.type === 'number' ? (v.number ?? 0) : 0;
+}
+function sel(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; select?: { name: string } } | undefined;
+  return v?.type === 'select' ? (v.select?.name ?? '') : '';
+}
+function dateOf(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; date?: { start: string } | null } | undefined;
+  return v?.type === 'date' ? (v.date?.start ?? '') : '';
+}
+function titleOf(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; title?: { plain_text: string }[] } | undefined;
+  return v?.type === 'title' ? (v.title?.[0]?.plain_text ?? '') : '';
+}
+function relFirst(p: Record<string, unknown>, k: string): string {
+  const v = p[k] as { type: string; relation?: { id: string }[] } | undefined;
+  return v?.type === 'relation' ? (v.relation?.[0]?.id.replace(/-/g, '') ?? '') : '';
+}
+
+/** List holdings scoped to this advisor (Admin sees all). */
+export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHolding[]> {
+  if (useSupabase()) return sbPortfolio.listHoldings(config);
+  if (!config.portfolioDbId || !config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return [];
+
+  const notion = new Client({ auth: config.notionApiKey });
+  const filter = config.role !== 'Admin'
+    ? { property: 'Advisor', select: { equals: config.name } }
+    : undefined;
+
+  const out: PortfolioHolding[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: config.portfolioDbId,
+      page_size: 100,
+      start_cursor: cursor,
+      ...(filter ? { filter } : {}),
+    });
+    for (const cp of res.results) {
+      if (!isFullPage(cp)) continue;
+      const p = cp.properties as Record<string, unknown>;
+      out.push({
+        id:               cp.id,
+        notionId:         cp.id.replace(/-/g, ''),
+        clientNotionId:   relFirst(p, '👥 Clients'),
+        name:             titleOf(p, 'Holding Name'),
+        assetClass:       sel(p, 'Asset class'),
+        productName:      rt(p, 'Product name'),
+        institution:      rt(p, 'Institution'),
+        currency:         sel(p, 'Currency'),
+        fxRate:           num(p, 'FX Rate to MYR'),
+        units:            num(p, 'Units'),
+        purchaseOriginal: num(p, 'Purchase price (original currency)'),
+        purchaseMyr:      num(p, 'Purchase price (MYR)'),
+        valueOriginal:    num(p, 'Value (Original Currency)'),
+        valueMyr:         num(p, 'Value (MYR)'),
+        startDate:        dateOf(p, 'Start date'),
+        maturityDate:     dateOf(p, 'Maturity date'),
+        status:           sel(p, 'Status'),
+        advisorName:      sel(p, 'Advisor'),
+        geography:        rt(p, 'Geography'),
+        fameAccountNo:    rt(p, 'FAME Account No'),
+        fundSource:       rt(p, 'Fund Source'),
+        fameSyncDate:     dateOf(p, 'FAME Sync Date'),
+      });
+    }
+    cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
+  } while (cursor);
+  return out;
+}
