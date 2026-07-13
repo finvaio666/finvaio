@@ -45,6 +45,7 @@ function toClient(r: Row): ClientRecord {
     nextReview:  r.next_review_date ?? '',
     phone:       r.phone ?? '',
     email:       r.email ?? '',
+    lastEdited:  '',   // no last_edited column in Supabase clients yet
   };
 }
 

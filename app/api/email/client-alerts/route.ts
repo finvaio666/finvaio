@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { listClients } from '@/lib/clients';
 import { getActive, getRecentInbound } from '@/lib/emailService';
 import { getCompanyDomains } from '@/lib/institutions';
 
@@ -32,25 +32,17 @@ export async function GET(req: NextRequest) {
   if (domains.length === 0) return NextResponse.json({ alerts: [], noWhitelist: true });
 
   try {
-    // 1. Load client names from Notion
+    // 1. Load client names via the data-source abstraction (Notion or Supabase per flag)
     const clientNames: { id: string; name: string; first: string; last: string }[] = [];
-    if (config.notionApiKey && config.notionApiKey !== 'DEMO_MODE' && config.clientsDbId) {
-      const notion = new Client({ auth: config.notionApiKey });
-      const f = advisorFilter(config);
-      const res = await notion.databases.query({ database_id: config.clientsDbId, page_size: 100, ...(f ? { filter: f } : {}) });
-      for (const page of res.results) {
-        if (!isFullPage(page)) continue;
-        const nameProp = page.properties['Client Name'];
-        const name = nameProp?.type === 'title' ? nameProp.title[0]?.plain_text ?? '' : '';
-        if (!name) continue;
-        const parts = name.trim().split(/\s+/);
-        clientNames.push({
-          id:    page.id,
-          name,
-          first: parts[0]?.toLowerCase() ?? '',
-          last:  parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '',
-        });
-      }
+    for (const c of await listClients(config)) {
+      if (!c.name) continue;
+      const parts = c.name.trim().split(/\s+/);
+      clientNames.push({
+        id:    c.id,
+        name:  c.name,
+        first: parts[0]?.toLowerCase() ?? '',
+        last:  parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '',
+      });
     }
     if (clientNames.length === 0) return NextResponse.json({ alerts: [] });
 

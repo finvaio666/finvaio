@@ -33,6 +33,7 @@ export interface ClientRecord {
   nextReview:  string;   // ISO date or ''
   phone:       string;
   email:       string;
+  lastEdited:  string;   // Notion page last_edited_time; '' from Supabase (no such column yet)
 }
 
 function useSupabase(): boolean {
@@ -104,6 +105,7 @@ export async function listClients(
         nextReview:  dateOf(p, 'Next Review'),
         phone:       rt(p, 'Phone') || rt(p, 'Phone Number') || rt(p, 'Mobile'),
         email:       rt(p, 'Email') || rt(p, 'Email Address'),
+        lastEdited:  cp.last_edited_time,
       });
     }
     cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
