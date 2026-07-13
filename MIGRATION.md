@@ -104,7 +104,12 @@ DATA_SOURCE_CLIENTS=notion
   - [x] 转 `notion?type=portfolio`:clients+holdings **join on notion_id** → clientId 跨模式一致(解开跨表 id 难题)
   - [ ] 跨表路由(依赖 clients+portfolio 都在 Supabase):`ai`、`dashboard-assistant`、`sync-aum`(AUM 重算)、`update-nav`
   - [x] **AUM 回填完成**(`scripts/backfill-client-aum.ts`):从 portfolio_holdings 重算 240 个有持仓客户的 aum_myr(221 个补上 null);无持仓 45 个不动(TEO 保留 2M、44 个留 null)。clients.aum_myr 合计 9,550,350。
-- [ ] 2.3 `insurance` ⬜
+- [x] 2.3 `insurance` 🟩 — 关联用 `client_notion_id`
+  - [x] schema 已完整(无需补列);CHECK insurance_type/status;benefits=text[]
+  - [x] `scripts/reconcile-insurance.ts` 导入 81 条(24 insert + 57 update 修 client 键;全部 join 到客户)
+  - [x] `lib/insurance.ts` 抽象 + `lib/repos/insurance.ts` + `DATA_SOURCE_INSURANCE` flag
+  - [x] 转 `notion?type=insurance`(join clients 拿 name+income);两路径验证一致(sum assured 13,424,000)
+  - 🔧 摸查时发现并修复:首次 clients 导入漏了 20 个真客户(名字后填),重跑 reconcile-clients → 305
 - [ ] 2.4 `assets` ⬜ — 净值 Assets & Liabilities
 - [ ] 2.5 `cashflow` ⬜ — 顺便把「archive 全部旧记录再新建」改成真 `UPSERT`
 - [ ] 2.6 `meeting_notes` ⬜
