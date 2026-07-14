@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listTasks } from '@/lib/tasks';
+import { listClients } from '@/lib/clients';
+import { listHoldings } from '@/lib/portfolio';
+import { listPolicies } from '@/lib/insurance';
+import { listMeetings } from '@/lib/meetingNotes';
 import { logAiUsage } from '@/lib/aiUsage';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE } from '@/lib/demoData';
 
@@ -91,203 +94,109 @@ async function buildClientContext(
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.context;
 
   if (!config.notionApiKey || !config.clientsDbId) return '';
-  const notion = new Client({ auth: config.notionApiKey });
 
-  // ── 1. Find client by name (scoped to this advisor; Admin = all) ────────────
-  const af = advisorFilter(config);
-  const nameFilter = { property: 'Client Name', title: { contains: clientName.split(' ')[0] } };
-  const clientRes = await notion.databases.query({
-    database_id: config.clientsDbId,
-    filter: af ? { and: [af, nameFilter] } : nameFilter,
-  });
+  // ── 1. Find client by name (via the clients abstraction; advisor-scoped) ────
+  const first       = clientName.split(' ')[0].toLowerCase();
+  const allClients  = await listClients(config).catch(() => []);
+  const nameMatches = allClients.filter(c => c.name.toLowerCase().includes(first));
+  const client      = nameMatches.find(c =>
+    c.name.toLowerCase().includes(clientName.toLowerCase()) ||
+    clientName.toLowerCase().includes(c.name.split(' ')[0].toLowerCase())
+  ) ?? nameMatches[0];
 
-  const clientPages = clientRes.results.filter(isFullPage);
-  const clientPage  = clientPages.find(p => {
-    const n = p.properties['Client Name']?.type === 'title'
-      ? p.properties['Client Name'].title[0]?.plain_text ?? '' : '';
-    return n.toLowerCase().includes(clientName.toLowerCase()) ||
-           clientName.toLowerCase().includes(n.split(' ')[0].toLowerCase());
-  }) ?? clientPages[0];
-
-  if (!clientPage) {
+  if (!client) {
     return `Client "${clientName}" not found in Notion. Please verify the name.`;
   }
 
-  const cp      = clientPage.properties;
-  const name    = cp['Client Name']?.type === 'title'            ? cp['Client Name'].title[0]?.plain_text ?? clientName : clientName;
-  const dob     = cp['Date of Birth']?.type === 'date'           ? cp['Date of Birth'].date?.start ?? ''                : '';
-  const age     = calcAge(dob);
-  const risk    = cp['Risk Profile']?.type === 'select'          ? cp['Risk Profile'].select?.name ?? ''                : '';
-  const segment = cp['Client Segment']?.type === 'select'        ? cp['Client Segment'].select?.name ?? ''             : '';
-  const aum     = cp['AUM (MYR)']?.type === 'number'             ? cp['AUM (MYR)'].number ?? 0                         : 0;
-  const income  = cp['Monthly income (MYR)']?.type === 'number'  ? cp['Monthly income (MYR)'].number ?? 0              : 0;
-  const goals   = cp['Financial goals']?.type === 'multi_select' ? cp['Financial goals'].multi_select.map((g: { name: string }) => g.name) : [];
-  const nextRev = cp['Next review date']?.type === 'date'        ? cp['Next review date'].date?.start ?? ''            : '';
-  const lastRev = cp['Last review date']?.type === 'date'        ? cp['Last review date'].date?.start ?? ''            : '';
-  const status  = cp['Status']?.type === 'select'                ? cp['Status'].select?.name ?? ''                     : '';
+  const name      = client.name || clientName;
+  const dob       = client.dob;
+  const age       = calcAge(dob);
+  const risk      = client.risk;
+  const segment   = client.segment;
+  const aum       = client.aum;
+  const income    = client.monthlyIncome;
+  const goals     = client.financialGoals;
+  const nextRev   = client.nextReview;
+  const lastRev   = client.lastReview;
+  const status    = client.status;
+  // Join key for portfolio/insurance (source-agnostic) + name for text fallback.
+  const clientKey = client.notionId;
+  const firstName = name.split(' ')[0].toLowerCase();
 
-  // ── 2. Fetch portfolio for this client ─────────────────────────────────────
-  type QueryResult = Awaited<ReturnType<typeof notion.databases.query>>;
-  const emptyQuery: QueryResult = { results: [], next_cursor: null, has_more: false, object: 'list', type: 'page_or_database', page_or_database: {} };
-
-  let portfolioRes: QueryResult = emptyQuery;
-  if (config.portfolioDbId) {
-    try {
-      // Primary: filter by client relation
-      portfolioRes = await notion.databases.query({
-        database_id: config.portfolioDbId,
-        filter: { property: '👥 Clients', relation: { contains: clientPage.id } },
-      });
-    } catch (e) { console.error('Portfolio relation fetch failed:', e); }
-
-    // Fallback: if no results, search all holdings and match by client name in title or notes
-    if (portfolioRes.results.length === 0) {
-      try {
-        const firstName = name.split(' ')[0];
-        const allHoldings = await notion.databases.query({
-          database_id: config.portfolioDbId,
-          page_size: 100,
-          ...(af ? { filter: af } : {}),
-        });
-        // Match if any text property contains the client's name
-        portfolioRes = {
-          ...allHoldings,
-          results: allHoldings.results.filter(p => {
-            if (!isFullPage(p)) return false;
-            return Object.values(p.properties).some(prop => {
-              if (prop.type === 'title')     return prop.title.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
-              if (prop.type === 'rich_text') return prop.rich_text.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
-              return false;
-            });
-          }),
-        };
-      } catch (e) { console.error('Portfolio fallback fetch failed:', e); }
-    }
+  // ── 2. Portfolio for this client — join on clientNotionId, name fallback ────
+  const allHoldings = await listHoldings(config).catch(() => []);
+  let clientHoldings = allHoldings.filter(h => h.clientNotionId && h.clientNotionId === clientKey);
+  if (clientHoldings.length === 0) {
+    // Fallback: holdings that mention the client by name (holding name / institution).
+    clientHoldings = allHoldings.filter(h =>
+      h.name.toLowerCase().includes(firstName) || h.institution.toLowerCase().includes(firstName));
   }
-
-  const holdings = portfolioRes.results.filter(isFullPage)
-    .filter(p => {
-      const statusProp = p.properties['Status'];
-      if (!statusProp || statusProp.type !== 'select') return true; // no status field = include
-      const statusVal = statusProp.select?.name?.toLowerCase() ?? '';
-      return statusVal === 'active' || statusVal === ''; // case-insensitive
+  const holdings = clientHoldings
+    .filter(h => {
+      const s = (h.status || '').toLowerCase();
+      return s === 'active' || s === ''; // no/blank status = include, case-insensitive
     })
-    .map(p => {
-      const pr          = p.properties;
-      const holdName    = pr['Holding Name']?.type === 'title'      ? pr['Holding Name'].title[0]?.plain_text ?? ''         : '';
-      const assetClass  = pr['Asset class']?.type === 'select'      ? pr['Asset class'].select?.name ?? ''                  : '';
-      const currency    = pr['Currency']?.type === 'select'         ? pr['Currency'].select?.name ?? 'MYR'                  : 'MYR';
-      const valueOrig   = pr['Value (Original Currency)']?.type === 'number' ? pr['Value (Original Currency)'].number ?? 0  : 0;
-      const fxRate      = pr['FX Rate to MYR']?.type === 'number'   ? pr['FX Rate to MYR'].number ?? 1                      : 1;
-      const valueMYR    = pr['Value (MYR)']?.type === 'number'      ? pr['Value (MYR)'].number ?? (valueOrig * fxRate)       : (valueOrig * fxRate);
-      const purchMYR    = pr['Purchase price (MYR)']?.type === 'number' ? pr['Purchase price (MYR)'].number ?? 0            : 0;
-      const ret         = purchMYR > 0 ? Math.round(((valueMYR - purchMYR) / purchMYR) * 100) : 0;
-      const maturity    = pr['Maturity date']?.type === 'date'      ? pr['Maturity date'].date?.start ?? ''                  : '';
-      const institution = pr['Institution']?.type === 'rich_text'   ? pr['Institution'].rich_text[0]?.plain_text ?? ''      : '';
-      const units       = pr['Units']?.type === 'number'            ? pr['Units'].number ?? 0                               : 0;
-      return { holdName, assetClass, currency, valueOrig, valueMYR, purchMYR, ret, maturity, institution, units };
-    });
-
-  // ── 3. Fetch insurance for this client ─────────────────────────────────────
-  type PolicyRow = { policyName: string; insurer: string; benefits: string[]; status: string; annualPremium: number; lifeCover: number; ciCover: number; paCover: number; tpdCover: number; medicalClass: string; policyOwner: string; lifeAssured: string };
-  let policies: PolicyRow[] = [];
-
-  if (config.insuranceDbId) {
-    let insurRes: QueryResult = emptyQuery;
-    try {
-      insurRes = await notion.databases.query({
-        database_id: config.insuranceDbId,
-        filter: { property: 'Clients', relation: { contains: clientPage.id } },
-      });
-    } catch (e) { console.error('Insurance relation fetch failed:', e); }
-
-    // Fallback: search by client name if relation returns nothing
-    if (insurRes.results.length === 0) {
-      try {
-        const firstName = name.split(' ')[0];
-        const allPolicies = await notion.databases.query({
-          database_id: config.insuranceDbId,
-          page_size: 100,
-          ...(af ? { filter: af } : {}),
-        });
-        insurRes = {
-          ...allPolicies,
-          results: allPolicies.results.filter(p => {
-            if (!isFullPage(p)) return false;
-            return Object.values(p.properties).some(prop => {
-              if (prop.type === 'title')     return prop.title.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
-              if (prop.type === 'rich_text') return prop.rich_text.some((t: { plain_text: string }) => t.plain_text.toLowerCase().includes(firstName.toLowerCase()));
-              return false;
-            });
-          }),
-        };
-      } catch (e) { console.error('Insurance fallback fetch failed:', e); }
-    }
-    policies = insurRes.results.filter(isFullPage).map(p => {
-      const pr = p.properties;
+    .map(h => {
+      const valueMYR = h.valueMyr || (h.valueOriginal * h.fxRate);
+      const purchMYR = h.purchaseMyr;
+      const ret      = purchMYR > 0 ? Math.round(((valueMYR - purchMYR) / purchMYR) * 100) : 0;
       return {
-        policyName:    pr['Policy Name']?.type === 'title'           ? pr['Policy Name'].title[0]?.plain_text ?? ''        : '',
-        insurer:       pr['Insurer']?.type === 'rich_text'            ? pr['Insurer'].rich_text[0]?.plain_text ?? ''        : '',
-        benefits:      pr['Benefits']?.type === 'multi_select'        ? pr['Benefits'].multi_select.map((b: { name: string }) => b.name) : [],
-        status:        pr['Status']?.type === 'select'                ? pr['Status'].select?.name ?? ''                    : '',
-        annualPremium: pr['Annual Premium (MYR)']?.type === 'number'  ? pr['Annual Premium (MYR)'].number ?? 0             : 0,
-        lifeCover:     pr['Life Cover (MYR)']?.type === 'number'      ? pr['Life Cover (MYR)'].number ?? 0                 : 0,
-        ciCover:       pr['CI Cover (MYR)']?.type === 'number'        ? pr['CI Cover (MYR)'].number ?? 0                   : 0,
-        paCover:       pr['PA Cover (MYR)']?.type === 'number'        ? pr['PA Cover (MYR)'].number ?? 0                   : 0,
-        tpdCover:      pr['TPD Cover (MYR)']?.type === 'number'       ? pr['TPD Cover (MYR)'].number ?? 0                  : 0,
-        medicalClass:  pr['Medical Class']?.type === 'rich_text'      ? pr['Medical Class'].rich_text[0]?.plain_text ?? '' : '',
-        policyOwner:   pr['Policy Owner']?.type === 'rich_text'       ? pr['Policy Owner'].rich_text[0]?.plain_text ?? ''  : '',
-        lifeAssured:   pr['Life Assured']?.type === 'rich_text'       ? pr['Life Assured'].rich_text[0]?.plain_text ?? ''  : '',
+        holdName:    h.name,
+        assetClass:  h.assetClass,
+        currency:    h.currency || 'MYR',
+        valueOrig:   h.valueOriginal,
+        valueMYR,
+        purchMYR,
+        ret,
+        maturity:    h.maturityDate,
+        institution: h.institution,
+        units:       h.units,
       };
     });
-  }
 
-  // ── 4. Fetch meeting notes for this client ─────────────────────────────────
+  // ── 3. Insurance for this client — join on clientNotionId, name fallback ────
+  type PolicyRow = { policyName: string; insurer: string; benefits: string[]; status: string; annualPremium: number; lifeCover: number; ciCover: number; paCover: number; tpdCover: number; medicalClass: string; policyOwner: string; lifeAssured: string };
+  const allPolicies = await listPolicies(config).catch(() => []);
+  let clientPolicies = allPolicies.filter(p => p.clientNotionId && p.clientNotionId === clientKey);
+  if (clientPolicies.length === 0) {
+    clientPolicies = allPolicies.filter(p =>
+      p.policyName.toLowerCase().includes(firstName) ||
+      p.insurer.toLowerCase().includes(firstName) ||
+      p.policyOwner.toLowerCase().includes(firstName) ||
+      p.lifeAssured.toLowerCase().includes(firstName));
+  }
+  const policies: PolicyRow[] = clientPolicies.map(p => ({
+    policyName:    p.policyName,
+    insurer:       p.insurer,
+    benefits:      p.benefits,
+    status:        p.status,
+    annualPremium: p.annualPremium,
+    lifeCover:     p.lifeCover,
+    ciCover:       p.ciCover,
+    paCover:       p.paCover,
+    tpdCover:      p.tpdCover,
+    medicalClass:  p.medicalClass,
+    policyOwner:   p.policyOwner,
+    lifeAssured:   p.lifeAssured,
+  }));
+
+  // ── 4. Meeting notes for this client (latest 10 → name match → last 5) ──────
   type MeetingRow = { meetingDate: string; meetingType: string; notes: string; actionItems: string; nextReviewDate: string };
-  let meetings: MeetingRow[] = [];
-
-  if (config.meetingNotesDbId) {
-    try {
-      const firstName = name.split(' ')[0];
-      // Fetch recent meetings sorted newest-first
-      const meetRes = await notion.databases.query({
-        database_id: config.meetingNotesDbId,
-        ...(af ? { filter: af } : {}),
-        sorts: [{ property: 'Meeting Date', direction: 'descending' }],
-        page_size: 10,
-      });
-
-      meetings = meetRes.results.filter(isFullPage)
-        .filter(p => {
-          const titleStr = p.properties['Name']?.type === 'title'
-            ? (p.properties['Name'] as { type: 'title'; title: { plain_text: string }[] }).title[0]?.plain_text ?? ''
-            : '';
-          const clientNameField = p.properties['Client Name']?.type === 'rich_text'
-            ? (p.properties['Client Name'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? ''
-            : '';
-          // Match by client name in title or Client Name field
-          const haystack = `${titleStr} ${clientNameField}`.toLowerCase();
-          return haystack.includes(firstName.toLowerCase()) || haystack.includes(name.toLowerCase());
-        })
-        .slice(0, 5) // last 5 meetings
-        .map(p => {
-          const pr = p.properties;
-          const getDate = (key: string) =>
-            pr[key]?.type === 'date' ? (pr[key] as { type: 'date'; date: { start: string } | null }).date?.start ?? '' : '';
-          const getText = (key: string) =>
-            pr[key]?.type === 'rich_text' ? (pr[key] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? '' : '';
-          const getSelect = (key: string) =>
-            pr[key]?.type === 'select' ? (pr[key] as { type: 'select'; select: { name: string } | null }).select?.name ?? '' : '';
-          return {
-            meetingDate:    getDate('Meeting Date'),
-            meetingType:    getSelect('Meeting Type'),
-            notes:          getText('Notes'),
-            actionItems:    getText('Action Items'),
-            nextReviewDate: getDate('Next Review Date'),
-          };
-        });
-    } catch (e) { console.error('Meeting notes fetch failed:', e); }
-  }
+  const recentMeetings = (await listMeetings(config).catch(() => [])).slice(0, 10);
+  const meetings: MeetingRow[] = recentMeetings
+    .filter(m => {
+      // Match by client name in the meeting title or its Client Name field.
+      const haystack = `${m.title} ${m.clientName}`.toLowerCase();
+      return haystack.includes(firstName) || haystack.includes(name.toLowerCase());
+    })
+    .slice(0, 5) // last 5 meetings
+    .map(m => ({
+      meetingDate:    m.meetingDate,
+      meetingType:    m.meetingType,
+      notes:          m.notes,
+      actionItems:    m.actionItems,
+      nextReviewDate: m.nextReviewDate,
+    }));
 
   // ── 5. Assemble context string ─────────────────────────────────────────────
   const lines: string[] = [];
