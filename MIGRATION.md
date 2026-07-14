@@ -147,10 +147,20 @@ DATA_SOURCE_CLIENTS=notion
   - [x] `lib/formsLibrary.ts` 加 `listForms`/`getForm` chokepoint(`DATA_SOURCE_FORMS` flag)+ 合并共享 `toFormRecord` + `lib/repos/formsLibrary.ts`(field_mapping JSON 解析、tags text[])
   - [x] 转 3 个自身读:`forms` GET(FA list,Active 过滤,轻量子集)、`forms/[id]` GET(单表单,查 active)、`admin/forms-library` GET(全部+driveConnected)。两路径均 [](parity);清掉转换后死掉的 toFormRecord/rt/isFullPage
   - [x] `scripts/reconcile-forms-library.ts`(0/0 no-op,备好;form_type CHECK selN,tags multi_select→text[])
-  - ⏭️ **延后**:`forms/[id]/prefill`(跨表读:form+client+insurance+portfolio,按 page-id/relation → 归跨表读整体转)、`forms/[id]/fill`(Drive 下载 PDF)、admin 写(POST/PATCH/DELETE + Drive 上传)
+  - ⏭️ **延后**:`forms/[id]/prefill`(点查 form+client+insurance+portfolio,按 page-id → **归写路径**,详见 Phase 2.10)、`forms/[id]/fill`(Drive 下载 PDF)、admin 写(POST/PATCH/DELETE + Drive 上传)
 - ✅ **Phase 2 数据表 9/9 全绿**(2.1–2.7 读+reconcile;2.8 写;2.9 读)——只剩跨表读整体转 + 写路径收尾
 - ✅ 每张表通过标准：对应页面 CRUD 正常 + 多顾问隔离正确
 - 💾 **每张表**测通后独立 Commit（如 `feat(migrate): portfolio on supabase`），再做下一张
+
+### Phase 2.10 — 跨表读整体转  🟩 3/4 完成（prefill 归写路径）
+> 所有依赖表(clients/portfolio/insurance/meeting_notes/tasks)都已有抽象层后，把多表联查的读路由一次性接到 chokepoint。不改组装/输出逻辑，只换数据源。
+- [x] `tasks/sync`（`lib/tasks.ts syncTasksFromMeetings`）→ 读 meeting 改走 `listMeetings(config).slice(0,50)`（保留原 page_size:50「最近 50」语义）；clientName/actionItems/meetingDate 与 `MeetingNote` 字节一致
+- [x] `ai`（`buildClientContext`）→ client/portfolio/insurance/meeting 全走 `listClients`/`listHoldings`/`listPolicies`/`listMeetings`；**join 改用源无关的 `clientNotionId`**
+  - 🔬 **等价性已证**：审计线上数据 portfolio 1025 / insurance 1080 条**全部恰好关联 1 个 client**（0 多关联）→ 首个 relation == relation-contains，主 join 零行为差异；name-fallback 仅在主 join 返 0 时触发（数据 100% 已关联，实为死路径）；meeting 过滤(最近 10→取 5)、模糊 client 匹配、assembly 输出全保留
+- [x] `dashboard-assistant` → clients(roster+profile)/portfolio(fund lookup)/meeting(fallback) 全走抽象；fund lookup 客户归属改 join `clientNotionId`
+  - 🔬 **join 已验**：1025 holdings 100% resolve 到 client 名；client profile 读 `ClientRecord` 规范字段（原多 key 兜底 `AUM/Total AUM`、`Email Address` 等收敛到规范列——线上用的就是规范列，差异可忽略）
+- ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
+- ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）随写路径阶段
 
 ### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜
 - [ ] Notion Users page → `advisors` 表（name / role / features / OAuth tokens）
