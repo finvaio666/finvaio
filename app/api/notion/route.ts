@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { listPolicies } from '@/lib/insurance';
 import { listAssets } from '@/lib/assets';
 import { listCashflow } from '@/lib/cashflow';
-import { queryAllPages } from '@/lib/notionQueryAll';
+import { listPlans, listFunds } from '@/lib/products';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
@@ -55,7 +54,6 @@ export async function GET(req: NextRequest) {
   }
   const json = (body: unknown) => { dataCache.set(cacheKey, { ts: Date.now(), body }); return NextResponse.json(body); };
 
-  const notion = new Client({ auth: config.notionApiKey });
   const DB = {
     clients:          config.clientsDbId,
     portfolio:        config.portfolioDbId,
@@ -216,57 +214,14 @@ export async function GET(req: NextRequest) {
     // ── Insurance product catalogue ───────────────────────────────────────────
     if (type === 'insurance-products') {
       if (!DB.insurancePlans) return NextResponse.json({ data: [] });
-      const pages = await queryAllPages(notion, {
-        database_id: DB.insurancePlans,
-        filter: { property: 'Status', select: { equals: 'Active' } },
-        sorts: [{ property: 'Insurer', direction: 'ascending' }],
-      });
-      const data = pages.map((page) => {
-        const p = page.properties as Record<string, any>;
-        return {
-          id:               page.id,
-          name:             p['Name']?.title?.[0]?.plain_text ?? '',
-          insurer:          p['Insurer']?.select?.name ?? p['Insurer']?.rich_text?.[0]?.plain_text ?? '',
-          type:             p['Type']?.select?.name ?? '',
-          minAge:           p['Min Age']?.number ?? 0,
-          maxAge:           p['Max Age']?.number ?? 99,
-          minSumAssured:    p['Min Sum Assured']?.number ?? 0,
-          maxSumAssured:    p['Max Sum Assured']?.number ?? 0,
-          estMonthlyPremium: p['Est Monthly Premium']?.rich_text?.[0]?.plain_text ?? '',
-          keyFeatures:      p['Key Features']?.rich_text?.[0]?.plain_text ?? '',
-          epfApproved:      p['EPF Approved']?.checkbox ?? false,
-          status:           p['Status']?.select?.name ?? 'Active',
-        };
-      });
-      return json({ data });
+      // Product catalogue via the data-source abstraction (Notion or Supabase per flag).
+      return json({ data: await listPlans(config) });
     }
 
     // ── Investment fund catalogue ─────────────────────────────────────────────
     if (type === 'funds') {
       if (!DB.funds) return NextResponse.json({ data: [] });
-      const pages = await queryAllPages(notion, {
-        database_id: DB.funds,
-        filter: { property: 'Status', select: { equals: 'Active' } },
-        sorts: [{ property: 'Fund House', direction: 'ascending' }],
-      });
-      const data = pages.map((page) => {
-        const p = page.properties as Record<string, any>;
-        return {
-          id:            page.id,
-          name:          p['Name']?.title?.[0]?.plain_text ?? '',
-          fundHouse:     p['Fund House']?.select?.name ?? p['Fund House']?.rich_text?.[0]?.plain_text ?? '',
-          assetClass:    p['Asset Class']?.select?.name ?? '',
-          region:        p['Region']?.select?.name ?? '',
-          riskLevel:     p['Risk Level']?.select?.name ?? '',
-          return3Y:      p['3Y Return %']?.number ?? 0,
-          minInvestment: p['Min Investment']?.number ?? 1000,
-          salesCharge:   p['Sales Charge %']?.number ?? 0,
-          epfApproved:   p['EPF Approved']?.checkbox ?? false,
-          status:        p['Status']?.select?.name ?? 'Active',
-          description:   p['Description']?.rich_text?.[0]?.plain_text ?? '',
-        };
-      });
-      return json({ data });
+      return json({ data: await listFunds(config) });
     }
 
     return NextResponse.json({ error: 'Unknown type', data: null }, { status: 400 });
