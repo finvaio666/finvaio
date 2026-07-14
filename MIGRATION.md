@@ -162,11 +162,12 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（1/N）
+### Phase 2.11 — 写路径  🟨 进行中（2/N）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
-- [ ] `update-nav`（更新持仓 NAV/估值 → 写 portfolio）
+- [x] `update-nav`（POST 按新 NAV 重算持仓 value 写回 portfolio；GET 聚合基金面板）→ 写 `setHoldingValue` chokepoint（`DATA_SOURCE_PORTFOLIO`）；读 `listHoldings`/`listClients`
+  - 🔬 **已验**：GET 基金聚合 parity 102 funds 0 mismatch（units/valueOrig/holdingCount/clients 全等）；Supabase 写平滑测试 `setHoldingValue` 按 id 改 value_original_currency+value_myr（测试改动已还原）；Notion 写路径与原内联 `pages.update` 字节一致；保留 currency/fxRate 默认（`|| 'MYR'`/`|| 1`）+ 基金排序
 - [ ] `cashflow` POST / DELETE / submit → **决策点 C**（`breakdown jsonb` 列 + archive 全部→真 UPSERT(client+month+advisor)）
 - [ ] `meetings` POST（建 note + 回写 client review 日期）→ 含 clientId 格式不兼容（Notion page id vs Supabase uuid）
 - [ ] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）
