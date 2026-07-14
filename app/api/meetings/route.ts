@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { Client } from '@notionhq/client';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { listMeetings } from '@/lib/meetingNotes';
 import { DEMO_MEETINGS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
@@ -13,56 +14,11 @@ export async function GET(req: NextRequest) {
   if (config.notionApiKey === 'DEMO_MODE') return NextResponse.json({ data: DEMO_MEETINGS });
   if (!config.meetingNotesDbId) return NextResponse.json({ data: [] });
 
-  const notion = new Client({ auth: config.notionApiKey });
   try {
-    const f = advisorFilter(config);
-    const res = await notion.databases.query({
-      database_id: config.meetingNotesDbId,
-      ...(f ? { filter: f } : {}),
-      sorts: [{ property: 'Meeting Date', direction: 'descending' }],
-    });
-
-    const data = res.results.filter(isFullPage).map(page => {
-      const p = page.properties;
-
-      // Title is always saved as: "ClientName — MeetingType — Date"
-      const titleStr = p['Name']?.type === 'title'
-        ? (p['Name'] as { type: 'title'; title: { plain_text: string }[] }).title[0]?.plain_text ?? ''
-        : '';
-
-      // clientName: prefer dedicated 'Client Name' field; fall back to parsing the title
-      const clientNameFromField = p['Client Name']?.type === 'rich_text'
-        ? (p['Client Name'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? ''
-        : '';
-      const clientNameFromTitle = titleStr.split(' — ')[0]?.trim() ?? '';
-      const clientName = clientNameFromField || clientNameFromTitle;
-
-      // clientId: prefer 'Client' relation field if it exists
-      const clientId = p['Client']?.type === 'relation'
-        ? (p['Client'] as { type: 'relation'; relation: { id: string }[] }).relation[0]?.id ?? ''
-        : '';
-
-      return {
-        id:             page.id,
-        clientId,
-        clientName,
-        meetingDate:    p['Meeting Date']?.type === 'date'     ? (p['Meeting Date'] as { type: 'date'; date: { start: string } | null }).date?.start ?? '' : '',
-        meetingType:    p['Meeting Type']?.type === 'select'   ? (p['Meeting Type'] as { type: 'select'; select: { name: string } | null }).select?.name ?? '' : '',
-        notes:          p['Notes']?.type === 'rich_text'       ? (p['Notes'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? '' : '',
-        actionItems:    p['Action Items']?.type === 'rich_text'? (p['Action Items'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? '' : '',
-        nextReviewDate: p['Next Review Date']?.type === 'date' ? (p['Next Review Date'] as { type: 'date'; date: { start: string } | null }).date?.start ?? '' : '',
-        title:          titleStr,
-      };
-    });
-    return NextResponse.json({ data });
+    // Meetings via the data-source abstraction (Notion or Supabase per flag).
+    // Already sorted by meeting date desc; the empty-advisor-option case returns [].
+    return NextResponse.json({ data: await listMeetings(config) });
   } catch (e) {
-    // The "Advisor" select option is auto-created on the first meeting save. Until
-    // then, filtering by it makes Notion throw a 400 validation_error. That just
-    // means this advisor has no meetings yet — return empty quietly, no log noise.
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes('not found for property')) {
-      return NextResponse.json({ data: [] });
-    }
     console.error('Meetings fetch error:', e);
     return NextResponse.json({ data: [] });
   }
