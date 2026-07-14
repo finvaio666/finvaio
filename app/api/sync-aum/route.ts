@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client } from '@notionhq/client';
-import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
-import { queryAllPages } from '@/lib/notionQueryAll';
+import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { listClients, setClientAum } from '@/lib/clients';
+import { listHoldings } from '@/lib/portfolio';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,38 +15,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 401 });
   }
 
-  const notion = new Client({ auth: config.notionApiKey });
-  const DB = { clients: config.clientsDbId, portfolio: config.portfolioDbId };
-  const f = advisorFilter(config);
-
   try {
-    // Step 1: Sum Value (MYR) per client from Portfolio
+    // Step 1: Sum Value (MYR) per client from Portfolio, keyed on the
+    // source-agnostic clientNotionId (every holding links exactly one client,
+    // so this matches the old per-relation sum). Data source per each flag.
     const aumByClient: Record<string, number> = {};
-    const holdingPages = await queryAllPages(notion, { database_id: DB.portfolio, ...(f ? { filter: f } : {}) });
-    for (const page of holdingPages) {
-      const relations = page.properties['👥 Clients']?.type === 'relation'
-        ? page.properties['👥 Clients'].relation : [];
-      const valueMYR = page.properties['Value (MYR)']?.type === 'number'
-        ? page.properties['Value (MYR)'].number ?? 0 : 0;
-      for (const rel of relations) {
-        aumByClient[rel.id] = (aumByClient[rel.id] ?? 0) + valueMYR;
-      }
+    const holdings = await listHoldings(config);
+    for (const h of holdings) {
+      if (!h.clientNotionId) continue;
+      aumByClient[h.clientNotionId] = (aumByClient[h.clientNotionId] ?? 0) + h.valueMyr;
     }
 
-    // Step 2: Update each client's AUM (MYR)
-    const clientPages = await queryAllPages(notion, { database_id: DB.clients, ...(f ? { filter: f } : {}) });
+    // Step 2: Write each client's AUM (MYR) back (only clients that have holdings).
+    const clients = await listClients(config);
     const updated: { name: string; aum: number }[] = [];
 
-    for (const page of clientPages) {
-      const aum = aumByClient[page.id];
+    for (const c of clients) {
+      const aum = aumByClient[c.notionId];
       if (aum === undefined) continue;
-      const name = page.properties['Client Name']?.type === 'title'
-        ? page.properties['Client Name'].title[0]?.plain_text ?? page.id : page.id;
-      await notion.pages.update({
-        page_id: page.id,
-        properties: { 'AUM (MYR)': { number: Math.round(aum) } },
-      });
-      updated.push({ name, aum: Math.round(aum) });
+      await setClientAum(config, c.id, Math.round(aum));
+      updated.push({ name: c.name || c.id, aum: Math.round(aum) });
       await sleep(300);
     }
 

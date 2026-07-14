@@ -76,3 +76,10 @@ export async function listClients(
   if (error) throw new Error(`clients list failed: ${error.message}`);
   return (data as Row[]).map(toClient);
 }
+
+/** Update a single client's AUM (MYR). `clientId` is the Supabase row uuid. */
+export async function setClientAum(clientId: string, aum: number): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).update({ aum_myr: aum }).eq('id', clientId);
+  if (error) throw new Error(`clients setAum failed: ${error.message}`);
+}

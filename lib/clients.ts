@@ -139,3 +139,18 @@ export async function listClients(
   } while (cursor);
   return out;
 }
+
+/**
+ * Write a client's AUM (MYR) back to the store. `clientId` is the
+ * source-appropriate id exactly as returned by listClients().id — a Notion page
+ * id on the Notion path, a Supabase uuid on the Supabase path. Notion path is
+ * byte-identical to the original inline sync-aum update.
+ */
+export async function setClientAum(config: AdvisorConfig, clientId: string, aum: number): Promise<void> {
+  if (useSupabase()) return sbClients.setClientAum(clientId, aum);
+  const notion = new Client({ auth: config.notionApiKey });
+  await notion.pages.update({
+    page_id: clientId,
+    properties: { 'AUM (MYR)': { number: aum } },
+  });
+}
