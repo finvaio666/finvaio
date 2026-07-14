@@ -16,6 +16,7 @@
 import { Client, isFullPage } from '@notionhq/client';
 import { AdvisorConfig } from './getAdvisorConfig';
 import * as sbTasks from './repos/tasks';
+import { listMeetings } from './meetingNotes';
 
 /**
  * Data-source switch. When DATA_SOURCE_TASKS === 'supabase', Tasks are served
@@ -163,31 +164,24 @@ export async function deleteTask(config: AdvisorConfig, taskId: string): Promise
  */
 export async function syncTasksFromMeetings(config: AdvisorConfig): Promise<number> {
   if (!config.tasksDbId || !config.meetingNotesDbId) return 0;
-  const notion = notionFor(config);
 
   // Existing tasks — dedupe key = client|task (lowercased)
   const existing = await listTasks(config);
   const seen = new Set(existing.map(t => `${t.client.toLowerCase()}|${t.task.toLowerCase().trim()}`));
 
-  const mres = await notion.databases.query({
-    database_id: config.meetingNotesDbId,
-    ...(config.role === 'Admin' ? {} : { filter: { property: 'Advisor', select: { equals: config.name } } }),
-    sorts: [{ property: 'Meeting Date', direction: 'descending' }],
-    page_size: 50,
-  });
+  // Meeting notes via the data-source abstraction (Notion or Supabase per flag).
+  // listMeetings is already advisor-scoped and sorted newest-first; slice(0, 50)
+  // preserves the original page_size:50 "latest 50 meetings" behaviour.
+  const meetings = (await listMeetings(config)).slice(0, 50);
 
   let created = 0;
-  for (const m of mres.results) {
-    if (!isFullPage(m)) continue;
-    const p = m.properties as Record<string, unknown>;
-    const action = rt(p, 'Action Items');
+  for (const m of meetings) {
+    const action = m.actionItems;
     if (!action.trim()) continue;
 
-    // Client name: from "Client Name" field or parsed from title "Name — Type — Date"
-    const titleProp = p['Name'] as { type: string; title?: { plain_text: string }[] } | undefined;
-    const title = titleProp?.type === 'title' ? (titleProp.title?.[0]?.plain_text ?? '') : '';
-    const client = rt(p, 'Client Name') || title.split(' — ')[0]?.trim() || '';
-    const mdate  = dt(p, 'Meeting Date');
+    // clientName is already resolved (dedicated field or parsed from the title).
+    const client = m.clientName;
+    const mdate  = m.meetingDate;
 
     // Split action items into individual lines (newlines, bullets, semicolons)
     const lines = action
