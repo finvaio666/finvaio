@@ -135,7 +135,13 @@ DATA_SOURCE_CLIENTS=notion
   - [x] 转 `notion?type=insurance-products` / `funds`;两路径均返回 []（parity）。顺手清掉 notion route 里因全分支抽象化而死掉的 `notion`/`Client`/`queryAllPages`
   - ⏭️ **无 reconcile**（无公司源 DB）——若将来有顾问启用 products,需按该顾问的 DB id 做一次性 per-advisor 导入
   - ⏭️ **写延后**：POST /api/products（AI 抽取 + 存回 Notion，`action: extract|save`）随写路径阶段
-- [ ] 2.8 `ai_usage` ⬜ — 日志表，最低风险
+- [x] 2.8 `ai_usage` 🟩 — 只写日志表（**首个写转换**）
+  - 🔍 摸查:`ai_usage_log` 是**纯只写**——`logAiUsage()` 每次 AI 调用记一条,全 app **无任何读消费者**（3 处调用方都只写）。50 行 notion_id 全干净 32 字符
+  - [x] **写转换**:`logAiUsage` 加 flag 门控 Supabase 分支（`DATA_SOURCE_AI_USAGE=supabase` 时写库,否则 Notion 原样,best-effort 不变）+ `lib/repos/aiUsage.ts insertUsage`。Supabase-native 行无 notion_id
+  - [x] 写 E2E 验证:flag 开→落 Supabase(tokens/question 正确);flag 关→不落库;测试行已清理
+  - [x] `scripts/reconcile-ai-usage.ts`（dry-run 显示 Notion 86 vs Supabase 50 = 36 条新用量漂移）
+  - ⏭️ reconcile `--apply` **留到最终 cutover**:只写表的行会持续涨,中途导入必漂移;cutover 时一次导入 Notion 累积 + 翻写即可（现在导也行,preview 库会更全,但会再漂）
+  - 💡 这确立了**写路径模式**:repo insert + `lib/*.ts` 里 flag 门控分支 + best-effort 保持
 - [ ] 2.9 `forms_library` ⬜ — 只迁元数据/索引，PDF 本体仍在 Google Drive
 - ✅ 每张表通过标准：对应页面 CRUD 正常 + 多顾问隔离正确
 - 💾 **每张表**测通后独立 Commit（如 `feat(migrate): portfolio on supabase`），再做下一张
