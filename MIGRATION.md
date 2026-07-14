@@ -120,7 +120,14 @@ DATA_SOURCE_CLIENTS=notion
   - [x] 🔧 摸查发现:种子 2 行 `notion_id` 都带 3 字符垃圾前缀（35 字符 vs 干净 32）——唯一脏库表。行数据本身已同步；`reconcile-cashflow --apply` 已跑（insert 2 干净 + 删 2 脏孤儿），两 id 现为干净 32 字符、重跑 0/0/0 幂等（cashflow 无入向引用,churn 无害）
   - ⚠️ `breakdown`:当前 Notion DB **无 `Notes` 属性、0 条 breakdown、前端无消费者** → 读侧返回 null（与 Notion 现状一致，无需加列）
   - ⏭️ **写路径延后**（POST /api/cashflow、DELETE、submit 表单）:届时落 **决策点 C**（独立 `breakdown jsonb` 列 + 「archive 全部→真 UPSERT(client+month+advisor)」+ 解析 Notes JSON 回填）
-- [ ] 2.6 `meeting_notes` ⬜
+- [x] 2.6 `meeting_notes` 🟩 — 主读路由完成（跨表读 + 写路径延后）
+  - [x] `lib/meetingNotes.ts` 抽象 + `lib/repos/meetingNotes.ts` + `DATA_SOURCE_MEETINGS` flag + `reconcile-meeting-notes.ts`
+  - [x] 转 `meetings` GET;Notion 路径（queryAllPages + advisor scope + 空 option 守卫）验证等价旧内联；两路径 6=6 逐字段一致
+  - [x] `reconcile-meeting-notes --apply` 已跑（insert 6 + 删 3 脏孤儿）→ 6 行干净、重跑 0/0/0 幂等
+  - 🔧 摸查发现:① Notion 6 vs Supabase 3 = 3 条新 Annual Review 漂移（种子后新增）；② 旧 3 行 `notion_id` 带**长度不定 2 字符前缀**（`26/21/25`,34 字符,剥不了固定前缀）→ 按干净 id 重键规范化。meeting_notes 无入向引用（tasks 按 client|task 去重）,churn 安全
+  - ⚠️ live 表**无 client 列**,`name`="Client — Type — Date";clientName 从标题拆、clientId 恒 ''（Notion 该 DB 也无 Client Name/relation 属性）。meeting_type CHECK 六值,selN 空→null
+  - ⏭️ **跨表读延后到"整体转"**（ai / dashboard-assistant / tasks-sync 各自内联查 meeting → 届时点向 `listMeetings`；meeting_notes 是它们最后依赖的表，现已解锁）
+  - ⏭️ **写路径延后**（POST /api/meetings 建 note + 回写 client review 日期）:含 clientId 格式不兼容（Notion page id vs Supabase uuid），随写路径阶段处理
 - [ ] 2.7 `products` ⬜ — Insurance Plans + Funds 两张产品目录
 - [ ] 2.8 `ai_usage` ⬜ — 日志表，最低风险
 - [ ] 2.9 `forms_library` ⬜ — 只迁元数据/索引，PDF 本体仍在 Google Drive
