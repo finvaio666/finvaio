@@ -142,7 +142,13 @@ DATA_SOURCE_CLIENTS=notion
   - [x] `scripts/reconcile-ai-usage.ts`（dry-run 显示 Notion 86 vs Supabase 50 = 36 条新用量漂移）
   - ⏭️ reconcile `--apply` **留到最终 cutover**:只写表的行会持续涨,中途导入必漂移;cutover 时一次导入 Notion 累积 + 翻写即可（现在导也行,preview 库会更全,但会再漂）
   - 💡 这确立了**写路径模式**:repo insert + `lib/*.ts` 里 flag 门控分支 + best-effort 保持
-- [ ] 2.9 `forms_library` ⬜ — 只迁元数据/索引，PDF 本体仍在 Google Drive
+- [x] 2.9 `forms_library` 🟩 — 元数据/索引（PDF 本体在 Google Drive）
+  - 🔍 摸查:公司共享表(有 `COMPANY_FORMS_DB_ID`,读无 advisor 过滤);**Notion 0 / Supabase 0**(功能已配置但无表单上传);`toFormRecord` 在 forms + admin 两路由**重复定义**
+  - [x] `lib/formsLibrary.ts` 加 `listForms`/`getForm` chokepoint(`DATA_SOURCE_FORMS` flag)+ 合并共享 `toFormRecord` + `lib/repos/formsLibrary.ts`(field_mapping JSON 解析、tags text[])
+  - [x] 转 3 个自身读:`forms` GET(FA list,Active 过滤,轻量子集)、`forms/[id]` GET(单表单,查 active)、`admin/forms-library` GET(全部+driveConnected)。两路径均 [](parity);清掉转换后死掉的 toFormRecord/rt/isFullPage
+  - [x] `scripts/reconcile-forms-library.ts`(0/0 no-op,备好;form_type CHECK selN,tags multi_select→text[])
+  - ⏭️ **延后**:`forms/[id]/prefill`(跨表读:form+client+insurance+portfolio,按 page-id/relation → 归跨表读整体转)、`forms/[id]/fill`(Drive 下载 PDF)、admin 写(POST/PATCH/DELETE + Drive 上传)
+- ✅ **Phase 2 数据表 9/9 全绿**(2.1–2.7 读+reconcile;2.8 写;2.9 读)——只剩跨表读整体转 + 写路径收尾
 - ✅ 每张表通过标准：对应页面 CRUD 正常 + 多顾问隔离正确
 - 💾 **每张表**测通后独立 Commit（如 `feat(migrate): portfolio on supabase`），再做下一张
 
