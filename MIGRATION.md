@@ -128,7 +128,13 @@ DATA_SOURCE_CLIENTS=notion
   - ⚠️ live 表**无 client 列**,`name`="Client — Type — Date";clientName 从标题拆、clientId 恒 ''（Notion 该 DB 也无 Client Name/relation 属性）。meeting_type CHECK 六值,selN 空→null
   - ⏭️ **跨表读延后到"整体转"**（ai / dashboard-assistant / tasks-sync 各自内联查 meeting → 届时点向 `listMeetings`；meeting_notes 是它们最后依赖的表，现已解锁）
   - ⏭️ **写路径延后**（POST /api/meetings 建 note + 回写 client review 日期）:含 clientId 格式不兼容（Notion page id vs Supabase uuid），随写路径阶段处理
-- [ ] 2.7 `products` ⬜ — Insurance Plans + Funds 两张产品目录
+- [x] 2.7 `products` 🟩 — Insurance Plans + Funds 两张产品目录（休眠功能,轻量建）
+  - 🔍 摸查:products 与前 6 张表**架构不同**——per-advisor + feature-gated,DB id 只从顾问 Notion 记录读（**无 env fallback**）,`addAdvisorSelectOption` 也不含它。**8 个顾问无人配置** Insurance Plans/Funds DB、无人开 `products` feature → 无源数据、读路由本就返回 []
+  - [x] 建 `insurance_plans` + `funds` 两张**空表**（schema 由读路由输出 + POST save 形状完全确定）。File: `db/migrations/2026-07-14-create-products-tables.sql`（已应用）
+  - [x] `lib/products.ts` 抽象（`listPlans`/`listFunds`,`DATA_SOURCE_PRODUCTS` flag）+ `lib/repos/products.ts`（`status='Active'` + advisor scope）
+  - [x] 转 `notion?type=insurance-products` / `funds`;两路径均返回 []（parity）。顺手清掉 notion route 里因全分支抽象化而死掉的 `notion`/`Client`/`queryAllPages`
+  - ⏭️ **无 reconcile**（无公司源 DB）——若将来有顾问启用 products,需按该顾问的 DB id 做一次性 per-advisor 导入
+  - ⏭️ **写延后**：POST /api/products（AI 抽取 + 存回 Notion，`action: extract|save`）随写路径阶段
 - [ ] 2.8 `ai_usage` ⬜ — 日志表，最低风险
 - [ ] 2.9 `forms_library` ⬜ — 只迁元数据/索引，PDF 本体仍在 Google Drive
 - ✅ 每张表通过标准：对应页面 CRUD 正常 + 多顾问隔离正确
