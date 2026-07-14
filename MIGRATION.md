@@ -160,7 +160,18 @@ DATA_SOURCE_CLIENTS=notion
 - [x] `dashboard-assistant` → clients(roster+profile)/portfolio(fund lookup)/meeting(fallback) 全走抽象；fund lookup 客户归属改 join `clientNotionId`
   - 🔬 **join 已验**：1025 holdings 100% resolve 到 client 名；client profile 读 `ClientRecord` 规范字段（原多 key 兜底 `AUM/Total AUM`、`Email Address` 等收敛到规范列——线上用的就是规范列，差异可忽略）
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
-- ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）随写路径阶段
+- ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
+
+### Phase 2.11 — 写路径  🟨 进行中（1/N）
+> 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
+- [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
+  - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
+- [ ] `update-nav`（更新持仓 NAV/估值 → 写 portfolio）
+- [ ] `cashflow` POST / DELETE / submit → **决策点 C**（`breakdown jsonb` 列 + archive 全部→真 UPSERT(client+month+advisor)）
+- [ ] `meetings` POST（建 note + 回写 client review 日期）→ 含 clientId 格式不兼容（Notion page id vs Supabase uuid）
+- [ ] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）
+- [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）
+- [ ] 其它 clients 写：`admin/clients`、`meetings` 回写 review 日期、networth/insurance/portfolio 各自的 POST（随各表写路径）
 
 ### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜
 - [ ] Notion Users page → `advisors` 表（name / role / features / OAuth tokens）
