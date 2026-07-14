@@ -543,19 +543,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Stat Cards ── */}
-      <div className="stat-grid">
-        <div className="stat-card green" onClick={() => router.push('/clients')} style={{ cursor: 'pointer' }}>
-          <div className="stat-icon green">👥</div>
-          <div className="stat-label">Total Clients</div>
-          <div className="stat-value">{loading ? '…' : clients.length}</div>
-          <div className="stat-sub">{activeCount} active · {prospectCount} prospects</div>
-        </div>
-        <div className="stat-card gold" onClick={() => router.push('/portfolio')} style={{ cursor: 'pointer' }}>
-          <div className="stat-icon gold">💰</div>
-          <div className="stat-label">Total AUM</div>
-          <div className="stat-value">{loading ? '…' : formatAUM(totalAum)}</div>
-          <div className="stat-sub">Across all portfolios</div>
-        </div>
+      <div className="stat-grid-2">
         <div className="stat-card blue" onClick={() => router.push('/reviews')} style={{ cursor: 'pointer' }}>
           <div className="stat-icon blue">📅</div>
           <div className="stat-label">Reviews Due</div>
