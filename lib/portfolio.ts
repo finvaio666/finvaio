@@ -122,3 +122,21 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
   } while (cursor);
   return out;
 }
+
+/**
+ * Write a holding's value (original currency + MYR) back to the store.
+ * `holdingId` is the source-appropriate id from listHoldings().id (Notion page
+ * id or Supabase uuid). Notion path is byte-identical to the original inline
+ * update-nav write.
+ */
+export async function setHoldingValue(config: AdvisorConfig, holdingId: string, valueOriginal: number, valueMyr: number): Promise<void> {
+  if (useSupabase()) return sbPortfolio.setHoldingValue(holdingId, valueOriginal, valueMyr);
+  const notion = new Client({ auth: config.notionApiKey });
+  await notion.pages.update({
+    page_id: holdingId,
+    properties: {
+      'Value (Original Currency)': { number: valueOriginal },
+      'Value (MYR)':               { number: valueMyr },
+    },
+  });
+}

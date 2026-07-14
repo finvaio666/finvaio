@@ -88,3 +88,12 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
   }
   return rows.map(toHolding);
 }
+
+/** Update a holding's value (original currency + MYR). `holdingId` is the Supabase uuid. */
+export async function setHoldingValue(holdingId: string, valueOriginal: number, valueMyr: number): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE)
+    .update({ value_original_currency: valueOriginal, value_myr: valueMyr })
+    .eq('id', holdingId);
+  if (error) throw new Error(`portfolio setValue failed: ${error.message}`);
+}
