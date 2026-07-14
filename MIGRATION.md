@@ -114,7 +114,12 @@ DATA_SOURCE_CLIENTS=notion
   - [x] 种子已完全同步(Notion 8 = Supabase 8,0 diff — 无需导入)
   - [x] `lib/assets.ts` + `lib/repos/assets.ts` + `DATA_SOURCE_ASSETS` + `reconcile-assets.ts`
   - [x] 转 `notion?type=assets`;两路径验证一致(8 项,sum 3,450,000)
-- [ ] 2.5 `cashflow` ⬜ — 顺便把「archive 全部旧记录再新建」改成真 `UPSERT`
+- [x] 2.5 `cashflow` 🟩 — 读路径完成（写路径 + 决策点 C 延后）
+  - [x] `lib/cashflow.ts` 抽象 + `lib/repos/cashflow.ts` + `DATA_SOURCE_CASHFLOW` flag + `reconcile-cashflow.ts`
+  - [x] 转 `notion?type=cashflow`;surplus/savingsRate 代码算（Notion 是 formula）；两路径逐字段一致（2 条）
+  - 🔧 摸查发现:种子 2 行 `notion_id` 都带 3 字符垃圾前缀（35 字符 vs 干净 32）——唯一脏库表。行数据本身已同步；reconcile 按干净 id 重键 → INSERT 2 + 删 2 孤儿即可规范化（**dry-run 已跑,--apply 待批**;cashflow 无入向引用,churn 无害）
+  - ⚠️ `breakdown`:当前 Notion DB **无 `Notes` 属性、0 条 breakdown、前端无消费者** → 读侧返回 null（与 Notion 现状一致，无需加列）
+  - ⏭️ **写路径延后**（POST /api/cashflow、DELETE、submit 表单）:届时落 **决策点 C**（独立 `breakdown jsonb` 列 + 「archive 全部→真 UPSERT(client+month+advisor)」+ 解析 Notes JSON 回填）
 - [ ] 2.6 `meeting_notes` ⬜
 - [ ] 2.7 `products` ⬜ — Insurance Plans + Funds 两张产品目录
 - [ ] 2.8 `ai_usage` ⬜ — 日志表，最低风险
@@ -286,6 +291,7 @@ DATA_SOURCE_CLIENTS=notion
 > 定案：改成独立 `breakdown jsonb` 列（干净、可查询）；汇总值仍保留为独立 numeric 列（income/fixed/variable/epf）。
 > upsert 键 = client + month + advisor（对应现在的 `Entry` 标题去重逻辑）。
 > 迁移脚本：把 Notes 里的 JSON 解析后写进 `breakdown`；解析失败的行记日志。
+> ⏭️ **延后到 cashflow 写路径阶段**（读侧 2.5 已完成、不依赖它）。摸查发现当前 Notion cashflow DB 根本没有 `Notes` 属性、0 条 breakdown 数据、前端无 `.breakdown` 消费者——故读侧 `breakdown` 恒 null 即与现状一致；`breakdown jsonb` 列与真 UPSERT 随写路径一起落地。
 
 ### 4.5 meeting_notes（来源 `app/api/meetings/route.ts`）
 | Notion 属性 | 列 | 类型 | 备注 |
