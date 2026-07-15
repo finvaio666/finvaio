@@ -10,6 +10,7 @@ import {
 } from '@/components/useClients';
 import CashflowFormModal from '@/components/CashflowFormModal';
 import NetWorthFormModal from '@/components/NetWorthFormModal';
+import { MedicalDetail } from '@/components/MedicalDetail';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -610,6 +611,7 @@ function InsuranceTab({ clientName }: { clientName: string }) {
                     {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {fmtMonth(p.maturityDate)}</span>}
                   </div>
                   {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 {p.beneficiary}</div>}
+                  {p.medicalClass && <div style={{ marginTop: 5 }}><MedicalDetail value={p.medicalClass} align="left" /></div>}
                 </div>
                 <div style={{ paddingTop: 2 }}>
                   {p.insuranceType && (

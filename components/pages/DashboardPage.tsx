@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 import MeetingCapture, { CapturePrefill } from '@/components/MeetingCapture';
+import MarkReviewDone from '@/components/MarkReviewDone';
 
 // ─── Ask FINVA — dashboard daily co-pilot ─────────────────────────────────────
 interface PendingTask { task: string; client: string; due: string; }
@@ -254,7 +255,7 @@ const MEETING_TYPE_COLOR: Record<string, string> = {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const { clients, loading, totalAum, activeCount, prospectCount } = useClients();
+  const { clients, loading, totalAum, activeCount, prospectCount, reload: reloadClients } = useClients();
   const router = useRouter();
 
   const [insurance,    setInsurance]    = useState<InsurancePolicy[]>([]);
@@ -543,19 +544,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Stat Cards ── */}
-      <div className="stat-grid">
-        <div className="stat-card green" onClick={() => router.push('/clients')} style={{ cursor: 'pointer' }}>
-          <div className="stat-icon green">👥</div>
-          <div className="stat-label">Total Clients</div>
-          <div className="stat-value">{loading ? '…' : clients.length}</div>
-          <div className="stat-sub">{activeCount} active · {prospectCount} prospects</div>
-        </div>
-        <div className="stat-card gold" onClick={() => router.push('/portfolio')} style={{ cursor: 'pointer' }}>
-          <div className="stat-icon gold">💰</div>
-          <div className="stat-label">Total AUM</div>
-          <div className="stat-value">{loading ? '…' : formatAUM(totalAum)}</div>
-          <div className="stat-sub">Across all portfolios</div>
-        </div>
+      <div className="stat-grid-2">
         <div className="stat-card blue" onClick={() => router.push('/reviews')} style={{ cursor: 'pointer' }}>
           <div className="stat-icon blue">📅</div>
           <div className="stat-label">Reviews Due</div>
@@ -826,6 +815,7 @@ export default function DashboardPage() {
                 <div style={pillStyle(overdue, !overdue && days <= 7)}>
                   {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
                 </div>
+                <MarkReviewDone client={{ id: c.id, name: c.name }} onDone={reloadClients} />
               </div>
             );
           })}

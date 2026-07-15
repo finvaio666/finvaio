@@ -170,6 +170,7 @@ body {
 /* ── STAT CARDS ───────────────────────────────────────────────────────────── */
 .stat-grid   { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
 .stat-grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 28px; }
+.stat-grid-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 28px; }
 .stat-card {
   background: var(--surface);
   border-radius: var(--r);

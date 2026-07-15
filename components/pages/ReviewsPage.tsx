@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
+import MarkReviewDone from '@/components/MarkReviewDone';
 
 interface Client {
   id: string; name: string; nextReview: string; lastReview: string;
@@ -355,6 +356,7 @@ export default function ReviewsPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {dl && <div className={`days-away ${dl.cls}`}>{dl.label}</div>}
+                    <MarkReviewDone client={{ id: c.id, name: c.name }} onDone={loadAll} />
                     <button onClick={() => openLog(c)} style={{ padding: '5px 12px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap' }}>
                       + Log
                     </button>

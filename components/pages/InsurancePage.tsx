@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import InsuranceFormModal, { type PolicyDraft } from '@/components/InsuranceFormModal';
+import { MedicalDetail } from '@/components/MedicalDetail';
 
 interface Policy {
   id: string;
@@ -539,11 +540,9 @@ export default function InsurancePage() {
                     {/* Accident (PA) */}
                     <div style={colNum(p.paCover)}>{fmtCover(p.paCover)}</div>
 
-                    {/* Medical Card (R&B / Annual Limit) */}
-                    <div style={{ textAlign: 'right', fontSize: 11, lineHeight: 1.3, paddingTop: 3, color: (p.medicalClass || p.medicalCard) ? 'var(--green)' : 'var(--text3)' }}>
-                      {(p.medicalClass || p.medicalCard)
-                        ? <span>🏥 {[p.medicalClass, p.medicalCard].filter(Boolean).join(' · ')}</span>
-                        : '—'}
+                    {/* Medical — plan / room & board / annual & lifetime limits, stacked */}
+                    <div style={{ paddingTop: 3 }}>
+                      <MedicalDetail value={[p.medicalClass, p.medicalCard].filter(Boolean).join(' · ')} align="right" />
                     </div>
 
                     {/* Premium/yr */}
