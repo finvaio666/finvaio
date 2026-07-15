@@ -128,13 +128,13 @@ DATA_SOURCE_CLIENTS=notion
   - ⚠️ live 表**无 client 列**,`name`="Client — Type — Date";clientName 从标题拆、clientId 恒 ''（Notion 该 DB 也无 Client Name/relation 属性）。meeting_type CHECK 六值,selN 空→null
   - ⏭️ **跨表读延后到"整体转"**（ai / dashboard-assistant / tasks-sync 各自内联查 meeting → 届时点向 `listMeetings`；meeting_notes 是它们最后依赖的表，现已解锁）
   - [x] **写路径完成**（POST /api/meetings 建 note + 回写 client review 日期）:clientId 格式不兼容已化解——详见 Phase 2.11
-- [x] 2.7 `products` 🟩 — Insurance Plans + Funds 两张产品目录（休眠功能,轻量建）
+- [x] 2.7 `products` ✅ — Insurance Plans + Funds 两张产品目录读+写完成（写详见 Phase 2.11；休眠功能）
   - 🔍 摸查:products 与前 6 张表**架构不同**——per-advisor + feature-gated,DB id 只从顾问 Notion 记录读（**无 env fallback**）,`addAdvisorSelectOption` 也不含它。**8 个顾问无人配置** Insurance Plans/Funds DB、无人开 `products` feature → 无源数据、读路由本就返回 []
   - [x] 建 `insurance_plans` + `funds` 两张**空表**（schema 由读路由输出 + POST save 形状完全确定）。File: `db/migrations/2026-07-14-create-products-tables.sql`（已应用）
   - [x] `lib/products.ts` 抽象（`listPlans`/`listFunds`,`DATA_SOURCE_PRODUCTS` flag）+ `lib/repos/products.ts`（`status='Active'` + advisor scope）
   - [x] 转 `notion?type=insurance-products` / `funds`;两路径均返回 []（parity）。顺手清掉 notion route 里因全分支抽象化而死掉的 `notion`/`Client`/`queryAllPages`
   - ⏭️ **无 reconcile**（无公司源 DB）——若将来有顾问启用 products,需按该顾问的 DB id 做一次性 per-advisor 导入
-  - ⏭️ **写延后**：POST /api/products（AI 抽取 + 存回 Notion，`action: extract|save`）随写路径阶段
+  - [x] **写完成**：POST /api/products（`action:save`；`extract` 纯 AI 不碰）——详见 Phase 2.11
 - [x] 2.8 `ai_usage` 🟩 — 只写日志表（**首个写转换**）
   - 🔍 摸查:`ai_usage_log` 是**纯只写**——`logAiUsage()` 每次 AI 调用记一条,全 app **无任何读消费者**（3 处调用方都只写）。50 行 notion_id 全干净 32 字符
   - [x] **写转换**:`logAiUsage` 加 flag 门控 Supabase 分支（`DATA_SOURCE_AI_USAGE=supabase` 时写库,否则 Notion 原样,best-effort 不变）+ `lib/repos/aiUsage.ts insertUsage`。Supabase-native 行无 notion_id
@@ -162,7 +162,7 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（4/N）
+### Phase 2.11 — 写路径  🟨 进行中（5/N）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
@@ -180,7 +180,13 @@ DATA_SOURCE_CLIENTS=notion
   - Notion 路径逐字不变（note 建 create+retry-on-"is not a property" 原样保留；review 回写内联块移入 chokepoint 的 Notion 分支、字节一致）
   - ⚠️ `meeting_type` Supabase 有 CHECK 约束，取值 = 前端 `MEETING_TYPES` 枚举（Annual Review/Follow-up/Phone Call/Video Call/Ad-hoc/Onboarding）——已核对一致，合法提交不会被拒
   - 🔬 **已验**（repo 级平滑测试打真库，自清 meeting_notes 6→6、client 还原、0 残留）：createMeeting 插入+listMeetings 读回（标题解析 clientName、字段往返、空串→NULL）；setClientReviewDates 三态（both set / clear next / undefined 不动）+ 还原。`tsc --noEmit` 全绿
-- [ ] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）
+- [x] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）→ 写 `createPlan`/`createFund`（`DATA_SOURCE_PRODUCTS`）
+  - `action:extract` 纯 Gemini AI、**无数据源**，迁移不碰；只有 `action:save`（insurance→`insurance_plans`、fund→`funds`）走 flag 分支
+  - Supabase 分支跳过 Notion DB id 检查（Supabase 不需要），feature gate（`config.features.includes('products')`）在路由顶层已把关、源无关；advisor 名戳进行内做读隔离
+  - 默认值与 Notion save 一致：insurance Insurer→Unknown/Type→Others/Status→Active；fund Fund House→Unknown/Asset Class→Others/Region→Malaysia/Risk Level→Moderate/Status→Active；数值缺省→null（读侧 `num()` 再套默认，如 minInvestment 1000）
+  - Notion 路径逐字不变（两 productType 的 `pages.create` 块原样保留，Supabase 分支插在 DEMO 检查后、建 notion client 前）
+  - ⚠️ 休眠功能：8 顾问无人配 DB、无人开 products feature → 两表恒空，实战无源数据；写路径备好待启用
+  - 🔬 **已验**（repo 级平滑测试打真库、自清两表回 0 行）：createPlan/createFund 全字段+极简（默认值套用、缺省数值→null）；listPlans/listFunds 读回往返；advisor 隔离（他人看不到、Admin 看全部）。`tsc --noEmit` 全绿
 - [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）
 - [ ] 其它 clients 写：`admin/clients`、`meetings` 回写 review 日期、networth/insurance/portfolio 各自的 POST（随各表写路径）
 

@@ -1,9 +1,11 @@
 /**
  * lib/repos/products.ts
- * Supabase data-access layer for the product catalogues (Phase 2, table 2.7):
- * insurance_plans + funds. Both are currently EMPTY (no advisor has configured a
- * source DB), so these reads return [] until products is enabled for someone.
- * Matches the Notion read: only Status='Active', scoped to the advisor.
+ * Supabase data-access layer for the product catalogues (Phase 2, tables 2.7
+ * read + 2.11 write): insurance_plans + funds. Both are currently EMPTY (no
+ * advisor has configured a source DB), so reads return [] until products is
+ * enabled for someone. Matches the Notion read: only Status='Active', scoped to
+ * the advisor. Writes (createPlan/createFund) mirror the Notion save handler's
+ * defaults and stamp the owning advisor for scoping.
  */
 
 import { getSupabase } from '../supabase';
@@ -85,4 +87,56 @@ export async function listFunds(config: AdvisorConfig): Promise<Fund[]> {
   const { data, error } = await q;
   if (error) throw new Error(`funds list failed: ${error.message}`);
   return (data as FundRow[]).map(toFund);
+}
+
+const numOrNull = (v: unknown): number | null => (v == null ? null : Number(v));
+
+/**
+ * Insert one insurance plan (POST /api/products, action=save). Defaults mirror
+ * the Notion save handler (Insurer→Unknown, Type→Others, Status→Active); numeric
+ * fields are null when absent. `advisor` stamps ownership for read scoping.
+ */
+export async function createPlan(advisor: string, product: Record<string, unknown>): Promise<{ id: string }> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from('insurance_plans').insert({
+    name:                String(product.name ?? ''),
+    insurer:             String(product.insurer ?? 'Unknown'),
+    type:                String(product.type ?? 'Others'),
+    min_age:             numOrNull(product.minAge),
+    max_age:             numOrNull(product.maxAge),
+    min_sum_assured:     numOrNull(product.minSumAssured),
+    max_sum_assured:     numOrNull(product.maxSumAssured),
+    est_monthly_premium: product.estMonthlyPremium ? String(product.estMonthlyPremium) : null,
+    key_features:        product.keyFeatures ? String(product.keyFeatures) : null,
+    epf_approved:        Boolean(product.epfApproved),
+    status:              'Active',
+    advisor,
+  }).select('id').single();
+  if (error) throw new Error(`insurance_plans insert failed: ${error.message}`);
+  return { id: (data as { id: string }).id };
+}
+
+/**
+ * Insert one investment fund (POST /api/products, action=save). Defaults mirror
+ * the Notion save handler (Fund House→Unknown, Asset Class→Others, Region→
+ * Malaysia, Risk Level→Moderate, Status→Active); numeric fields null when absent.
+ */
+export async function createFund(advisor: string, product: Record<string, unknown>): Promise<{ id: string }> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from('funds').insert({
+    name:           String(product.name ?? ''),
+    fund_house:     String(product.fundHouse ?? 'Unknown'),
+    asset_class:    String(product.assetClass ?? 'Others'),
+    region:         String(product.region ?? 'Malaysia'),
+    risk_level:     String(product.riskLevel ?? 'Moderate'),
+    return_3y:      numOrNull(product.return3Y),
+    min_investment: numOrNull(product.minInvestment),
+    sales_charge:   numOrNull(product.salesCharge),
+    epf_approved:   Boolean(product.epfApproved),
+    status:         'Active',
+    description:    product.description ? String(product.description) : null,
+    advisor,
+  }).select('id').single();
+  if (error) throw new Error(`funds insert failed: ${error.message}`);
+  return { id: (data as { id: string }).id };
 }
