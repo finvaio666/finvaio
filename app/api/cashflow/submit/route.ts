@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { verifyFormToken } from '@/lib/formToken';
+import * as sbCashflow from '@/lib/repos/cashflow';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabase = () => process.env.DATA_SOURCE_CASHFLOW === 'supabase';
 
 export interface CashflowFormData {
   token: string;
@@ -192,6 +195,33 @@ export async function POST(req: NextRequest) {
   ].filter(l => l !== '').join('\n');
 
   const entryTitle = `${payload.clientName} — ${monthLabel}`;
+
+  // ── Supabase write path (Phase 2.11, Decision Point C) — real UPSERT on
+  // (entry, advisor) == client+month+advisor. Replaces the Notion "archive all
+  // months, keep one" snapshot with per-month history (matches POST + the UI).
+  if (useSupabase()) {
+    try {
+      const res = await sbCashflow.upsertCashflow({
+        entry: entryTitle, month: payload.month, advisor: config.name,
+        clientNotionId: payload.clientId ? payload.clientId.replace(/-/g, '') : null,
+        income: totalIncome, fixed: totalFixed, variable: totalVariable, epf: totalEPF, breakdown,
+      });
+      return NextResponse.json({
+        success: true,
+        entry:   res.entry,
+        summary: {
+          income:   totalIncome,
+          expenses: totalFixed + totalVariable,
+          epf:      totalEPF,
+          surplus:  totalIncome - totalFixed - totalVariable - totalEPF,
+        },
+      });
+    } catch (e: unknown) {
+      console.error('Cashflow submit error (supabase):', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: `Failed to save to database: ${msg}` }, { status: 500 });
+    }
+  }
 
   // 5. Write to Notion (upsert: update existing entry for same client+month, or create new)
   const notion = new Client({ auth: config.notionApiKey });

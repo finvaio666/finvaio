@@ -114,12 +114,12 @@ DATA_SOURCE_CLIENTS=notion
   - [x] 种子已完全同步(Notion 8 = Supabase 8,0 diff — 无需导入)
   - [x] `lib/assets.ts` + `lib/repos/assets.ts` + `DATA_SOURCE_ASSETS` + `reconcile-assets.ts`
   - [x] 转 `notion?type=assets`;两路径验证一致(8 项,sum 3,450,000)
-- [x] 2.5 `cashflow` 🟩 — 读路径完成（写路径 + 决策点 C 延后）
+- [x] 2.5 `cashflow` ✅ — 读+写路径完成（决策点 C 已落，见 Phase 2.11）
   - [x] `lib/cashflow.ts` 抽象 + `lib/repos/cashflow.ts` + `DATA_SOURCE_CASHFLOW` flag + `reconcile-cashflow.ts`
   - [x] 转 `notion?type=cashflow`;surplus/savingsRate 代码算（Notion 是 formula）；两路径逐字段一致（2 条）
   - [x] 🔧 摸查发现:种子 2 行 `notion_id` 都带 3 字符垃圾前缀（35 字符 vs 干净 32）——唯一脏库表。行数据本身已同步；`reconcile-cashflow --apply` 已跑（insert 2 干净 + 删 2 脏孤儿），两 id 现为干净 32 字符、重跑 0/0/0 幂等（cashflow 无入向引用,churn 无害）
-  - ⚠️ `breakdown`:当前 Notion DB **无 `Notes` 属性、0 条 breakdown、前端无消费者** → 读侧返回 null（与 Notion 现状一致，无需加列）
-  - ⏭️ **写路径延后**（POST /api/cashflow、DELETE、submit 表单）:届时落 **决策点 C**（独立 `breakdown jsonb` 列 + 「archive 全部→真 UPSERT(client+month+advisor)」+ 解析 Notes JSON 回填）
+  - ⚠️ `breakdown`:老行读侧返回 null（Notion 老数据无 Notes JSON）；**决策点 C 已加 `breakdown jsonb` 列**，新写入会落 breakdown、`CashflowPage` 展开面板消费它
+  - [x] **写路径完成**（POST /api/cashflow、DELETE、submit 表单）:**决策点 C 已落**——详见 Phase 2.11
 - [x] 2.6 `meeting_notes` 🟩 — 主读路由完成（跨表读 + 写路径延后）
   - [x] `lib/meetingNotes.ts` 抽象 + `lib/repos/meetingNotes.ts` + `DATA_SOURCE_MEETINGS` flag + `reconcile-meeting-notes.ts`
   - [x] 转 `meetings` GET;Notion 路径（queryAllPages + advisor scope + 空 option 守卫）验证等价旧内联；两路径 6=6 逐字段一致
@@ -162,13 +162,17 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（2/N）
+### Phase 2.11 — 写路径  🟨 进行中（3/N）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
 - [x] `update-nav`（POST 按新 NAV 重算持仓 value 写回 portfolio；GET 聚合基金面板）→ 写 `setHoldingValue` chokepoint（`DATA_SOURCE_PORTFOLIO`）；读 `listHoldings`/`listClients`
   - 🔬 **已验**：GET 基金聚合 parity 102 funds 0 mismatch（units/valueOrig/holdingCount/clients 全等）；Supabase 写平滑测试 `setHoldingValue` 按 id 改 value_original_currency+value_myr（测试改动已还原）；Notion 写路径与原内联 `pages.update` 字节一致；保留 currency/fxRate 默认（`|| 'MYR'`/`|| 1`）+ 基金排序
-- [ ] `cashflow` POST / DELETE / submit → **决策点 C**（`breakdown jsonb` 列 + archive 全部→真 UPSERT(client+month+advisor)）
+- [x] `cashflow` POST / DELETE / submit → **决策点 C 已落**（`breakdown jsonb` 列 [migration 2026-07-16] + 真 UPSERT）；写 `upsertCashflow`/`deleteCashflow` chokepoint（`DATA_SOURCE_CASHFLOW`）
+  - **决策点 C 定案**：① 加 `breakdown jsonb` 列（读路径改为返回它；老行 null 不变）；② Supabase 写用真 **UPSERT (entry, advisor) == client+month+advisor**（`entry` 编码 客户名—月标签，两端算法一致）→ POST 与 submit 统一为「每月一条、保留历史」，对齐 `CashflowPage` 的多月历史 UI；③ **submit 语义变更**（推荐项）：客户表单从 Notion 的「archive 该客户所有月份只留一条」改为每月 upsert 保留历史——仅 Supabase 分支生效
+  - **Notion 路径逐字不变**：POST/submit/DELETE 的 Notion 代码原样保留（submit 仍 archive-all），只在计算完总额/breakdown 后插入 flag 门控早返回分支；cutover 后只剩 Supabase 生效
+  - `client_notion_id` best-effort 保真：仅在有 clientId 时写、绝不清空（POST 无 clientId 更新不会抹掉 submit 设的关联）
+  - 🔬 **已验**（repo 级平滑测试打真库，自清 2→2 行 0 残留）：insert 返回 id；listCashflow 读回（surplus/savingsRate 重算正确、breakdown jsonb 往返一致）；同 entry 二次 upsert **原地更新**（同 id、仍恰好 1 行）；null-clientId 更新**保留** client_notion_id；非 owner 删除被 `Forbidden` 拒；owner 删除后行数还原。`tsc --noEmit` 全绿
 - [ ] `meetings` POST（建 note + 回写 client review 日期）→ 含 clientId 格式不兼容（Notion page id vs Supabase uuid）
 - [ ] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）
 - [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）

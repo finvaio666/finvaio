@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import * as sbCashflow from '@/lib/repos/cashflow';
+
+const useSupabase = () => process.env.DATA_SOURCE_CASHFLOW === 'supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +61,19 @@ export async function POST(req: NextRequest) {
     advisorNotes: b.notes ?? '',
   };
 
+  // ── Supabase write path (Phase 2.11) — upsert on (entry, advisor) == client+month+advisor.
+  if (useSupabase()) {
+    try {
+      const res = await sbCashflow.upsertCashflow({
+        entry: entryTitle, month: b.month, advisor: config.name, clientNotionId: null,
+        income: totalIncome, fixed: totalFixed, variable: totalVariable, epf: totalEPF, breakdown,
+      });
+      return NextResponse.json({ success: true, id: res.id, entry: res.entry });
+    } catch (e: unknown) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+  }
+
   const properties: Record<string, unknown> = {
     'Entry':                   { title: [{ text: { content: entryTitle } }] },
     'Month':                   { date: { start: b.month } },
@@ -98,6 +114,19 @@ export async function DELETE(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  // ── Supabase delete path (Phase 2.11) — hard DELETE; non-admins limited to own rows.
+  if (useSupabase()) {
+    try {
+      await sbCashflow.deleteCashflow(config, id);
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const status = msg === 'Forbidden' ? 403 : 500;
+      return NextResponse.json({ error: msg }, { status });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (config.role !== 'Admin') {
     try {
