@@ -120,14 +120,14 @@ DATA_SOURCE_CLIENTS=notion
   - [x] 🔧 摸查发现:种子 2 行 `notion_id` 都带 3 字符垃圾前缀（35 字符 vs 干净 32）——唯一脏库表。行数据本身已同步；`reconcile-cashflow --apply` 已跑（insert 2 干净 + 删 2 脏孤儿），两 id 现为干净 32 字符、重跑 0/0/0 幂等（cashflow 无入向引用,churn 无害）
   - ⚠️ `breakdown`:老行读侧返回 null（Notion 老数据无 Notes JSON）；**决策点 C 已加 `breakdown jsonb` 列**，新写入会落 breakdown、`CashflowPage` 展开面板消费它
   - [x] **写路径完成**（POST /api/cashflow、DELETE、submit 表单）:**决策点 C 已落**——详见 Phase 2.11
-- [x] 2.6 `meeting_notes` 🟩 — 主读路由完成（跨表读 + 写路径延后）
+- [x] 2.6 `meeting_notes` ✅ — 读+写路径完成（写详见 Phase 2.11）
   - [x] `lib/meetingNotes.ts` 抽象 + `lib/repos/meetingNotes.ts` + `DATA_SOURCE_MEETINGS` flag + `reconcile-meeting-notes.ts`
   - [x] 转 `meetings` GET;Notion 路径（queryAllPages + advisor scope + 空 option 守卫）验证等价旧内联；两路径 6=6 逐字段一致
   - [x] `reconcile-meeting-notes --apply` 已跑（insert 6 + 删 3 脏孤儿）→ 6 行干净、重跑 0/0/0 幂等
   - 🔧 摸查发现:① Notion 6 vs Supabase 3 = 3 条新 Annual Review 漂移（种子后新增）；② 旧 3 行 `notion_id` 带**长度不定 2 字符前缀**（`26/21/25`,34 字符,剥不了固定前缀）→ 按干净 id 重键规范化。meeting_notes 无入向引用（tasks 按 client|task 去重）,churn 安全
   - ⚠️ live 表**无 client 列**,`name`="Client — Type — Date";clientName 从标题拆、clientId 恒 ''（Notion 该 DB 也无 Client Name/relation 属性）。meeting_type CHECK 六值,selN 空→null
   - ⏭️ **跨表读延后到"整体转"**（ai / dashboard-assistant / tasks-sync 各自内联查 meeting → 届时点向 `listMeetings`；meeting_notes 是它们最后依赖的表，现已解锁）
-  - ⏭️ **写路径延后**（POST /api/meetings 建 note + 回写 client review 日期）:含 clientId 格式不兼容（Notion page id vs Supabase uuid），随写路径阶段处理
+  - [x] **写路径完成**（POST /api/meetings 建 note + 回写 client review 日期）:clientId 格式不兼容已化解——详见 Phase 2.11
 - [x] 2.7 `products` 🟩 — Insurance Plans + Funds 两张产品目录（休眠功能,轻量建）
   - 🔍 摸查:products 与前 6 张表**架构不同**——per-advisor + feature-gated,DB id 只从顾问 Notion 记录读（**无 env fallback**）,`addAdvisorSelectOption` 也不含它。**8 个顾问无人配置** Insurance Plans/Funds DB、无人开 `products` feature → 无源数据、读路由本就返回 []
   - [x] 建 `insurance_plans` + `funds` 两张**空表**（schema 由读路由输出 + POST save 形状完全确定）。File: `db/migrations/2026-07-14-create-products-tables.sql`（已应用）
@@ -162,7 +162,7 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（3/N）
+### Phase 2.11 — 写路径  🟨 进行中（4/N）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
@@ -173,7 +173,13 @@ DATA_SOURCE_CLIENTS=notion
   - **Notion 路径逐字不变**：POST/submit/DELETE 的 Notion 代码原样保留（submit 仍 archive-all），只在计算完总额/breakdown 后插入 flag 门控早返回分支；cutover 后只剩 Supabase 生效
   - `client_notion_id` best-effort 保真：仅在有 clientId 时写、绝不清空（POST 无 clientId 更新不会抹掉 submit 设的关联）
   - 🔬 **已验**（repo 级平滑测试打真库，自清 2→2 行 0 残留）：insert 返回 id；listCashflow 读回（surplus/savingsRate 重算正确、breakdown jsonb 往返一致）；同 entry 二次 upsert **原地更新**（同 id、仍恰好 1 行）；null-clientId 更新**保留** client_notion_id；非 owner 删除被 `Forbidden` 拒；owner 删除后行数还原。`tsc --noEmit` 全绿
-- [ ] `meetings` POST（建 note + 回写 client review 日期）→ 含 clientId 格式不兼容（Notion page id vs Supabase uuid）
+- [x] `meetings` POST（建 note + 回写 client review 日期）→ 写 `createMeeting`（`DATA_SOURCE_MEETINGS`）+ `setClientReviewDates` chokepoint（`DATA_SOURCE_CLIENTS`）
+  - **clientId 不兼容问题化解**：meeting note 表**无 client 列**（clientName 只存标题），故 note insert 不碰 clientId；review 日期回写改走 `lib/clients.setClientReviewDates` chokepoint —— clientId 是 `listClients().id`（源自适配：Notion page id 或 Supabase uuid），两个写各用**各自 flag 对应源**的 id，彻底消除旧内联 `notion.pages.update({page_id:clientId})` 在 clients 转 Supabase 后必崩的 page-id/uuid 冲突
+  - 两写**独立门控**：note 建在 `DATA_SOURCE_MEETINGS`、review 回写在 `DATA_SOURCE_CLIENTS`（可任意组合，各自正确）
+  - review 日期语义：`Last review date` 恒设；`Next review date` 有值则设、`clearNextReview` 则清（null）、否则不动（undefined）——与 Notion 三态一致
+  - Notion 路径逐字不变（note 建 create+retry-on-"is not a property" 原样保留；review 回写内联块移入 chokepoint 的 Notion 分支、字节一致）
+  - ⚠️ `meeting_type` Supabase 有 CHECK 约束，取值 = 前端 `MEETING_TYPES` 枚举（Annual Review/Follow-up/Phone Call/Video Call/Ad-hoc/Onboarding）——已核对一致，合法提交不会被拒
+  - 🔬 **已验**（repo 级平滑测试打真库，自清 meeting_notes 6→6、client 还原、0 残留）：createMeeting 插入+listMeetings 读回（标题解析 clientName、字段往返、空串→NULL）；setClientReviewDates 三态（both set / clear next / undefined 不动）+ 还原。`tsc --noEmit` 全绿
 - [ ] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）
 - [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）
 - [ ] 其它 clients 写：`admin/clients`、`meetings` 回写 review 日期、networth/insurance/portfolio 各自的 POST（随各表写路径）

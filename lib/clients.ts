@@ -154,3 +154,34 @@ export async function setClientAum(config: AdvisorConfig, clientId: string, aum:
     properties: { 'AUM (MYR)': { number: aum } },
   });
 }
+
+/**
+ * Write a client's review dates from a saved meeting (meetings POST write-back).
+ * `clientId` is the source-appropriate id exactly as returned by listClients().id
+ * — a Notion page id on the Notion path, a Supabase uuid on the Supabase path —
+ * which resolves the Notion-page-id-vs-uuid mismatch the old inline
+ * `notion.pages.update` had once clients moved to Supabase. `Last review date`
+ * is always set; `Next review date` is set from nextReviewDate, cleared when
+ * clearNextReview, else left untouched. Notion path is byte-identical to the
+ * original inline update in app/api/meetings.
+ */
+export async function setClientReviewDates(
+  config: AdvisorConfig,
+  clientId: string,
+  meetingDate: string,
+  nextReviewDate?: string,
+  clearNextReview?: boolean,
+): Promise<void> {
+  if (useSupabase()) {
+    const next = nextReviewDate ? nextReviewDate : (clearNextReview ? null : undefined);
+    return sbClients.setClientReviewDates(clientId, meetingDate, next);
+  }
+  const notion = new Client({ auth: config.notionApiKey });
+  const updateProps: Record<string, unknown> = {
+    'Last review date': { date: { start: meetingDate } },
+  };
+  if (nextReviewDate)     updateProps['Next review date'] = { date: { start: nextReviewDate } };
+  else if (clearNextReview) updateProps['Next review date'] = { date: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await notion.pages.update({ page_id: clientId, properties: updateProps as any });
+}

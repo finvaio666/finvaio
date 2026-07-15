@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listMeetings } from '@/lib/meetingNotes';
+import { setClientReviewDates } from '@/lib/clients';
+import * as sbMeetings from '@/lib/repos/meetingNotes';
 import { DEMO_MEETINGS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabaseMeetings = () => process.env.DATA_SOURCE_MEETINGS === 'supabase';
 
 export async function GET(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
@@ -61,33 +65,39 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    // Attempt 1: try with optional client-linkage fields
-    try {
-      await notion.pages.create({
-        parent: { database_id: config.meetingNotesDbId },
-        properties: { ...coreProps, ...optionalProps } as Parameters<typeof notion.pages.create>[0]['properties'],
+    // ── Meeting note insert. Supabase path (Phase 2.11) has no client column and
+    // no optional-field fallback; the Notion path keeps its create + retry.
+    if (useSupabaseMeetings()) {
+      await sbMeetings.createMeeting({
+        title, meetingDate, meetingType,
+        notes: notes || '', actionItems: actionItems || '',
+        nextReviewDate: nextReviewDate || null, advisor: config.name,
       });
-    } catch (e1) {
-      // If Notion rejects because the optional columns don't exist, retry with core only
-      if (String(e1).includes('is not a property')) {
+    } else {
+      // Attempt 1: try with optional client-linkage fields
+      try {
         await notion.pages.create({
           parent: { database_id: config.meetingNotesDbId },
-          properties: coreProps as Parameters<typeof notion.pages.create>[0]['properties'],
+          properties: { ...coreProps, ...optionalProps } as Parameters<typeof notion.pages.create>[0]['properties'],
         });
-      } else {
-        throw e1;
+      } catch (e1) {
+        // If Notion rejects because the optional columns don't exist, retry with core only
+        if (String(e1).includes('is not a property')) {
+          await notion.pages.create({
+            parent: { database_id: config.meetingNotesDbId },
+            properties: coreProps as Parameters<typeof notion.pages.create>[0]['properties'],
+          });
+        } else {
+          throw e1;
+        }
       }
     }
 
-    // Update client's review dates in the CRM
+    // Update client's review dates in the CRM. Routed through the clients
+    // chokepoint so clientId (source-appropriate) hits the right store — this
+    // resolves the Notion-page-id-vs-uuid mismatch once clients are on Supabase.
     if (clientId && config.clientsDbId) {
-      const updateProps: Record<string, unknown> = {
-        'Last review date': { date: { start: meetingDate } },
-      };
-      if (nextReviewDate)     updateProps['Next review date'] = { date: { start: nextReviewDate } };
-      else if (clearNextReview) updateProps['Next review date'] = { date: null };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await notion.pages.update({ page_id: clientId, properties: updateProps as any });
+      await setClientReviewDates(config, clientId, meetingDate, nextReviewDate, clearNextReview);
     }
 
     return NextResponse.json({ success: true });

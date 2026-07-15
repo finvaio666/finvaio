@@ -83,3 +83,20 @@ export async function setClientAum(clientId: string, aum: number): Promise<void>
   const { error } = await sb.from(TABLE).update({ aum_myr: aum }).eq('id', clientId);
   if (error) throw new Error(`clients setAum failed: ${error.message}`);
 }
+
+/**
+ * Write a client's review dates (meetings write-back). `lastReview` is always
+ * set. `nextReview`: a date string sets it, null clears it, undefined leaves it
+ * untouched — mirroring the Notion path's set / clear / skip semantics.
+ */
+export async function setClientReviewDates(
+  clientId: string,
+  lastReview: string,
+  nextReview: string | null | undefined,
+): Promise<void> {
+  const sb = getSupabase();
+  const patch: Record<string, unknown> = { last_review_date: lastReview };
+  if (nextReview !== undefined) patch.next_review_date = nextReview; // null clears, string sets
+  const { error } = await sb.from(TABLE).update(patch).eq('id', clientId);
+  if (error) throw new Error(`clients setReviewDates failed: ${error.message}`);
+}
