@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 import MeetingCapture, { CapturePrefill } from '@/components/MeetingCapture';
+import MarkReviewDone from '@/components/MarkReviewDone';
 
 // ─── Ask FINVA — dashboard daily co-pilot ─────────────────────────────────────
 interface PendingTask { task: string; client: string; due: string; }
@@ -254,7 +255,7 @@ const MEETING_TYPE_COLOR: Record<string, string> = {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const { clients, loading, totalAum, activeCount, prospectCount } = useClients();
+  const { clients, loading, totalAum, activeCount, prospectCount, reload: reloadClients } = useClients();
   const router = useRouter();
 
   const [insurance,    setInsurance]    = useState<InsurancePolicy[]>([]);
@@ -814,6 +815,7 @@ export default function DashboardPage() {
                 <div style={pillStyle(overdue, !overdue && days <= 7)}>
                   {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
                 </div>
+                <MarkReviewDone client={{ id: c.id, name: c.name }} onDone={reloadClients} />
               </div>
             );
           })}

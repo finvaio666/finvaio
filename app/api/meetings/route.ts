@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { clientId, clientName, meetingDate, meetingType, notes, actionItems, nextReviewDate } = body;
+  const { clientId, clientName, meetingDate, meetingType, notes, actionItems, nextReviewDate, clearNextReview } = body;
 
   const notion = new Client({ auth: config.notionApiKey });
   // Title always encodes client name so it can be parsed back without extra DB columns
@@ -128,7 +128,8 @@ export async function POST(req: NextRequest) {
       const updateProps: Record<string, unknown> = {
         'Last review date': { date: { start: meetingDate } },
       };
-      if (nextReviewDate) updateProps['Next review date'] = { date: { start: nextReviewDate } };
+      if (nextReviewDate)     updateProps['Next review date'] = { date: { start: nextReviewDate } };
+      else if (clearNextReview) updateProps['Next review date'] = { date: null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await notion.pages.update({ page_id: clientId, properties: updateProps as any });
     }
