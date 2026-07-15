@@ -162,7 +162,7 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（5/N）
+### Phase 2.11 — 写路径  🟨 进行中（6/N）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
@@ -188,7 +188,15 @@ DATA_SOURCE_CLIENTS=notion
   - ⚠️ 休眠功能：8 顾问无人配 DB、无人开 products feature → 两表恒空，实战无源数据；写路径备好待启用
   - 🔬 **已验**（repo 级平滑测试打真库、自清两表回 0 行）：createPlan/createFund 全字段+极简（默认值套用、缺省数值→null）；listPlans/listFunds 读回往返；advisor 隔离（他人看不到、Admin 看全部）。`tsc --noEmit` 全绿
 - [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）
-- [ ] 其它 clients 写：`admin/clients`、`meetings` 回写 review 日期、networth/insurance/portfolio 各自的 POST（随各表写路径）
+- [x] **clients 表写已全完成**：`admin/clients` **无 CRUD 端点**（client 记录在 Notion 里人工管，前端只读+sync-aum）→ clients 表的写只有 `sync-aum`(AUM) + `meetings`(review 日期) 两条 write-back，均已完成。无独立 client 建/改/删可迁
+- [x] `networth` POST/PATCH/DELETE（`assets_liabilities`）→ 写 `replaceAssetEntries`/`updateAsset`/`deleteAsset`（`DATA_SOURCE_ASSETS`）
+  - POST = 「archive 该 client 的 marker 行（Notes 含 `advisor-entry`）→ 建新集」；Supabase 分支用**硬 DELETE** 替 archive（迁移已知取舍），再 insert；`type` CHECK=Asset|Liability（与 NW_ITEMS 一致）
+  - PATCH `buildAssetPatch` 逐字段镜像 Notion `buildProps`（同条件、advisor 恒戳）；PATCH/DELETE 带 advisor ownership 守卫（非 owner→`Forbidden`，Admin 可改任意）
+  - Notion 三个 handler 逐字不变，Supabase 分支插在各自 id/参数校验后、建 notion client 前
+  - 🔬 **已验**（repo 级平滑测试打真库，自清 8→8）：replace 建 2 行+listAssets 读回（字段往返、advisor scope）；二次 replace 删旧 marker 留新集；PATCH 改 value；非 owner PATCH+DELETE 被 Forbidden、Admin 可改；DELETE 删行；空集 replace 只删不插。`tsc --noEmit` 全绿
+- [ ] `insurance` POST/PATCH/DELETE（`insurance_policies`）→ 随本轮各表写路径
+- [ ] `portfolio` POST/PATCH/DELETE（`portfolio_holdings`；update-nav 的 `setHoldingValue` 已在，另需 CRUD）→ 随本轮各表写路径
+- [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）
 
 ### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜
 - [ ] Notion Users page → `advisors` 表（name / role / features / OAuth tokens）
