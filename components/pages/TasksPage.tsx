@@ -139,12 +139,6 @@ export default function TasksPage() {
       ) : (
         filtered.map(t => (
           <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 24px', borderBottom: '1px solid var(--border)', opacity: t.status === 'Done' ? 0.55 : 1 }}>
-            <button onClick={() => toggle(t)} style={{
-              width: 20, height: 20, borderRadius: 6, flexShrink: 0, marginTop: 1, cursor: 'pointer',
-              border: `2px solid ${t.status === 'Done' ? '#22c55e' : 'var(--border)'}`,
-              background: t.status === 'Done' ? '#22c55e' : 'transparent',
-              color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>{t.status === 'Done' ? '✓' : ''}</button>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, color: 'var(--text)', textDecoration: t.status === 'Done' ? 'line-through' : 'none' }}>{t.task}</div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -153,7 +147,13 @@ export default function TasksPage() {
                 {t.source && <span style={{ opacity: 0.7 }}>· {t.source}</span>}
               </div>
             </div>
-            <button onClick={() => remove(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
+            <button onClick={() => toggle(t)} style={{
+              padding: '5px 12px', borderRadius: 'var(--r-pill)', flexShrink: 0, cursor: 'pointer',
+              border: '1px solid var(--border)', background: 'var(--surface2)',
+              color: t.status === 'Done' ? 'var(--text3)' : '#22c55e',
+              fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+            }}>{t.status === 'Done' ? '↩ Reopen' : '✓ Mark as Done'}</button>
+            <button onClick={() => remove(t.id)} title="Delete task" style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
           </div>
         ))
       )}
