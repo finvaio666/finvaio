@@ -1,9 +1,14 @@
 /**
  * lib/repos/insurance.ts
- * Supabase data-access layer for Insurance policies (Phase 2, table 2.3).
+ * Supabase data-access layer for Insurance policies (Phase 2, tables 2.3 read +
+ * 2.11 write).
  *
  * Straight cutover (same model as clients/portfolio). Client link is
- * `client_notion_id` (= clients.notion_id); callers join on notion_id.
+ * `client_notion_id` (= clients.notion_id); callers join on notion_id. Writes
+ * (createPolicy/updatePolicy/deletePolicy) take a column patch already mapped by
+ * the route and enforce advisor ownership (Admin may touch any row). The
+ * insurance_type / status CHECK constraints were dropped (migration 2026-07-16)
+ * to match the Notion free-select and the app's wider input set.
  */
 
 import { getSupabase } from '../supabase';
@@ -79,4 +84,37 @@ export async function listPolicies(config: AdvisorConfig): Promise<InsurancePoli
   const { data, error } = await q;
   if (error) throw new Error(`insurance list failed: ${error.message}`);
   return (data as Row[]).map(toPolicy);
+}
+
+/** Guard: non-admins may only touch their own rows. Throws 'Forbidden' otherwise. */
+async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
+  if (config.role === 'Admin') return;
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).maybeSingle();
+  if (error) throw new Error(`insurance owner lookup failed: ${error.message}`);
+  if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
+}
+
+/** Insert one policy (columns already mapped by the route). Returns the new id. */
+export async function createPolicy(patch: Record<string, unknown>): Promise<{ id: string }> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).insert(patch).select('id').single();
+  if (error) throw new Error(`insurance insert failed: ${error.message}`);
+  return { id: (data as { id: string }).id };
+}
+
+/** Update one policy (partial column patch, advisor-scoped). */
+export async function updatePolicy(config: AdvisorConfig, id: string, patch: Record<string, unknown>): Promise<void> {
+  await assertOwner(config, id);
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).update(patch).eq('id', id);
+  if (error) throw new Error(`insurance update failed: ${error.message}`);
+}
+
+/** Hard-delete one policy (advisor-scoped). */
+export async function deletePolicy(config: AdvisorConfig, id: string): Promise<void> {
+  await assertOwner(config, id);
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  if (error) throw new Error(`insurance delete failed: ${error.message}`);
 }

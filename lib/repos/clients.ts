@@ -84,6 +84,14 @@ export async function setClientAum(clientId: string, aum: number): Promise<void>
   if (error) throw new Error(`clients setAum failed: ${error.message}`);
 }
 
+/** Resolve a Supabase client uuid → its dashless notion_id (cross-table join key). '' if not found. */
+export async function getNotionIdById(id: string): Promise<string> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('notion_id').eq('id', id).maybeSingle();
+  if (error) throw new Error(`clients notion_id lookup failed: ${error.message}`);
+  return (data as { notion_id: string | null } | null)?.notion_id ?? '';
+}
+
 /**
  * Write a client's review dates (meetings write-back). `lastReview` is always
  * set. `nextReview`: a date string sets it, null clears it, undefined leaves it

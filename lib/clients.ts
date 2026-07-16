@@ -165,6 +165,21 @@ export async function setClientAum(config: AdvisorConfig, clientId: string, aum:
  * clearNextReview, else left untouched. Notion path is byte-identical to the
  * original inline update in app/api/meetings.
  */
+/**
+ * Resolve a source-appropriate clientId (exactly as returned by listClients().id)
+ * to the client's DASHLESS notion_id — the cross-table join key stored on
+ * portfolio / insurance / cashflow (`client_notion_id`, matched to clients.notionId
+ * on read). On the Notion path the id IS the page id, so just strip dashes; on the
+ * Supabase path it's a uuid, resolved via the clients table. Branches on
+ * DATA_SOURCE_CLIENTS (this module's useSupabase), independent of the caller's own
+ * table flag. Returns '' when clientId is empty or unresolvable.
+ */
+export async function resolveClientNotionId(clientId: string): Promise<string> {
+  if (!clientId) return '';
+  if (!useSupabase()) return clientId.replace(/-/g, '');
+  return sbClients.getNotionIdById(clientId);
+}
+
 export async function setClientReviewDates(
   config: AdvisorConfig,
   clientId: string,

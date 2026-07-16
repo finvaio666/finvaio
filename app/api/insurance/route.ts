@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { resolveClientNotionId } from '@/lib/clients';
+import * as sbInsurance from '@/lib/repos/insurance';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabase = () => process.env.DATA_SOURCE_INSURANCE === 'supabase';
 
 interface Body {
   id?: string;
@@ -62,6 +66,34 @@ function buildProps(b: Body, advisorName: string, isCreate: boolean) {
   return p;
 }
 
+/** Supabase column patch — mirrors buildProps() field-for-field (client linkage set by caller). */
+function buildInsurancePatch(b: Body, advisorName: string, isCreate: boolean): Record<string, unknown> {
+  const t = (s?: string) => (s ?? '').slice(0, 1900);
+  const p: Record<string, unknown> = {};
+  if (isCreate || b.policyName !== undefined) p.policy_name = t(b.policyName);
+  if (b.policyOwner    !== undefined) p.policy_owner       = t(b.policyOwner);
+  if (b.lifeAssured    !== undefined) p.life_assured       = t(b.lifeAssured);
+  if (b.insuranceType)                p.insurance_type     = b.insuranceType;
+  if (b.benefits       !== undefined) p.benefits           = b.benefits ?? [];
+  if (b.status)                       p.status             = b.status;
+  if (b.insurer        !== undefined) p.insurer            = t(b.insurer);
+  if (b.policyNumber   !== undefined) p.policy_number      = t(b.policyNumber);
+  if (b.sumAssured     !== undefined) p.sum_assured_myr    = b.sumAssured || 0;
+  if (b.lifeCover      !== undefined) p.life_cover_myr     = b.lifeCover || 0;
+  if (b.ciCover        !== undefined) p.ci_cover_myr       = b.ciCover || 0;
+  if (b.paCover        !== undefined) p.pa_cover_myr       = b.paCover || 0;
+  if (b.tpdCover       !== undefined) p.tpd_cover_myr      = b.tpdCover || 0;
+  if (b.annualPremium  !== undefined) p.annual_premium_myr = b.annualPremium || 0;
+  if (b.beneficiary    !== undefined) p.beneficiary        = t(b.beneficiary);
+  if (b.medicalClass   !== undefined) p.medical_class      = t(b.medicalClass);
+  if (b.medicalCard    !== undefined) p.medical_card       = t(b.medicalCard);
+  if (b.notes          !== undefined) p.notes              = t(b.notes);
+  if (b.commencementDate !== undefined) p.commencement_date = b.commencementDate || null;
+  if (b.maturityDate     !== undefined) p.maturity_date     = b.maturityDate || null;
+  if (isCreate) p.advisor = advisorName;
+  return p;
+}
+
 async function ctx(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   const config = advisorId ? await getAdvisorConfig(advisorId) : null;
@@ -84,6 +116,16 @@ export async function POST(req: NextRequest) {
   if (!config?.notionApiKey || !config.insuranceDbId) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const b = await req.json() as Body;
   if (!b.policyName?.trim()) return NextResponse.json({ error: 'Policy name is required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      const patch = buildInsurancePatch(b, config.name, true);
+      if (b.clientId) patch.client_notion_id = await resolveClientNotionId(b.clientId);
+      const { id } = await sbInsurance.createPolicy(patch);
+      return NextResponse.json({ success: true, id });
+    } catch (e: unknown) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   try {
     const page = await notion.pages.create({ parent: { database_id: config.insuranceDbId }, properties: buildProps(b, config.name, true) as never });
@@ -96,6 +138,19 @@ export async function PATCH(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      const patch = buildInsurancePatch(b, config.name, false);
+      if (b.clientId !== undefined) patch.client_notion_id = b.clientId ? await resolveClientNotionId(b.clientId) : null;
+      await sbInsurance.updatePolicy(config, b.id, patch);
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (!await assertOwner(notion, b.id, config.name, config.role === 'Admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
@@ -109,6 +164,17 @@ export async function DELETE(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      await sbInsurance.deletePolicy(config, id);
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (!await assertOwner(notion, id, config.name, config.role === 'Admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
