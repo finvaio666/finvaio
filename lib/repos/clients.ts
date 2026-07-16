@@ -59,15 +59,15 @@ function toClient(r: Row): ClientRecord {
   };
 }
 
+const CLIENT_COLS = 'id, notion_id, client_name, phone, email, client_segment, risk_profile, aum_myr, monthly_income_myr, financial_goals, status, next_review_date, last_review_date, onboarding_date, date_of_birth, advisor';
+
 /** List clients. Admin sees all (optionally filtered to one FA); others see own. */
 export async function listClients(
   config: AdvisorConfig,
   opts: { advisorName?: string } = {},
 ): Promise<ClientRecord[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select(
-    'id, notion_id, client_name, phone, email, client_segment, risk_profile, aum_myr, monthly_income_myr, financial_goals, status, next_review_date, last_review_date, onboarding_date, date_of_birth, advisor',
-  );
+  let q = sb.from(TABLE).select(CLIENT_COLS);
   // Centralized model: scope to this advisor (Admin sees all; Admin may narrow to one FA).
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   else if (opts.advisorName)   q = q.eq('advisor', opts.advisorName);
@@ -75,6 +75,14 @@ export async function listClients(
   const { data, error } = await q;
   if (error) throw new Error(`clients list failed: ${error.message}`);
   return (data as Row[]).map(toClient);
+}
+
+/** A single client by uuid, or null. Unscoped — callers enforce ownership. */
+export async function getClientById(clientId: string): Promise<ClientRecord | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select(CLIENT_COLS).eq('id', clientId).maybeSingle();
+  if (error) throw new Error(`clients getById failed: ${error.message}`);
+  return data ? toClient(data as Row) : null;
 }
 
 /** Update a single client's AUM (MYR). `clientId` is the Supabase row uuid. */

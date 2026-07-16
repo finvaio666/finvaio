@@ -162,7 +162,7 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（9/N）
+### Phase 2.11 — 写路径  ✅ 完成（9/9 + forms 收尾）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
@@ -214,7 +214,12 @@ DATA_SOURCE_CLIENTS=notion
   - Notion 三 handler + fill 的 Notion 分支逐字不变
   - ⚠️ 公司级共享表、无 advisor scope；表**恒空**（功能已配 Drive 但无表单上传）——写路径备好待启用
   - 🔬 **已验**（repo 级平滑测试打真库、自清 0→0）：createForm（Fillable+Scanned）；getForm/listForms 读回（scalar/tags[]/field_mapping JSON 往返、空 category→null、activeOnly 过滤）；updateForm（翻 active+换 mapping、partial 只改 active 保留 mapping）；deleteForm。`tsc --noEmit` 全绿
-- [ ] `forms/[id]/prefill`（跨表点查 GET）→ **最后一块**：非写、是把内联 Notion 跨表读整体转成抽象（`getForm` + 新 `getClientById` + `listPolicies`/`listHoldings` 按 clientNotionId 过滤）；需新增 `lib/clients.getClientById`，各源按自身 flag。留作聚焦收尾
+- [x] `forms/[id]/prefill`（跨表点查 GET）→ **收尾完成**：整条内联 Notion 跨表读改走抽象——`getForm(config,id)` + 新 `getClientById(config,clientId)` + `listPolicies`/`listHoldings`（各源按自身 flag），保单/持仓按 `clientNotionId === client.notionId` 关联（源无关）
+  - 新增 `lib/clients.getClientById`（chokepoint，Notion `pages.retrieve`→`mapClientPage`／Supabase repo `getClientById` 按 uuid）+ 抽出 `mapClientPage` 供 listClients/getClientById 共用；repo 抽 `CLIENT_COLS` 常量
+  - ownership：非 admin 且 `client.advisorName` 与自己不符→403（镜像旧内联行为）；insurance/portfolio 查询失败 `.catch(()=>[])` 保留旧 best-effort；`sumAssured || undefined` 与旧 `?? undefined` 一致（0/缺省→''）
+  - 无独立 flag——纯读、各抽象自带 flag（Phase 2.10「整体转」模式），任意 flag 组合都对
+  - 🔬 **已验**（平滑测试打真库、自清；四 flag 全 supabase）：复刻路由逻辑 end-to-end——getForm 取 mapping、getClientById(uuid)→真客户+notionId 关联键、listPolicies/listHoldings 按 cnid 过滤命中种子保单/持仓、resolvePrefill 解析 client.name/policy.planName/policy.sumAssured/account.fundName/advisor.name/__manual 全对；ownership 403 逻辑；种子行全清。`tsc --noEmit` 全绿
+- ✅ **Phase 2.11 写路径全部完成**（sync-aum·update-nav·cashflow·meetings·products·networth·insurance·portfolio·forms + prefill 收尾）。Notion→Supabase 代码层双源改造完毕，剩 §7 备份 + 最终 cutover
 
 ### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜
 - [ ] Notion Users page → `advisors` 表（name / role / features / OAuth tokens）

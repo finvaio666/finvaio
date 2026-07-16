@@ -23,6 +23,7 @@
  */
 
 import { Client, isFullPage } from '@notionhq/client';
+import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import { AdvisorConfig } from './getAdvisorConfig';
 import * as sbClients from './repos/clients';
 
@@ -114,30 +115,48 @@ export async function listClients(
     });
     for (const cp of res.results) {
       if (!isFullPage(cp)) continue;
-      const p = cp.properties as Record<string, unknown>;
-      out.push({
-        id:             cp.id,
-        notionId:       cp.id.replace(/-/g, ''),
-        name:           titleOf(p),
-        advisorName:    sel(p, 'Advisor'),
-        aum:            num(p, 'AUM (MYR)'),
-        risk:           sel(p, 'Risk Profile'),
-        segment:        sel(p, 'Client Segment'),
-        status:         sel(p, 'Status'),
-        nextReview:     dateOf(p, 'Next review date'),
-        lastReview:     dateOf(p, 'Last review date'),
-        onboardingDate: dateOf(p, 'Onboarding date'),
-        dob:            dateOf(p, 'Date of Birth'),
-        monthlyIncome:  num(p, 'Monthly income (MYR)'),
-        financialGoals: ms(p, 'Financial goals'),
-        phone:          phone(p, 'Phone'),
-        email:          email(p, 'Email'),
-        lastEdited:     cp.last_edited_time,
-      });
+      out.push(mapClientPage(cp));
     }
     cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
   } while (cursor);
   return out;
+}
+
+/** Map one Notion Clients page → ClientRecord (shared by listClients + getClientById). */
+function mapClientPage(cp: PageObjectResponse): ClientRecord {
+  const p = cp.properties as Record<string, unknown>;
+  return {
+    id:             cp.id,
+    notionId:       cp.id.replace(/-/g, ''),
+    name:           titleOf(p),
+    advisorName:    sel(p, 'Advisor'),
+    aum:            num(p, 'AUM (MYR)'),
+    risk:           sel(p, 'Risk Profile'),
+    segment:        sel(p, 'Client Segment'),
+    status:         sel(p, 'Status'),
+    nextReview:     dateOf(p, 'Next review date'),
+    lastReview:     dateOf(p, 'Last review date'),
+    onboardingDate: dateOf(p, 'Onboarding date'),
+    dob:            dateOf(p, 'Date of Birth'),
+    monthlyIncome:  num(p, 'Monthly income (MYR)'),
+    financialGoals: ms(p, 'Financial goals'),
+    phone:          phone(p, 'Phone'),
+    email:          email(p, 'Email'),
+    lastEdited:     cp.last_edited_time,
+  };
+}
+
+/**
+ * A single client by source-appropriate id (Notion page id or Supabase uuid per
+ * DATA_SOURCE_CLIENTS), or null. Unscoped — callers enforce ownership (mirrors
+ * the old inline notion.pages.retrieve in forms prefill).
+ */
+export async function getClientById(config: AdvisorConfig, clientId: string): Promise<ClientRecord | null> {
+  if (useSupabase()) return sbClients.getClientById(clientId);
+  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return null;
+  const notion = new Client({ auth: config.notionApiKey });
+  const pg = await notion.pages.retrieve({ page_id: clientId });
+  return isFullPage(pg) ? mapClientPage(pg) : null;
 }
 
 /**
