@@ -4,8 +4,11 @@ import { PDFDocument } from 'pdf-lib';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { uploadPdfToDrive } from '@/lib/drive';
 import { FieldMapping, listForms } from '@/lib/formsLibrary';
+import * as sbForms from '@/lib/repos/formsLibrary';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabaseForms = () => process.env.DATA_SOURCE_FORMS === 'supabase';
 
 // ── GET — list all forms (Admin only) ─────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -69,6 +72,13 @@ export async function POST(req: NextRequest) {
     }
   } else {
     fieldMapping = { type: 'scanned', fields: [] };
+  }
+
+  // ── Supabase write path (Phase 2.11) — Drive upload above is shared; only the
+  // metadata record differs. field_mapping persisted as a JSON string.
+  if (useSupabaseForms()) {
+    const { id } = await sbForms.createForm({ name, provider, category, formType, pdfUrl: url, fieldMapping, tags, active: true });
+    return NextResponse.json({ id, pdfUrl: url, detectedFields, fieldMapping });
   }
 
   const properties: Record<string, unknown> = {

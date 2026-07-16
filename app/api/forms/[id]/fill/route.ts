@@ -3,9 +3,11 @@ import { Client, isFullPage } from '@notionhq/client';
 import { PDFDocument } from 'pdf-lib';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { downloadPdfFromDrive } from '@/lib/drive';
-import { driveFileIdFromUrl } from '@/lib/formsLibrary';
+import { driveFileIdFromUrl, getForm } from '@/lib/formsLibrary';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabaseForms = () => process.env.DATA_SOURCE_FORMS === 'supabase';
 
 function rt(props: Record<string, unknown>, key: string): string {
   const p = props[key] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
@@ -32,18 +34,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { fieldValues } = (await req.json()) as Body;
 
-  // ── Resolve the form's source PDF + name ─────────────────────────────────────
-  const notion = new Client({ auth: config.notionApiKey });
-  const page = await notion.pages.retrieve({ page_id: id });
-  if (!isFullPage(page)) return NextResponse.json({ error: 'Form not found' }, { status: 404 });
-  const props = page.properties as Record<string, unknown>;
-  const active = (props['Active'] as { checkbox?: boolean } | undefined)?.checkbox ?? false;
-  if (!active) return NextResponse.json({ error: 'Form not available' }, { status: 404 });
+  // ── Resolve the form's source PDF + name (Notion or Supabase per flag) ────────
+  let pdfUrl: string;
+  let formName: string;
+  if (useSupabaseForms()) {
+    const form = await getForm(config, id);
+    if (!form)        return NextResponse.json({ error: 'Form not found' }, { status: 404 });
+    if (!form.active) return NextResponse.json({ error: 'Form not available' }, { status: 404 });
+    pdfUrl   = form.pdfUrl;
+    formName = form.name || 'form';
+  } else {
+    const notion = new Client({ auth: config.notionApiKey });
+    const page = await notion.pages.retrieve({ page_id: id });
+    if (!isFullPage(page)) return NextResponse.json({ error: 'Form not found' }, { status: 404 });
+    const props = page.properties as Record<string, unknown>;
+    const active = (props['Active'] as { checkbox?: boolean } | undefined)?.checkbox ?? false;
+    if (!active) return NextResponse.json({ error: 'Form not available' }, { status: 404 });
+    pdfUrl   = rt(props, 'PDF URL');
+    formName = (props['Name'] as { title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? 'form';
+  }
 
-  const pdfUrl = rt(props, 'PDF URL');
   const fileId = driveFileIdFromUrl(pdfUrl);
   if (!fileId) return NextResponse.json({ error: 'Form PDF not found' }, { status: 404 });
-  const formName = (props['Name'] as { title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? 'form';
 
   // ── Fill the AcroForm fields (do NOT flatten — keep editable) ─────────────────
   const source = await downloadPdfFromDrive(config.driveRefreshToken, fileId);
