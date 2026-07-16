@@ -162,7 +162,7 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **`forms/[id]/prefill` 归写路径**：它不是批量读而是**按 page-id 点查**（`notion.pages.retrieve(clientId/formId)`），带 Notion-page-id vs Supabase-uuid 的 id 模型耦合，且与 `forms/[id]/fill`(Drive) 同属一条填表流、forms 表当前为空——与 fill/写一起转更合理
 - ⏭️ 写路径的跨表读（`sync-aum` AUM 重算、`update-nav`）→ 见 Phase 2.11
 
-### Phase 2.11 — 写路径  🟨 进行中（7/N）
+### Phase 2.11 — 写路径  🟨 进行中（8/N）
 > 写模式（2.8 ai_usage 立的范本）：repo 写函数 + `lib/*.ts` 里 flag 门控分支（Notion 路径保持逐字一致）+ best-effort/错误语义保留。`id` 用 `listX().id`（源自适配：Notion page id 或 Supabase uuid）避免跨模型耦合。
 - [x] `sync-aum`（重算 AUM 写回 clients）→ 读 `listHoldings` 汇总（join `clientNotionId`）+ 写 `setClientAum` chokepoint（`DATA_SOURCE_CLIENTS`）
   - 🔬 **已验**：求和 parity 240 clients 0 mismatch（新按 clientNotionId 汇总 == 旧按 relation.id）；Supabase 写平滑测试幂等写回 `aum_myr`（列+id 匹配，值不变）；Notion 写路径与原内联 `pages.update` 字节一致
@@ -200,7 +200,13 @@ DATA_SOURCE_CLIENTS=notion
   - `buildInsurancePatch` 逐字段镜像 Notion `buildProps`（含 date 三态 `|| null`、数值 `|| 0`、benefits→text[]、advisor 仅 create 戳、PATCH 不改 advisor）；PATCH/DELETE 带 ownership 守卫
   - Notion 三 handler 逐字不变，Supabase 分支插在各自校验后、建 notion client 前
   - 🔬 **已验**（repo 级平滑测试打真库、自清 81→81）：resolveClientNotionId 两分支（notion 去横线 / supabase uuid→notion_id）；createPolicy 接受 Medical+Matured（CHECK 已删）；listPolicies 读回（enum/数值/benefits[]/client_notion_id 往返）；FK join 还原 clientName=真客户；PATCH 改值+清 client 链；非 owner PATCH+DELETE→Forbidden、Admin 可改；DELETE 删行。`tsc --noEmit` 全绿
-- [ ] `portfolio` POST/PATCH/DELETE（`portfolio_holdings`；update-nav 的 `setHoldingValue` 已在，另需 CRUD）→ 随本轮各表写路径
+- [x] `portfolio` POST/PATCH/DELETE（`portfolio_holdings`）→ 写 `createHolding`/`updateHolding`/`deleteHolding`（`DATA_SOURCE_PORTFOLIO`；`setHoldingValue` 之前 update-nav 已加）
+  - 🐞 **同类 CHECK 太窄 bug**：`currency` CHECK=MYR/AUD/SGD/USD，但前端 `PortfolioFormModal` 的 `CURRENCIES` 含 GBP/EUR/JPY → 沿用 insurance 决策**删 currency CHECK**（migration `2026-07-16-portfolio-drop-currency-check.sql`，已应用）
+  - 复用 `resolveClientNotionId`（client FK 同 insurance：`👥 Clients` relation → `client_notion_id` 去横线 Notion id）
+  - `buildPortfolioPatch` 逐字段镜像 Notion `buildProps`（数值默认 valueOrig/valueMyr/… `|| 0`、fxRate `|| 1`、date 三态 `|| null`、advisor 仅 create、PATCH 不改 advisor）；PATCH/DELETE ownership 守卫
+  - Notion 三 handler 逐字不变
+  - 🔬 **已验**（repo 级平滑测试打真库、自清 1038→1038）：resolveClientNotionId supabase 分支；createHolding 接受 GBP（CHECK 已删）；listHoldings 读回（currency/valueMyr/units/client_notion_id 往返）；FK join 还原真客户；PATCH 改值+清 client 链；非 owner PATCH+DELETE→Forbidden、Admin 可改；DELETE 删行。`tsc --noEmit` 全绿
+- **本 bucket 收尾**：clients 表写（无 CRUD，只 AUM/review 两 write-back，已完成）+ networth/insurance/portfolio 三表 CRUD 全部完成 ✅
 - [ ] `forms` 写：admin POST/PATCH/DELETE（+ Drive 上传）、`forms/[id]/prefill`（点查）、`forms/[id]/fill`（Drive 下载填 PDF）
 
 ### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜

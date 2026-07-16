@@ -97,3 +97,36 @@ export async function setHoldingValue(holdingId: string, valueOriginal: number, 
     .eq('id', holdingId);
   if (error) throw new Error(`portfolio setValue failed: ${error.message}`);
 }
+
+/** Guard: non-admins may only touch their own rows. Throws 'Forbidden' otherwise. */
+async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
+  if (config.role === 'Admin') return;
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).maybeSingle();
+  if (error) throw new Error(`portfolio owner lookup failed: ${error.message}`);
+  if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
+}
+
+/** Insert one holding (columns already mapped by the route). Returns the new id. */
+export async function createHolding(patch: Record<string, unknown>): Promise<{ id: string }> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).insert(patch).select('id').single();
+  if (error) throw new Error(`portfolio insert failed: ${error.message}`);
+  return { id: (data as { id: string }).id };
+}
+
+/** Update one holding (partial column patch, advisor-scoped). */
+export async function updateHolding(config: AdvisorConfig, id: string, patch: Record<string, unknown>): Promise<void> {
+  await assertOwner(config, id);
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).update(patch).eq('id', id);
+  if (error) throw new Error(`portfolio update failed: ${error.message}`);
+}
+
+/** Hard-delete one holding (advisor-scoped). */
+export async function deleteHolding(config: AdvisorConfig, id: string): Promise<void> {
+  await assertOwner(config, id);
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  if (error) throw new Error(`portfolio delete failed: ${error.message}`);
+}
