@@ -748,26 +748,27 @@ export default function DashboardPage() {
               const isDone = completing.includes(t.id);
               return (
                 <div key={t.id} style={{ ...rowStyle, cursor: 'default', opacity: isDone ? 0.5 : 1, transition: 'opacity 0.3s' }}>
-                  <button
-                    onClick={() => completeTask(t.id)}
-                    title="Mark done"
-                    style={{
-                      width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer',
-                      border: `2px solid ${isDone ? '#22c55e' : 'var(--border)'}`,
-                      background: isDone ? '#22c55e' : 'transparent',
-                      color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >{isDone ? '✓' : ''}</button>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', textDecoration: isDone ? 'line-through' : 'none' }}>{t.task}</div>
                     {t.client && <div style={{ fontSize: 12, color: 'var(--text3)' }}>👤 {t.client}</div>}
                   </div>
-                  {isDone ? (
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>✓ Done</div>
-                  ) : d !== null && (
+                  {!isDone && d !== null && (
                     <div style={pillStyle(overdue, soon)}>
                       {overdue ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d`}
                     </div>
+                  )}
+                  {isDone ? (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e', flexShrink: 0 }}>✓ Done</div>
+                  ) : (
+                    <button
+                      onClick={() => completeTask(t.id)}
+                      style={{
+                        padding: '5px 12px', borderRadius: 'var(--r-pill)', flexShrink: 0, cursor: 'pointer',
+                        border: '1px solid var(--border)', background: 'var(--surface2)',
+                        color: '#22c55e', fontSize: 12, fontWeight: 600,
+                        fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+                      }}
+                    >✓ Mark as Done</button>
                   )}
                 </div>
               );
