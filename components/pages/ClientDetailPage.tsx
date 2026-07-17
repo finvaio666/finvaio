@@ -11,6 +11,7 @@ import {
 import CashflowFormModal from '@/components/CashflowFormModal';
 import NetWorthFormModal from '@/components/NetWorthFormModal';
 import { MedicalDetail } from '@/components/MedicalDetail';
+import MaskedValue from '@/components/MaskedValue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,15 @@ function OverviewTab({ client }: { client: ReturnType<typeof useClients>['client
         <SectionHeader dot="var(--accent)" title="Personal Information" />
         <div style={{ padding: '0 20px 16px' }}>
           <InfoRow label="Full Name" value={client.name} />
+          <InfoRow label="NRIC / Reg No" mono value={
+            client.nricMasked
+              ? <MaskedValue masked={client.nricMasked} onReveal={async () => {
+                  const r = await fetch(`/api/clients/${client.id}/nric`, { cache: 'no-store' });
+                  if (!r.ok) throw new Error('reveal failed');
+                  return (await r.json()).nric as string;
+                }} />
+              : '—'
+          } />
           <InfoRow label="Date of Birth" value={client.dob ? `${formatDate(client.dob)}${age ? ` (Age ${age})` : ''}` : '—'} />
           <InfoRow label="Phone" value={client.phone} />
           <InfoRow label="Email" value={

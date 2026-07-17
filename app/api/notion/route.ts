@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { queryAllPages } from '@/lib/notionQueryAll';
+import { decryptNric, maskNric } from '@/lib/nricCrypto';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
@@ -86,8 +87,16 @@ export async function GET(req: NextRequest) {
       });
       const data = pages.map(page => {
         const p = page.properties;
+        // NRIC is stored encrypted (enc:v1:…) in Notion; only a masked form ever
+        // leaves this route. Full value is served by /api/clients/[id]/nric.
+        let nricMasked = '';
+        try {
+          const nricRaw = p['NRIC / Reg No']?.type === 'rich_text' ? p['NRIC / Reg No'].rich_text[0]?.plain_text ?? '' : '';
+          nricMasked = maskNric(decryptNric(nricRaw));
+        } catch { /* missing key or corrupt ciphertext — omit rather than fail the list */ }
         return {
           id: page.id,
+          nricMasked,
           name:        p['Client Name']?.type === 'title'           ? p['Client Name'].title[0]?.plain_text ?? ''            : '',
           status:      p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                         : '',
           segment:     p['Client Segment']?.type === 'select'       ? p['Client Segment'].select?.name ?? ''                 : '',

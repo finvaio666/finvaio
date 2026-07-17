@@ -47,3 +47,6 @@ next-env.d.ts
 /FA_Data
 /FA_Onboarding_Templates
 *.zip
+
+# NRIC migration plaintext backup — never commit
+scripts/.nric-backup.csv
