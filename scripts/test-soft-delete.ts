@@ -40,33 +40,77 @@ async function count(table: string): Promise<number> {
   return n ?? 0;
 }
 
+/**
+ * Belt-and-braces safety net: hard-deletes any residual test rows left behind
+ * when a section throws before reaching its own end-of-section cleanup (e.g.
+ * `listed[0].id` on an empty array skips everything after it). Runs from a
+ * `finally` in main() so it fires even on a mid-section throw.
+ *
+ * Scoped ONLY to unmistakable test identity so it can never touch real data:
+ * every row this suite creates carries `advisor = ADV` ('SOFTDEL_TEST_ADVISOR',
+ * which can never match a real advisor), except forms_library, which has no
+ * advisor column — that one is purged by a `SOFTDEL` name prefix instead.
+ * Covers all six tables the suite will eventually touch; purging a table with
+ * no residue is a harmless no-op. This is a NET, not the primary cleanup path
+ * — per-section hard-deletes and "row count restored" assertions still run.
+ */
+async function purgeResidue(): Promise<void> {
+  const sb = getSupabase();
+  const advisorScopedTables = [
+    'tasks',
+    'insurance_policies',
+    'portfolio_holdings',
+    'assets_liabilities',
+    'cashflow_planner',
+  ];
+  for (const table of advisorScopedTables) {
+    const { error } = await sb.from(table).delete().eq('advisor', ADV);
+    if (error) console.error(`  ⚠️  purge ${table} failed: ${error.message}`);
+  }
+  const { error } = await sb.from('forms_library').delete().like('name', 'SOFTDEL%');
+  if (error) console.error(`  ⚠️  purge forms_library failed: ${error.message}`);
+}
+
 async function main() {
   const sb = getSupabase();
 
-  await section('tasks', async () => {
-    const before = await count('tasks');
+  try {
+    await section('tasks', async () => {
+      const before = await count('tasks');
 
-    await repoTasks.createTask(self, { task: 'SOFTDEL probe', type: 'Client' });
-    const listed = (await repoTasks.listTasks(self)).filter(t => t.task === 'SOFTDEL probe');
-    ok(listed.length === 1, 'created task is listed');
-    const id = listed[0].id;
+      await repoTasks.createTask(self, { task: 'SOFTDEL probe', type: 'Client' });
+      const listed = (await repoTasks.listTasks(self)).filter(t => t.task === 'SOFTDEL probe');
+      ok(listed.length === 1, 'created task is listed');
+      const id = listed[0].id;
 
-    await repoTasks.deleteTask(self, id);
-    ok(!(await repoTasks.listTasks(self)).some(t => t.id === id), 'soft-deleted task is NOT listed');
+      // Prove setTaskStatus actually works on a live row FIRST — otherwise an
+      // unconditional no-op would trivially "pass" the deleted-row check below.
+      await repoTasks.setTaskStatus(self, id, true);
+      const { data: live } = await sb.from('tasks').select('status').eq('id', id).single();
+      ok((live as { status: string }).status === 'Done', 'setTaskStatus DOES update a live task');
 
-    const { data: row } = await sb.from('tasks').select('deleted_at').eq('id', id).single();
-    ok((row as { deleted_at: string | null }).deleted_at !== null, 'row still exists with deleted_at set');
+      // Reset to Open (still live) so the post-delete assertion is unambiguous.
+      await repoTasks.setTaskStatus(self, id, false);
 
-    await repoTasks.setTaskStatus(self, id, true);
-    const { data: after } = await sb.from('tasks').select('status').eq('id', id).single();
-    ok((after as { status: string }).status !== 'Done', 'a deleted task cannot be updated');
+      await repoTasks.deleteTask(self, id);
+      ok(!(await repoTasks.listTasks(self)).some(t => t.id === id), 'soft-deleted task is NOT listed');
 
-    await sb.from('tasks').update({ deleted_at: null }).eq('id', id);
-    ok((await repoTasks.listTasks(self)).some(t => t.id === id), 'clearing deleted_at restores it');
+      const { data: row } = await sb.from('tasks').select('deleted_at').eq('id', id).single();
+      ok((row as { deleted_at: string | null }).deleted_at !== null, 'row still exists with deleted_at set');
 
-    await sb.from('tasks').delete().eq('id', id);
-    ok((await count('tasks')) === before, 'row count restored');
-  });
+      await repoTasks.setTaskStatus(self, id, true);
+      const { data: after } = await sb.from('tasks').select('status').eq('id', id).single();
+      ok((after as { status: string }).status === 'Open', 'setTaskStatus does NOT update a soft-deleted task');
+
+      await sb.from('tasks').update({ deleted_at: null }).eq('id', id);
+      ok((await repoTasks.listTasks(self)).some(t => t.id === id), 'clearing deleted_at restores it');
+
+      await sb.from('tasks').delete().eq('id', id);
+      ok((await count('tasks')) === before, 'row count restored');
+    });
+  } finally {
+    await purgeResidue();
+  }
 
   console.log(failures === 0 ? '\n🎉 all soft-delete checks passed' : `\n💥 ${failures} check(s) failed`);
   process.exit(failures === 0 ? 0 : 1);
