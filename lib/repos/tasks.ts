@@ -50,7 +50,7 @@ export async function listTasks(
   opts: { client?: string; status?: 'Open' | 'Done'; type?: 'Admin' | 'Client' } = {},
 ): Promise<Task[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select('*');
+  let q = sb.from(TABLE).select('*').is('deleted_at', null);
   // Centralized model: scope to this advisor's tasks (Admin sees all).
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   const { data, error } = await q;
@@ -104,13 +104,16 @@ export async function setTaskStatus(_config: AdvisorConfig, taskId: string, done
   const { error } = await sb.from(TABLE).update({
     status:    done ? 'Done' : 'Open',
     done_date: done ? new Date().toISOString().split('T')[0] : null,
-  }).eq('id', taskId);
+  }).eq('id', taskId).is('deleted_at', null);
   if (error) throw new Error(`task status update failed: ${error.message}`);
 }
 
-/** Delete a task. */
+/** Soft-delete a task (recoverable — clear deleted_at to restore). */
 export async function deleteTask(_config: AdvisorConfig, taskId: string): Promise<void> {
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).delete().eq('id', taskId);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', taskId)
+    .is('deleted_at', null);
   if (error) throw new Error(`task delete failed: ${error.message}`);
 }
