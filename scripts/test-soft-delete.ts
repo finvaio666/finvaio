@@ -13,6 +13,7 @@
 import { getSupabase } from '../lib/supabase';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 import * as repoTasks from '../lib/repos/tasks';
+import * as repoForms from '../lib/repos/formsLibrary';
 
 export const ADV = 'SOFTDEL_TEST_ADVISOR';
 export const admin = { role: 'Admin', name: 'SOFTDEL_TEST_ADMIN' } as unknown as AdvisorConfig;
@@ -112,6 +113,38 @@ async function main() {
     // ── Later table sections go HERE, inside this try, so purgeResidue() in the
     //    finally below always runs even if a section throws. Do NOT append below
     //    the finally block.
+
+    await section('forms_library', async () => {
+      const before = await count('forms_library');
+
+      const { id } = await repoForms.createForm({
+        name: 'SOFTDEL Form', provider: 'AIA', category: '', formType: 'Fillable PDF',
+        pdfUrl: 'https://drive.google.com/uc?id=SOFTDEL', active: true,
+        fieldMapping: { type: 'fillable', fields: [{ pdfField: 'X', dataKey: 'client.name' }] },
+        tags: [],
+      });
+      ok((await repoForms.getForm(id)) !== null, 'created form is retrievable');
+      ok((await repoForms.listForms()).some(f => f.id === id), 'created form is listed');
+
+      await repoForms.deleteForm(id);
+      ok((await repoForms.getForm(id)) === null, 'soft-deleted form: getForm returns null');
+      ok(!(await repoForms.listForms()).some(f => f.id === id), 'soft-deleted form is NOT listed');
+      ok(!(await repoForms.listForms({ activeOnly: true })).some(f => f.id === id), 'soft-deleted form is NOT in activeOnly list');
+
+      const { data: row } = await sb.from('forms_library').select('deleted_at, active').eq('id', id).single();
+      ok((row as { deleted_at: string | null }).deleted_at !== null, 'row still exists with deleted_at set');
+      ok((row as { active: boolean }).active === true, 'active is untouched — active and deleted_at are independent');
+
+      await repoForms.updateForm(id, { active: false });
+      const { data: after } = await sb.from('forms_library').select('active').eq('id', id).single();
+      ok((after as { active: boolean }).active === true, 'a deleted form cannot be updated');
+
+      await sb.from('forms_library').update({ deleted_at: null }).eq('id', id);
+      ok((await repoForms.getForm(id)) !== null, 'clearing deleted_at restores it');
+
+      await sb.from('forms_library').delete().eq('id', id);
+      ok((await count('forms_library')) === before, 'row count restored');
+    });
 
   } finally {
     await purgeResidue();

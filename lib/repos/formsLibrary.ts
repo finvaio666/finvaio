@@ -45,17 +45,17 @@ function toRecord(r: Row): FormRecord {
 /** List forms (company-wide). `activeOnly` mirrors the FA-facing Active filter. */
 export async function listForms(opts?: { activeOnly?: boolean }): Promise<FormRecord[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select(SELECT);
+  let q = sb.from(TABLE).select(SELECT).is('deleted_at', null);
   if (opts?.activeOnly) q = q.eq('active', true);
   const { data, error } = await q;
   if (error) throw new Error(`forms_library list failed: ${error.message}`);
   return (data as Row[]).map(toRecord);
 }
 
-/** A single form by id, or null if it doesn't exist. */
+/** A single form by id, or null if it doesn't exist (or was soft-deleted). */
 export async function getForm(id: string): Promise<FormRecord | null> {
   const sb = getSupabase();
-  const { data, error } = await sb.from(TABLE).select(SELECT).eq('id', id).maybeSingle();
+  const { data, error } = await sb.from(TABLE).select(SELECT).eq('id', id).is('deleted_at', null).maybeSingle();
   if (error) throw new Error(`forms_library get failed: ${error.message}`);
   return data ? toRecord(data as Row) : null;
 }
@@ -91,13 +91,17 @@ export async function updateForm(id: string, patch: { fieldMapping?: FieldMappin
   const row: Record<string, unknown> = { last_updated: today() };
   if (patch.fieldMapping !== undefined) row.field_mapping = JSON.stringify(patch.fieldMapping);
   if (patch.active       !== undefined) row.active        = patch.active;
-  const { error } = await sb.from(TABLE).update(row).eq('id', id);
+  const { error } = await sb.from(TABLE).update(row).eq('id', id).is('deleted_at', null);
   if (error) throw new Error(`forms_library update failed: ${error.message}`);
 }
 
-/** Hard-delete one form metadata record. */
+/** Soft-delete one form metadata record (recoverable — clear deleted_at to restore).
+ *  Independent of `active`: active=false is "unpublished", deleted_at is "gone". */
 export async function deleteForm(id: string): Promise<void> {
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('deleted_at', null);
   if (error) throw new Error(`forms_library delete failed: ${error.message}`);
 }
