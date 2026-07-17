@@ -1,0 +1,123 @@
+name: Supabase backup
+
+# Daily encrypted pg_dump of the Supabase Postgres DB (MIGRATION.md §7).
+#
+# WHY CLOUD: the local launchd agent only runs while the Mac is awake. This runs
+# regardless. Supabase free tier has no PITR/daily backups and the migrated code
+# hard-DELETEs, so this is the recovery path of last resort.
+#
+# ── REQUIRED REPO SECRETS (add via GitHub → Settings → Secrets → Actions) ──
+#   SUPABASE_DB_URL          Session-pooler connection string, e.g.
+#                            postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#                            ⚠️ MUST be the SESSION pooler (port 5432), NOT the
+#                            transaction pooler (6543) — the latter cannot pg_dump.
+#                            ⚠️ The direct host (db.<ref>.supabase.co) is IPv6-ONLY
+#                            and GitHub runners are IPv4-only, so it will NOT work.
+#                            Copy from Supabase Dashboard → Connect → Session pooler.
+#   BACKUP_GPG_PASSPHRASE    Passphrase used to symmetrically encrypt the dump.
+#                            Store it somewhere you will still have if GitHub is
+#                            gone — without it the backups are unreadable.
+#
+# ── RESTORE ──
+#   1. Download the artifact from the workflow run, unzip it.
+#   2. gpg --batch --decrypt --passphrase '<BACKUP_GPG_PASSPHRASE>' \
+#          -o finvaio.dump finvaio-<stamp>.dump.gpg
+#   3. pg_restore --no-owner --no-privileges -d "<target-connection>" finvaio.dump
+#      (pg_restore --list finvaio.dump  → inspect / selectively restore)
+#
+# ── NOTES ──
+#   • `schedule` only fires from the DEFAULT branch (main). On a feature branch
+#     this workflow will never run on cron — use "Run workflow" (workflow_dispatch).
+#   • A failed run emails the repo owner — that is the "fail loudly" guarantee.
+#     Silent failure is the worst outcome for a backup, so every step is fatal.
+#   • GitHub disables scheduled workflows after 60 days of repo inactivity.
+#   • Artifact retention caps at 90 days. Longer retention / a second provider
+#     (e.g. Google Drive) is tracked as future work in MIGRATION.md §7.
+
+on:
+  schedule:
+    - cron: '0 16 * * *'   # 16:00 UTC = 02:00 AEST (UTC+10)
+  workflow_dispatch:        # manual run — use this to verify the setup
+
+# Never run two dumps at once.
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Install pg_dump 17 (server is 17.x; pg_dump must be >= server major)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Dump database
+        env:
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: '30'
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set"; exit 1
+          fi
+          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          # --no-owner/--no-privileges → restorable into a fresh DB without role juggling
+          pg_dump "$DB_URL" \
+            --no-owner --no-privileges \
+            --format=custom --compress=9 \
+            --file="finvaio-$STAMP.dump"
+          ls -lh "finvaio-$STAMP.dump"
+
+      - name: Verify dump is complete (guard against a silent empty/corrupt dump)
+        run: |
+          set -euo pipefail
+          F="finvaio-$STAMP.dump"
+          # Must be a readable archive
+          pg_restore --list "$F" > toc.txt
+          # Must actually contain data for the tables that matter
+          for t in clients portfolio_holdings insurance_policies tasks; do
+            grep -q "TABLE DATA public $t" toc.txt \
+              || { echo "::error::dump is missing TABLE DATA for '$t'"; exit 1; }
+          done
+          # Sanity floor — a real dump is far bigger than this
+          SIZE=$(stat -c%s "$F")
+          [ "$SIZE" -gt 10240 ] || { echo "::error::dump suspiciously small ($SIZE bytes)"; exit 1; }
+          echo "dump OK: $SIZE bytes, $(grep -c 'TABLE DATA' toc.txt) tables with data"
+
+      - name: Encrypt (client PII + financial data must not sit in plaintext)
+        env:
+          GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PASSPHRASE:-}" ]; then
+            echo "::error::BACKUP_GPG_PASSPHRASE secret is not set"; exit 1
+          fi
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase "$GPG_PASSPHRASE" \
+              --output "finvaio-$STAMP.dump.gpg" \
+              "finvaio-$STAMP.dump"
+          # Never let the plaintext reach the artifact
+          rm -f "finvaio-$STAMP.dump" toc.txt
+          ls -lh "finvaio-$STAMP.dump.gpg"
+
+      - name: Upload encrypted dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: finvaio-backup-${{ env.STAMP }}
+          path: finvaio-*.dump.gpg
+          retention-days: 90
+          if-no-files-found: error

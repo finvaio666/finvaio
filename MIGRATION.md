@@ -517,7 +517,7 @@ DATA_SOURCE_CLIENTS=notion
 
 ---
 
-## 7. 备份  ✅ 已上线（2026-07-17，本机 launchd + pg_dump）
+## 7. 备份  🟨 本机 launchd 已上线；云端 GitHub Actions 待你完成三步（见 7.1）
 
 > Notion 自带版本历史 + 回收站；Postgres **什么都没有**。Supabase free tier 无 PITR、无每日备份（Pro 才有）。
 > 且新代码的删除是硬 `DELETE`（Notion 时代是 archive 可恢复）——误删即永久丢失。
@@ -527,8 +527,35 @@ DATA_SOURCE_CLIENTS=notion
 - `scripts/io.finva.supabase-backup.plist`：launchd agent，每日 **02:00**。装到 `~/Library/LaunchAgents/` 并 `launchctl bootstrap gui/$(id -u) …`（plist 头部有安装/状态/卸载命令）。
 - **前置**：`pg_dump` 需 ≥ 服务端主版本。服务端 PG 17.6；本机用 `brew install libpq`（pg_dump 18.4，向下兼容 dump 17）。
 - **已验**：手跑 + launchd kickstart 均 exit 0、产出 352K dump；`pg_restore --list` 含全部 11 张表 TABLE DATA；轮转 KEEP=1 生效。dump 存在**仓库外** `~/finvaio-backups`（不入 git）。
-- ⚠️ **局限**：只在 Mac 开机/唤醒时跑（launchd 会在唤醒后补跑一次错过的日程）；dump 仅在本机。**cutover 前建议再加异地副本**（把 `~/finvaio-backups` 指向 iCloud/Drive 同步目录，或另配 GitHub Actions 云端跑）。
+- ⚠️ **局限**：只在 Mac 开机/唤醒时跑（launchd 会在唤醒后补跑一次错过的日程）；dump 仅在本机 → 故迁往云端，见下。
 - 恢复：`pg_restore --no-owner --no-privileges -d "<目标连接>" finvaio-….dump`（custom 格式支持选择性恢复：`pg_restore --list` 先看目录）。
 
-~~备选：升级 Supabase Pro（每日备份 + 7 天 PITR）~~ —— 未采用，先用免费的本机 pg_dump。
-- Phase 4 退役 Notion 后，Notion 的"隐性备份"也没了——本方案已在运行，届时即为唯一备份。
+### 7.1 迁往 GitHub Actions 云端（2026-07-17，🟨 待你完成三步）
+
+> 目的：不依赖 Mac 开机，随时在线。`.github/workflows/supabase-backup.yml`（已写好，未 push）。
+
+**流程**：每日 16:00 UTC（= 02:00 AEST）→ 装 pg_dump 17 → dump → **校验完整性**（`pg_restore --list` 必须含 clients/portfolio/insurance/tasks 的 TABLE DATA + 体积下限）→ **gpg AES256 加密** → 传 artifact（留 90 天）。另有 `workflow_dispatch` 可手动触发。
+
+**⚠️ 两个致命坑（已在 workflow 注释中标明）**
+1. **连接必须走 session pooler**：直连 `db.<ref>.supabase.co` 是 **IPv6-only**（已验证：无 A 记录，只有 AAAA），而 **GitHub runner 是 IPv4-only** → 直连必失败。须用 `aws-0-<region>.pooler.supabase.com:**5432**`（Dashboard → Connect → Session pooler）。**不能用 transaction pooler（6543）——它不支持 pg_dump。**
+2. **`schedule` 只从默认分支（main）触发**：workflow 待在 `feature-switch-to-supabase` 上永远不会按时跑。
+
+**需你手动完成（我不经手任何密钥）**
+- [ ] 加 GitHub Secret `SUPABASE_DB_URL`（session pooler 连接串）
+- [ ] 加 GitHub Secret `BACKUP_GPG_PASSPHRASE`（**存在 GitHub 之外的地方**——没它备份就是废文件）
+- [ ] 把 workflow 合进 **main**（可单开一个只含该文件的小 PR），再用 **Run workflow** 手动验证一次跑通
+
+**⚠️ 拆本机 launchd 的时序**：**必须等云端实跑成功一次之后再拆**。拆早了 = cutover 前零备份真空期。
+拆除命令：`launchctl bootout gui/$(id -u)/io.finva.supabase-backup && rm ~/Library/LaunchAgents/io.finva.supabase-backup.plist`
+
+**副作用提醒**：`deploy.yml` 在 push 到 `main` 时会部署生产。合这个 PR 进 main 会触发一次生产 redeploy（代码没变，等于原样重部署）。
+
+### 7.2 Future work（已定方向，未做）
+- [ ] **第二家云端副本：Google Drive**（决定：先不做，记入计划）。价值不只冗余——GH artifact **最多留 90 天**，Drive 可无限期。
+  - 项目已有 Drive 集成（`lib/drive.ts`，OAuth2 + `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`COMPANY_DRIVE_REFRESH_TOKEN`，scope `drive.file`）。
+  - ⚠️ 复用现有 OAuth 有两个脆点：① Admin 在 Forms 页重连 Drive → refresh token 变化 → 备份**静默失效**；② 若该 Google OAuth 应用仍是 **Testing** 发布状态，**refresh token 每 7 天过期**（需先去 Google Cloud Console 确认）。
+  - → 若要做，**建议改用 Service Account**（密钥不过期、与 App 的 Drive 连接解耦；需把一个 Drive 文件夹共享给该 SA）。
+- [ ] 视情况：artifact 90 天上限不够时，改传对象存储（R2/S3，静态密钥、自定义保留期）。
+
+~~备选：升级 Supabase Pro（每日备份 + 7 天 PITR）~~ —— 未采用，先用免费的 pg_dump 方案。
+- Phase 4 退役 Notion 后，Notion 的"隐性备份"也没了——届时本方案即为唯一备份。
