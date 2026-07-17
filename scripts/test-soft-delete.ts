@@ -108,6 +108,11 @@ async function main() {
       await sb.from('tasks').delete().eq('id', id);
       ok((await count('tasks')) === before, 'row count restored');
     });
+
+    // ── Later table sections go HERE, inside this try, so purgeResidue() in the
+    //    finally below always runs even if a section throws. Do NOT append below
+    //    the finally block.
+
   } finally {
     await purgeResidue();
   }
