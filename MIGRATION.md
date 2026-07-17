@@ -517,13 +517,18 @@ DATA_SOURCE_CLIENTS=notion
 
 ---
 
-## 7. 备份（⚠️ Phase 2 迁 clients 前必须解决）
+## 7. 备份  ✅ 已上线（2026-07-17，本机 launchd + pg_dump）
 
 > Notion 自带版本历史 + 回收站；Postgres **什么都没有**。Supabase free tier 无 PITR、无每日备份（Pro 才有）。
 > 且新代码的删除是硬 `DELETE`（Notion 时代是 archive 可恢复）——误删即永久丢失。
 
-- tasks 一张表风险可接受（数据量小、可从冻结的 Notion 重建）。
-- **clients / portfolio / insurance 是真实财务数据，cutover 任何一张之前，必须先落实其一**：
-  - [ ] 最简方案：cron 定时 `pg_dump`（本机 launchd 或 GitHub Actions 每日跑，dump 存本地/Drive）
-  - [ ] 或升级 Supabase Pro（每日备份 + 7 天 PITR）
-- Phase 4 退役 Notion 后，Notion 的"隐性备份"也没了——届时备份方案必须已在运行。
+**方案：本机 launchd 每日 `pg_dump`（cutover 前置已满足）**
+- `scripts/backup-supabase.sh`：读 `.env.local` 的 `PG*` 连接（不硬编码密钥）→ `pg_dump --format=custom --compress=9`（含 schema+data 全量）→ 存 `~/finvaio-backups/finvaio-<时间戳>.dump`，保留最近 `KEEP`（默认 14）份、自动轮转。可手跑：`bash scripts/backup-supabase.sh`。
+- `scripts/io.finva.supabase-backup.plist`：launchd agent，每日 **02:00**。装到 `~/Library/LaunchAgents/` 并 `launchctl bootstrap gui/$(id -u) …`（plist 头部有安装/状态/卸载命令）。
+- **前置**：`pg_dump` 需 ≥ 服务端主版本。服务端 PG 17.6；本机用 `brew install libpq`（pg_dump 18.4，向下兼容 dump 17）。
+- **已验**：手跑 + launchd kickstart 均 exit 0、产出 352K dump；`pg_restore --list` 含全部 11 张表 TABLE DATA；轮转 KEEP=1 生效。dump 存在**仓库外** `~/finvaio-backups`（不入 git）。
+- ⚠️ **局限**：只在 Mac 开机/唤醒时跑（launchd 会在唤醒后补跑一次错过的日程）；dump 仅在本机。**cutover 前建议再加异地副本**（把 `~/finvaio-backups` 指向 iCloud/Drive 同步目录，或另配 GitHub Actions 云端跑）。
+- 恢复：`pg_restore --no-owner --no-privileges -d "<目标连接>" finvaio-….dump`（custom 格式支持选择性恢复：`pg_restore --list` 先看目录）。
+
+~~备选：升级 Supabase Pro（每日备份 + 7 天 PITR）~~ —— 未采用，先用免费的本机 pg_dump。
+- Phase 4 退役 Notion 后，Notion 的"隐性备份"也没了——本方案已在运行，届时即为唯一备份。

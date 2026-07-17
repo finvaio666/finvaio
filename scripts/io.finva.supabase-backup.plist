@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent: daily Supabase pg_dump backup (Phase 2 §7).
+  Install:
+    cp scripts/io.finva.supabase-backup.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.finva.supabase-backup.plist
+    launchctl kickstart -k gui/$(id -u)/io.finva.supabase-backup   # optional: run now
+  Status / logs:
+    launchctl print gui/$(id -u)/io.finva.supabase-backup | grep -i state
+    tail ~/finvaio-backups/backup.log
+  Uninstall:
+    launchctl bootout gui/$(id -u)/io.finva.supabase-backup
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.finva.supabase-backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Applications/XAMPP/xamppfiles/htdocs/finvaio（atancw88）/scripts/backup-supabase.sh</string>
+  </array>
+
+  <!-- Daily at 02:00. launchd runs a missed job once after wake if the Mac was
+       asleep at the scheduled time. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>2</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/Alven/finvaio-backups/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/Alven/finvaio-backups/launchd.err.log</string>
+</dict>
+</plist>
