@@ -16,6 +16,7 @@ import * as repoTasks from '../lib/repos/tasks';
 import * as repoForms from '../lib/repos/formsLibrary';
 import * as repoInsurance from '../lib/repos/insurance';
 import * as repoPortfolio from '../lib/repos/portfolio';
+import * as repoAssets from '../lib/repos/assets';
 
 export const ADV = 'SOFTDEL_TEST_ADVISOR';
 export const admin = { role: 'Admin', name: 'SOFTDEL_TEST_ADMIN' } as unknown as AdvisorConfig;
@@ -208,6 +209,52 @@ async function main() {
 
       await sb.from('portfolio_holdings').delete().eq('id', id);
       ok((await count('portfolio_holdings')) === before, 'row count restored');
+    });
+
+    await section('assets_liabilities', async () => {
+      const before = await count('assets_liabilities');
+      const CLIENT = 'SOFTDEL CLIENT';
+      const MARKER = 'advisor-entry';
+      const mk = (name: string, value: number) => ({
+        name, client: CLIENT, type: 'Asset', category: 'Cash & Deposits',
+        valueMyr: value, notes: `${MARKER} · saved 2026-07-17`, advisor: ADV,
+      });
+
+      // first save
+      await repoAssets.replaceAssetEntries(ADV, CLIENT, MARKER, [mk('Savings', 100)]);
+      let mine = (await repoAssets.listAssets(self)).filter(a => a.client === CLIENT);
+      ok(mine.length === 1 && mine[0].name === 'Savings', 'first save is listed');
+      const firstId = mine[0].id;
+
+      // re-save supersedes the old row
+      await repoAssets.replaceAssetEntries(ADV, CLIENT, MARKER, [mk('Fixed Deposit', 200)]);
+      mine = (await repoAssets.listAssets(self)).filter(a => a.client === CLIENT);
+      ok(mine.length === 1 && mine[0].name === 'Fixed Deposit', 're-save: only the new set is listed');
+
+      const { data: old } = await sb.from('assets_liabilities').select('deleted_at').eq('id', firstId).single();
+      const firstStamp = (old as { deleted_at: string | null }).deleted_at;
+      ok(firstStamp !== null, 'superseded row is soft-deleted, not destroyed');
+
+      // a further re-save must NOT re-stamp the already-deleted row
+      await new Promise(r => setTimeout(r, 1100));
+      await repoAssets.replaceAssetEntries(ADV, CLIENT, MARKER, [mk('Unit Trust', 300)]);
+      const { data: old2 } = await sb.from('assets_liabilities').select('deleted_at').eq('id', firstId).single();
+      ok((old2 as { deleted_at: string | null }).deleted_at === firstStamp, 'original delete timestamp is preserved on later re-saves');
+
+      // single-row delete + Admin guard
+      const liveId = ((await repoAssets.listAssets(self)).filter(a => a.client === CLIENT))[0].id;
+      await repoAssets.deleteAsset(self, liveId);
+      ok(!(await repoAssets.listAssets(self)).some(a => a.id === liveId), 'soft-deleted asset is NOT listed');
+      await repoAssets.updateAsset(admin, liveId, { value_myr: 9999 });
+      const { data: afterVal } = await sb.from('assets_liabilities').select('value_myr').eq('id', liveId).single();
+      ok(Number((afterVal as { value_myr: number }).value_myr) === 300, 'a deleted asset cannot be updated, even by Admin');
+
+      // restore
+      await sb.from('assets_liabilities').update({ deleted_at: null }).eq('id', liveId);
+      ok((await repoAssets.listAssets(self)).some(a => a.id === liveId), 'clearing deleted_at restores it');
+
+      await sb.from('assets_liabilities').delete().eq('client', CLIENT);
+      ok((await count('assets_liabilities')) === before, 'row count restored');
     });
 
   } finally {

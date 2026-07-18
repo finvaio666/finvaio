@@ -44,7 +44,9 @@ function toItem(r: Row): AssetItem {
 /** List asset/liability items scoped to this advisor (Admin sees all). */
 export async function listAssets(config: AdvisorConfig): Promise<AssetItem[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select('id, notion_id, name, client, type, category, value_myr, notes, advisor');
+  let q = sb.from(TABLE)
+    .select('id, notion_id, name, client, type, category, value_myr, notes, advisor')
+    .is('deleted_at', null);
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   const { data, error } = await q;
   if (error) throw new Error(`assets list failed: ${error.message}`);
@@ -57,13 +59,18 @@ export interface AssetInsert {
 
 /**
  * Replace this advisor's marker rows for a client (net-worth form re-save):
- * hard-delete rows matching (client, advisor, notes LIKE marker), then insert
+ * soft-delete rows matching (client, advisor, notes LIKE marker), then insert
  * the fresh set. Returns the inserted count.
+ *
+ * The `.is('deleted_at', null)` scope is load-bearing: without it every re-save
+ * would re-stamp already-deleted rows and destroy their original delete time.
  */
 export async function replaceAssetEntries(advisor: string, client: string, marker: string, rows: AssetInsert[]): Promise<number> {
   const sb = getSupabase();
-  const { error: delErr } = await sb.from(TABLE).delete()
-    .eq('client', client).eq('advisor', advisor).like('notes', `%${marker}%`);
+  const { error: delErr } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('client', client).eq('advisor', advisor).like('notes', `%${marker}%`)
+    .is('deleted_at', null);
   if (delErr) throw new Error(`assets replace delete failed: ${delErr.message}`);
   if (rows.length) {
     const { error } = await sb.from(TABLE).insert(rows.map(r => ({
@@ -79,7 +86,7 @@ export async function replaceAssetEntries(advisor: string, client: string, marke
 async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
   if (config.role === 'Admin') return;
   const sb = getSupabase();
-  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).maybeSingle();
+  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).is('deleted_at', null).maybeSingle();
   if (error) throw new Error(`assets owner lookup failed: ${error.message}`);
   if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
 }
@@ -88,14 +95,17 @@ async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
 export async function updateAsset(config: AdvisorConfig, id: string, patch: Record<string, unknown>): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).update(patch).eq('id', id);
+  const { error } = await sb.from(TABLE).update(patch).eq('id', id).is('deleted_at', null);
   if (error) throw new Error(`assets update failed: ${error.message}`);
 }
 
-/** Hard-delete a single asset row (advisor-scoped). */
+/** Soft-delete a single asset row (advisor-scoped; recoverable — clear deleted_at to restore). */
 export async function deleteAsset(config: AdvisorConfig, id: string): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('deleted_at', null);
   if (error) throw new Error(`assets delete failed: ${error.message}`);
 }
