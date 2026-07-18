@@ -78,7 +78,7 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
   const sb = getSupabase();
   const rows: Row[] = [];
   for (let from = 0; ; from += PAGE) {
-    let q = sb.from(TABLE).select(COLS).range(from, from + PAGE - 1);
+    let q = sb.from(TABLE).select(COLS).is('deleted_at', null).range(from, from + PAGE - 1);
     if (config.role !== 'Admin') q = q.eq('advisor', config.name);
     const { data, error } = await q;
     if (error) throw new Error(`portfolio list failed: ${error.message}`);
@@ -94,7 +94,8 @@ export async function setHoldingValue(holdingId: string, valueOriginal: number, 
   const sb = getSupabase();
   const { error } = await sb.from(TABLE)
     .update({ value_original_currency: valueOriginal, value_myr: valueMyr })
-    .eq('id', holdingId);
+    .eq('id', holdingId)
+    .is('deleted_at', null);
   if (error) throw new Error(`portfolio setValue failed: ${error.message}`);
 }
 
@@ -102,7 +103,7 @@ export async function setHoldingValue(holdingId: string, valueOriginal: number, 
 async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
   if (config.role === 'Admin') return;
   const sb = getSupabase();
-  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).maybeSingle();
+  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).is('deleted_at', null).maybeSingle();
   if (error) throw new Error(`portfolio owner lookup failed: ${error.message}`);
   if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
 }
@@ -119,14 +120,17 @@ export async function createHolding(patch: Record<string, unknown>): Promise<{ i
 export async function updateHolding(config: AdvisorConfig, id: string, patch: Record<string, unknown>): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).update(patch).eq('id', id);
+  const { error } = await sb.from(TABLE).update(patch).eq('id', id).is('deleted_at', null);
   if (error) throw new Error(`portfolio update failed: ${error.message}`);
 }
 
-/** Hard-delete one holding (advisor-scoped). */
+/** Soft-delete one holding (advisor-scoped; recoverable — clear deleted_at to restore). */
 export async function deleteHolding(config: AdvisorConfig, id: string): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('deleted_at', null);
   if (error) throw new Error(`portfolio delete failed: ${error.message}`);
 }

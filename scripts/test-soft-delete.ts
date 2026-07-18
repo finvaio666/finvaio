@@ -15,6 +15,7 @@ import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 import * as repoTasks from '../lib/repos/tasks';
 import * as repoForms from '../lib/repos/formsLibrary';
 import * as repoInsurance from '../lib/repos/insurance';
+import * as repoPortfolio from '../lib/repos/portfolio';
 
 export const ADV = 'SOFTDEL_TEST_ADVISOR';
 export const admin = { role: 'Admin', name: 'SOFTDEL_TEST_ADMIN' } as unknown as AdvisorConfig;
@@ -172,6 +173,41 @@ async function main() {
 
       await sb.from('insurance_policies').delete().eq('id', id);
       ok((await count('insurance_policies')) === before, 'row count restored');
+    });
+
+    await section('portfolio_holdings', async () => {
+      const before = await count('portfolio_holdings');
+
+      const { id } = await repoPortfolio.createHolding({
+        holding_name: 'SOFTDEL Holding', advisor: ADV, currency: 'MYR', value_myr: 500,
+      });
+      const sumOf = async (cfg: AdvisorConfig) =>
+        (await repoPortfolio.listHoldings(cfg)).reduce((s, h) => s + h.valueMyr, 0);
+
+      ok((await repoPortfolio.listHoldings(self)).some(h => h.id === id), 'created holding is listed');
+      const sumBefore = await sumOf(self);
+
+      await repoPortfolio.deleteHolding(self, id);
+      ok(!(await repoPortfolio.listHoldings(self)).some(h => h.id === id), 'soft-deleted holding is NOT listed');
+      ok((await sumOf(self)) === sumBefore - 500, 'aggregation (sync-aum/update-nav) excludes the deleted holding');
+
+      const { data: row } = await sb.from('portfolio_holdings').select('deleted_at').eq('id', id).single();
+      ok((row as { deleted_at: string | null }).deleted_at !== null, 'row still exists with deleted_at set');
+
+      // update-nav writes values through setHoldingValue — it must not revive a deleted holding
+      await repoPortfolio.setHoldingValue(id, 777, 777);
+      const { data: afterVal } = await sb.from('portfolio_holdings').select('value_myr').eq('id', id).single();
+      ok(Number((afterVal as { value_myr: number }).value_myr) === 500, 'setHoldingValue does not touch a deleted holding');
+
+      await repoPortfolio.updateHolding(admin, id, { units: 42 });
+      const { data: afterUnits } = await sb.from('portfolio_holdings').select('units').eq('id', id).single();
+      ok((afterUnits as { units: number | null }).units === null, 'a deleted holding cannot be updated, even by Admin');
+
+      await sb.from('portfolio_holdings').update({ deleted_at: null }).eq('id', id);
+      ok((await repoPortfolio.listHoldings(self)).some(h => h.id === id), 'clearing deleted_at restores it');
+
+      await sb.from('portfolio_holdings').delete().eq('id', id);
+      ok((await count('portfolio_holdings')) === before, 'row count restored');
     });
 
   } finally {
