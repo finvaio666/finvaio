@@ -14,6 +14,7 @@ import { getSupabase } from '../lib/supabase';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 import * as repoTasks from '../lib/repos/tasks';
 import * as repoForms from '../lib/repos/formsLibrary';
+import * as repoInsurance from '../lib/repos/insurance';
 
 export const ADV = 'SOFTDEL_TEST_ADVISOR';
 export const admin = { role: 'Admin', name: 'SOFTDEL_TEST_ADMIN' } as unknown as AdvisorConfig;
@@ -144,6 +145,33 @@ async function main() {
 
       await sb.from('forms_library').delete().eq('id', id);
       ok((await count('forms_library')) === before, 'row count restored');
+    });
+
+    await section('insurance_policies', async () => {
+      const before = await count('insurance_policies');
+
+      const { id } = await repoInsurance.createPolicy({
+        policy_name: 'SOFTDEL Policy', sum_assured_myr: 1000, advisor: ADV,
+      });
+      ok((await repoInsurance.listPolicies(self)).some(p => p.id === id), 'created policy is listed');
+
+      await repoInsurance.deletePolicy(self, id);
+      ok(!(await repoInsurance.listPolicies(self)).some(p => p.id === id), 'soft-deleted policy is NOT listed (advisor)');
+      ok(!(await repoInsurance.listPolicies(admin)).some(p => p.id === id), 'soft-deleted policy is NOT listed (admin)');
+
+      const { data: row } = await sb.from('insurance_policies').select('deleted_at').eq('id', id).single();
+      ok((row as { deleted_at: string | null }).deleted_at !== null, 'row still exists with deleted_at set');
+
+      // Admin skips assertOwner — the update filter is what protects a deleted row.
+      await repoInsurance.updatePolicy(admin, id, { sum_assured_myr: 9999 });
+      const { data: after } = await sb.from('insurance_policies').select('sum_assured_myr').eq('id', id).single();
+      ok(Number((after as { sum_assured_myr: number }).sum_assured_myr) === 1000, 'a deleted policy cannot be updated, even by Admin');
+
+      await sb.from('insurance_policies').update({ deleted_at: null }).eq('id', id);
+      ok((await repoInsurance.listPolicies(self)).some(p => p.id === id), 'clearing deleted_at restores it');
+
+      await sb.from('insurance_policies').delete().eq('id', id);
+      ok((await count('insurance_policies')) === before, 'row count restored');
     });
 
   } finally {

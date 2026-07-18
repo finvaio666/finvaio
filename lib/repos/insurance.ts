@@ -79,7 +79,7 @@ function toPolicy(r: Row): InsurancePolicy {
 /** List policies scoped to this advisor (Admin sees all). */
 export async function listPolicies(config: AdvisorConfig): Promise<InsurancePolicy[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select(COLS);
+  let q = sb.from(TABLE).select(COLS).is('deleted_at', null);
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   const { data, error } = await q;
   if (error) throw new Error(`insurance list failed: ${error.message}`);
@@ -90,7 +90,7 @@ export async function listPolicies(config: AdvisorConfig): Promise<InsurancePoli
 async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
   if (config.role === 'Admin') return;
   const sb = getSupabase();
-  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).maybeSingle();
+  const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).is('deleted_at', null).maybeSingle();
   if (error) throw new Error(`insurance owner lookup failed: ${error.message}`);
   if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
 }
@@ -107,14 +107,17 @@ export async function createPolicy(patch: Record<string, unknown>): Promise<{ id
 export async function updatePolicy(config: AdvisorConfig, id: string, patch: Record<string, unknown>): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).update(patch).eq('id', id);
+  const { error } = await sb.from(TABLE).update(patch).eq('id', id).is('deleted_at', null);
   if (error) throw new Error(`insurance update failed: ${error.message}`);
 }
 
-/** Hard-delete one policy (advisor-scoped). */
+/** Soft-delete one policy (advisor-scoped; recoverable — clear deleted_at to restore). */
 export async function deletePolicy(config: AdvisorConfig, id: string): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('deleted_at', null);
   if (error) throw new Error(`insurance delete failed: ${error.message}`);
 }
