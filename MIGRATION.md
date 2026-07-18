@@ -559,3 +559,48 @@ DATA_SOURCE_CLIENTS=notion
 
 ~~备选：升级 Supabase Pro（每日备份 + 7 天 PITR）~~ —— 未采用，先用免费的 pg_dump 方案。
 - Phase 4 退役 Notion 后，Notion 的"隐性备份"也没了——届时本方案即为唯一备份。
+
+---
+
+## 8. 软删除（soft delete）  ✅ 已上线（2026-07-17）
+
+> 设计：`docs/superpowers/specs/2026-07-17-soft-delete-design.md`
+> 计划：`docs/superpowers/plans/2026-07-17-soft-delete.md`
+
+**背景**：Phase 2.11 把删除实现成了 Postgres 硬 `DELETE`，比 Notion 时代的 `archived: true`（软删、可恢复）**退化**了。叠加「free tier 无 PITR」+「cutover 后 Notion 冻结」→ 误删即永久丢失。现已改回可恢复。
+
+**做法**：6 张有删除入口的表（`portfolio_holdings` / `insurance_policies` / `assets_liabilities` / `cashflow_planner` / `tasks` / `forms_library`）各加一列 `deleted_at timestamptz`（`null` = 在用，有值 = 已删 + 删除时刻）。删除改为盖时间戳；各 repo 的读/更新一律加 `.is('deleted_at', null)`。
+
+- **聚合自动继承**：sync-aum 汇总 AUM、update-nav 基金面板、forms prefill 的跨表 join 都走 `listHoldings` / `listPolicies` → 过滤一次全覆盖。
+- **Notion 路径逐字未动**；软删只在 Supabase 分支生效，仍受各表 `DATA_SOURCE_*` 门控。这让两路径语义**更接近**（Notion archive ≈ Supabase soft delete）。
+- **回归测试**：`node --env-file=.env.local --import tsx scripts/test-soft-delete.ts`（打真库、自清、行数还原）。软删设计唯一的失败模式就是「某处读漏加过滤 → 已删记录复活」，这个脚本就是防线。**改任何 repo 读路径后请重跑它。**
+- **不清理**：软删行永久保留（整库 12MB / 上限 500MB，死行几乎不花钱）。真逼近上限再议，届时有 pg_dump 兜底。
+
+### 8.1 恢复（软删行怎么捞回来）
+
+```sql
+-- 1) 看某表最近删的 20 条
+select id, deleted_at, *
+from insurance_policies
+where deleted_at is not null
+order by deleted_at desc
+limit 20;
+
+-- 2) 恢复某行
+update insurance_policies set deleted_at = null where id = '<uuid>';
+```
+把 `insurance_policies` 换成目标表即可，6 张表用法一致。
+
+> ⚠️ **软删除不替代 §7 的 pg_dump 备份**，两者互补：软删除挡「在 App 里手滑删了一条」（秒级恢复）；pg_dump 挡 `DROP TABLE` / 迁移改坏 / 裸 SQL 硬删 / 库损坏 / 账号丢失。
+
+### 8.2 与 reconcile 脚本的关系（**已决定不改**）
+
+9 个 `scripts/reconcile-*.ts` 走裸 SQL，其「孤儿检测」（Supabase 有、Notion 无 → 硬删）**不与软删冲突**：
+
+- reconcile 是 **cutover 前**工具（Notion 权威 → 灌 Supabase）。那时各表 flag 仍为 `notion`，App 根本不往 Supabase 写 → **不存在软删行**。
+- cutover 后脚本本身拒绝 `--apply`。
+- 且在 cutover 前那个阶段，「孤儿硬删」是**正确的**（清陈旧种子行）；改成软删反而留垃圾。
+
+**已知残留风险（接受）**：
+1. 该防呆只读本地 `.env.local`。若有人在 cutover 后硬跑 `--apply`，可能把软删行的数据用 Notion 旧值覆盖回去（行仍保持已删）。
+2. `cashflow_planner.notion_id` 有唯一约束，软删行仍占用它；若 reconcile 重插同 `notion_id` 会撞约束。同样只在「cutover 后误跑」时可能发生。
