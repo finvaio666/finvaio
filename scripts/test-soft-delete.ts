@@ -17,6 +17,7 @@ import * as repoForms from '../lib/repos/formsLibrary';
 import * as repoInsurance from '../lib/repos/insurance';
 import * as repoPortfolio from '../lib/repos/portfolio';
 import * as repoAssets from '../lib/repos/assets';
+import * as repoCashflow from '../lib/repos/cashflow';
 
 export const ADV = 'SOFTDEL_TEST_ADVISOR';
 export const admin = { role: 'Admin', name: 'SOFTDEL_TEST_ADMIN' } as unknown as AdvisorConfig;
@@ -255,6 +256,34 @@ async function main() {
 
       await sb.from('assets_liabilities').delete().eq('client', CLIENT);
       ok((await count('assets_liabilities')) === before, 'row count restored');
+    });
+
+    await section('cashflow_planner', async () => {
+      const before = await count('cashflow_planner');
+      const ENTRY = 'SOFTDEL CLIENT — Zzz 9999';
+      const write = (income: number) => ({
+        entry: ENTRY, month: '9999-12-01', advisor: ADV, clientNotionId: null,
+        income, fixed: 0, variable: 0, epf: 0, breakdown: { advisorNotes: 'softdel' },
+      });
+
+      const first = await repoCashflow.upsertCashflow(write(1000));
+      ok((await repoCashflow.listCashflow(self)).some(c => c.id === first.id), 'created entry is listed');
+
+      await repoCashflow.deleteCashflow(self, first.id);
+      ok(!(await repoCashflow.listCashflow(self)).some(c => c.id === first.id), 'soft-deleted entry is NOT listed');
+
+      const { data: row } = await sb.from('cashflow_planner').select('deleted_at').eq('id', first.id).single();
+      ok((row as { deleted_at: string | null }).deleted_at !== null, 'row still exists with deleted_at set');
+
+      // THE TRAP: re-submitting the same (entry, advisor) after a delete must create a NEW row
+      const second = await repoCashflow.upsertCashflow(write(2000));
+      ok(second.id !== first.id, 'upsert after delete creates a NEW row (does not update the deleted one)');
+      const listed = (await repoCashflow.listCashflow(self)).filter(c => c.entry === ENTRY);
+      ok(listed.length === 1 && listed[0].id === second.id, 'exactly one live entry, and it is the new submission');
+      ok(listed[0].income === 2000, 'the new submission is visible with its own values');
+
+      await sb.from('cashflow_planner').delete().in('id', [first.id, second.id]);
+      ok((await count('cashflow_planner')) === before, 'row count restored');
     });
 
   } finally {

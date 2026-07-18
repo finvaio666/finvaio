@@ -57,6 +57,7 @@ export async function listCashflow(config: AdvisorConfig): Promise<CashflowEntry
   let q = sb
     .from(TABLE)
     .select('id, notion_id, entry, month, monthly_income_myr, fixed_expenses_myr, variable_expenses_myr, epf_contribution_myr, advisor, breakdown')
+    .is('deleted_at', null)
     .order('month', { ascending: false });
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   const { data, error } = await q;
@@ -98,8 +99,13 @@ export async function upsertCashflow(w: CashflowWrite): Promise<{ id: string; en
   };
   if (w.clientNotionId) values.client_notion_id = w.clientNotionId;
 
+  // `.is('deleted_at', null)` is load-bearing: without it, re-submitting a month
+  // the user previously deleted would UPDATE the soft-deleted row, leaving the
+  // row deleted and making the new submission silently vanish.
   const { data: found, error: selErr } = await sb
-    .from(TABLE).select('id').eq('entry', w.entry).eq('advisor', w.advisor).limit(1).maybeSingle();
+    .from(TABLE).select('id').eq('entry', w.entry).eq('advisor', w.advisor)
+    .is('deleted_at', null)
+    .limit(1).maybeSingle();
   if (selErr) throw new Error(`cashflow upsert lookup failed: ${selErr.message}`);
 
   if (found) {
@@ -112,14 +118,18 @@ export async function upsertCashflow(w: CashflowWrite): Promise<{ id: string; en
   return { id: (ins as { id: string }).id, entry: w.entry };
 }
 
-/** Delete a cashflow row by id. Non-admins may only delete their own (advisor match). */
+/** Soft-delete a cashflow row by id (recoverable — clear deleted_at to restore).
+ *  Non-admins may only delete their own (advisor match). */
 export async function deleteCashflow(config: AdvisorConfig, id: string): Promise<void> {
   const sb = getSupabase();
   if (config.role !== 'Admin') {
-    const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).maybeSingle();
+    const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).is('deleted_at', null).maybeSingle();
     if (error) throw new Error(`cashflow delete lookup failed: ${error.message}`);
     if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
   }
-  const { error } = await sb.from(TABLE).delete().eq('id', id);
+  const { error } = await sb.from(TABLE)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('deleted_at', null);
   if (error) throw new Error(`cashflow delete failed: ${error.message}`);
 }
