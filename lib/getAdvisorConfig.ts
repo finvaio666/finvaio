@@ -58,9 +58,14 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
   if (useSupabaseUsers()) {
     const cached = cache.get(advisorId);
     if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.config;
-    const config = await sbUsers.getAdvisorConfig(advisorId);
-    if (config) cache.set(advisorId, { config, ts: Date.now() });
-    return config;
+    try {
+      const config = await sbUsers.getAdvisorConfig(advisorId);
+      if (config) cache.set(advisorId, { config, ts: Date.now() });
+      return config;
+    } catch (e) {
+      console.error('getAdvisorConfig (supabase) failed:', e);
+      return null; // mirror the Notion path, which returns null on any error
+    }
   }
   // ── Notion path (unchanged) ──
   const cached = cache.get(advisorId);

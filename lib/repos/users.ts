@@ -59,7 +59,7 @@ function toConfig(r: UserRow): AdvisorConfig {
     insurancePlansDbId: '',                                       // Notion path has no env fallback; products dormant → ''
     fundsDbId:          '',
     features:  (r.features ?? '').split(',').map(f => f.trim().toLowerCase()).filter(Boolean),
-    role:  r.role ?? 'Advisor',
+    role:  r.role || 'Advisor',
     name:  r.name ?? '',
     emailProvider:        (r.email_provider || 'gmail').toLowerCase(),
     gmailRefreshToken:    r.gmail_refresh_token ?? '',
@@ -113,7 +113,8 @@ export async function nameToIdMap(): Promise<Record<string, string>> {
   if (error) throw new Error(`users nameToIdMap failed: ${error.message}`);
   const map: Record<string, string> = {};
   for (const u of data as Array<{ notion_id: string; name: string | null; role: string | null }>) {
-    if (u.role === 'Advisor' && u.name) map[u.name] = u.notion_id;
+    const role = u.role || 'Advisor';
+    if (role === 'Advisor' && u.name) map[u.name] = u.notion_id;
   }
   return map;
 }
