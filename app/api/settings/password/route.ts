@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
 import { getAdvisorConfig, clearAdvisorCache } from '@/lib/getAdvisorConfig';
+import * as sbUsers from '@/lib/repos/users';
 
 export const dynamic = 'force-dynamic';
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
@@ -17,6 +19,16 @@ export async function POST(req: NextRequest) {
   }
   if (body.newPassword.length < 8) {
     return NextResponse.json({ error: 'New password must be at least 8 characters.' }, { status: 400 });
+  }
+
+  if (useSupabaseUsers()) {
+    const storedHash = await sbUsers.getStoredHash(advisorId).catch(() => null);
+    if (storedHash == null) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    const valid = await bcrypt.compare(body.currentPassword, storedHash);
+    if (!valid) return NextResponse.json({ error: 'Current password is incorrect.' }, { status: 401 });
+    await sbUsers.setPassword(advisorId, await bcrypt.hash(body.newPassword, 10));
+    clearAdvisorCache(advisorId);
+    return NextResponse.json({ success: true });
   }
 
   const hostKey = process.env.NOTION_API_KEY;

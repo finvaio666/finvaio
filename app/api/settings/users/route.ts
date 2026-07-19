@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
-import { getAdvisorConfig, addAdvisorSelectOption } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, addAdvisorSelectOption, clearAdvisorCache } from '@/lib/getAdvisorConfig';
 import * as sbUsers from '@/lib/repos/users';
 
 export const dynamic = 'force-dynamic';
@@ -73,6 +73,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
   }
 
+  if (useSupabaseUsers()) {
+    const uname = body.username.trim().toLowerCase();
+    if (await sbUsers.usernameExists(uname)) return NextResponse.json({ error: 'Username already exists.' }, { status: 409 });
+    await sbUsers.createUser({ notionId: sbUsers.genNotionId(), name: body.name.trim(), username: uname, passwordHash: await bcrypt.hash(body.password, 10), role: body.role === 'Admin' ? 'Admin' : 'Advisor' });
+    // addAdvisorSelectOption is a no-op on supabase; call preserved for parity
+    return NextResponse.json({ success: true });
+  }
+
   const hostKey   = process.env.NOTION_API_KEY;
   const usersDbId = process.env.NOTION_USERS_DB_ID;
   if (!hostKey || !usersDbId) return NextResponse.json({ error: 'Server config error' }, { status: 500 });
@@ -123,6 +131,19 @@ export async function PATCH(req: NextRequest) {
 
   let body: { userId: string; active?: boolean; newPassword?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }); }
+
+  if (useSupabaseUsers()) {
+    const patch: { active?: boolean; passwordHash?: string } = {};
+    if (body.active !== undefined) patch.active = body.active;
+    if (body.newPassword) {
+      if (body.newPassword.length < 8) return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+      patch.passwordHash = await bcrypt.hash(body.newPassword, 10);
+    }
+    if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    await sbUsers.setUserById(body.userId, patch);
+    clearAdvisorCache(body.userId);
+    return NextResponse.json({ success: true });
+  }
 
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return NextResponse.json({ error: 'Server config error' }, { status: 500 });

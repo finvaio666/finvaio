@@ -11,6 +11,7 @@
  */
 import { getSupabase } from '../supabase';
 import type { AdvisorConfig } from '../getAdvisorConfig';
+import { randomBytes } from 'crypto';
 
 const TABLE = 'users';
 const dashless = (id: string) => id.replace(/-/g, '');
@@ -115,4 +116,60 @@ export async function nameToIdMap(): Promise<Record<string, string>> {
     if (u.role === 'Advisor' && u.name) map[u.name] = u.notion_id;
   }
   return map;
+}
+
+/** A dashless 32-hex identity for a Supabase-native new user (no Notion page). */
+export function genNotionId(): string { return randomBytes(16).toString('hex'); }
+
+async function patchByNotionId(advisorId: string, patch: Record<string, unknown>): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).update(patch).eq('notion_id', dashless(advisorId));
+  if (error) throw new Error(`users update failed: ${error.message}`);
+}
+
+export const setGmailToken   = (id: string, t: string, addr: string) => patchByNotionId(id, { gmail_refresh_token: t, gmail_address: addr });
+export const setOutlookToken = (id: string, t: string, addr: string) => patchByNotionId(id, { outlook_refresh_token: t, outlook_address: addr, email_provider: 'outlook' });
+export const setCalendarToken= (id: string, provider: string, t: string, addr: string) => patchByNotionId(id, { calendar_provider: provider, calendar_refresh_token: t, calendar_address: addr });
+export const setDriveToken   = (id: string, t: string) => patchByNotionId(id, { drive_refresh_token: t });
+export const setEmailProvider= (id: string, provider: string) => patchByNotionId(id, { email_provider: provider });
+export const setInstitutions = (id: string, json: string) => patchByNotionId(id, { institutions_json: json.slice(0, 2000) });
+export const setPassword     = (id: string, newHash: string) => patchByNotionId(id, { password_hash: newHash });
+
+export function updateProfile(id: string, patch: { name?: string; gmailAddress?: string }): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined)         row.name = patch.name;
+  if (patch.gmailAddress !== undefined) row.gmail_address = patch.gmailAddress;
+  return patchByNotionId(id, row);
+}
+
+export async function usernameExists(username: string): Promise<boolean> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('notion_id').eq('username', username).limit(1).maybeSingle();
+  if (error) throw new Error(`users usernameExists failed: ${error.message}`);
+  return !!data;
+}
+
+export async function createUser(u: { notionId: string; name: string; username: string; passwordHash: string; role: string }): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).insert({
+    notion_id: u.notionId, name: u.name, username: u.username,
+    password_hash: u.passwordHash, role: u.role, active: true,
+  });
+  if (error) throw new Error(`users create failed: ${error.message}`);
+}
+
+/** Admin edit of another user by their notion_id (active toggle / password reset). */
+export function setUserById(notionId: string, patch: { active?: boolean; passwordHash?: string }): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (patch.active !== undefined)       row.active = patch.active;
+  if (patch.passwordHash !== undefined) row.password_hash = patch.passwordHash;
+  return patchByNotionId(notionId, row);
+}
+
+/** Current password hash lookup for settings/password (caller runs bcrypt.compare). */
+export async function getStoredHash(advisorId: string): Promise<string | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('password_hash').eq('notion_id', dashless(advisorId)).limit(1).maybeSingle();
+  if (error) throw new Error(`users getStoredHash failed: ${error.message}`);
+  return data ? ((data as { password_hash: string | null }).password_hash ?? '') : null;
 }

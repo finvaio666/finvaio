@@ -66,6 +66,31 @@ async function main() {
     await sb.from('users').update({ active: true }).eq('notion_id', NID);
     // listUsers includes the test user with id == notion_id
     ok((await sbUsers.listUsers()).some(u => u.id === NID && u.username === `${MARK}_user`), 'listUsers includes the test user keyed by notion_id');
+
+    // token write-backs land on the row
+    await sbUsers.setGmailToken(NID, 'gtok', 'g@x.com');
+    await sbUsers.setInstitutions(NID, '[{"a":1}]');
+    const { data: w1 } = await sb.from('users').select('gmail_refresh_token, gmail_address, institutions_json').eq('notion_id', NID).single();
+    ok((w1 as any).gmail_refresh_token === 'gtok' && (w1 as any).gmail_address === 'g@x.com', 'setGmailToken writes token + address');
+    ok((w1 as any).institutions_json === '[{"a":1}]', 'setInstitutions writes json');
+    // outlook also flips provider
+    await sbUsers.setOutlookToken(NID, 'otok', 'o@x.com');
+    const { data: w2 } = await sb.from('users').select('email_provider').eq('notion_id', NID).single();
+    ok((w2 as any).email_provider === 'outlook', 'setOutlookToken flips email_provider to outlook');
+    // password change: new hash verifies, old fails
+    const nh = await bcrypt.hash('newpass99', 10);
+    await sbUsers.setPassword(NID, nh);
+    const vl2 = await sbUsers.verifyLogin(`${MARK}_user`);
+    ok(await bcrypt.compare('newpass99', vl2!.passwordHash), 'setPassword updates the hash (new password verifies)');
+    ok(!(await bcrypt.compare('secret123', vl2!.passwordHash)), 'old password no longer verifies');
+    // createUser + usernameExists
+    const nid2 = sbUsers.genNotionId();
+    ok(nid2.length === 32 && !nid2.includes('-'), 'genNotionId is dashless 32-hex');
+    await sbUsers.createUser({ notionId: nid2, name: `${MARK} Two`, username: `${MARK}_two`, passwordHash: nh, role: 'Advisor' });
+    ok(await sbUsers.usernameExists(`${MARK}_two`), 'createUser + usernameExists');
+    // setUserById toggles active
+    await sbUsers.setUserById(nid2, { active: false });
+    ok((await sbUsers.verifyLogin(`${MARK}_two`)) === null, 'setUserById active=false disables login');
   } finally {
     await purge();
   }
