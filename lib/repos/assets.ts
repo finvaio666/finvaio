@@ -3,10 +3,11 @@
  * Supabase data-access layer for Assets & Liabilities (Phase 2, tables 2.4 read
  * + 2.11 write). `client` is a name string (not a notion_id relation).
  *
- * Writes: replaceAssetEntries mirrors the Notion POST (archive prior marker rows
- * for a client, then insert the fresh set) — except delete is a hard DELETE (the
- * migration's known archive→delete trade-off). update/delete carry an advisor
- * ownership guard (Admin may touch any row).
+ * Writes: replaceAssetEntries mirrors the Notion POST (supersede prior marker rows
+ * for a client, then insert the fresh set). delete and marker-replace both
+ * SOFT-delete (stamp deleted_at), recoverable by clearing it; reads filter
+ * deleted_at IS NULL. update/delete carry an advisor ownership guard (Admin may
+ * touch any row).
  */
 
 import { getSupabase } from '../supabase';

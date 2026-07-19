@@ -109,7 +109,7 @@ export async function upsertCashflow(w: CashflowWrite): Promise<{ id: string; en
   if (selErr) throw new Error(`cashflow upsert lookup failed: ${selErr.message}`);
 
   if (found) {
-    const { error } = await sb.from(TABLE).update(values).eq('id', found.id);
+    const { error } = await sb.from(TABLE).update(values).eq('id', found.id).is('deleted_at', null);
     if (error) throw new Error(`cashflow update failed: ${error.message}`);
     return { id: found.id as string, entry: w.entry };
   }
