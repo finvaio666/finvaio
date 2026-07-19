@@ -1,4 +1,7 @@
 import { Client, isFullPage } from '@notionhq/client';
+import * as sbUsers from './repos/users';
+
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 export interface AdvisorConfig {
   notionApiKey:       string;
@@ -52,6 +55,14 @@ function rt(props: Record<string, unknown>, key: string): string {
 }
 
 export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig | null> {
+  if (useSupabaseUsers()) {
+    const cached = cache.get(advisorId);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.config;
+    const config = await sbUsers.getAdvisorConfig(advisorId);
+    if (config) cache.set(advisorId, { config, ts: Date.now() });
+    return config;
+  }
+  // ── Notion path (unchanged) ──
   const cached = cache.get(advisorId);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.config;
 
