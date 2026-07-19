@@ -221,12 +221,14 @@ DATA_SOURCE_CLIENTS=notion
   - 🔬 **已验**（平滑测试打真库、自清；四 flag 全 supabase）：复刻路由逻辑 end-to-end——getForm 取 mapping、getClientById(uuid)→真客户+notionId 关联键、listPolicies/listHoldings 按 cnid 过滤命中种子保单/持仓、resolvePrefill 解析 client.name/policy.planName/policy.sumAssured/account.fundName/advisor.name/__manual 全对；ownership 403 逻辑；种子行全清。`tsc --noEmit` 全绿
 - ✅ **Phase 2.11 写路径全部完成**（sync-aum·update-nav·cashflow·meetings·products·networth·insurance·portfolio·forms + prefill 收尾）。Notion→Supabase 代码层双源改造完毕，剩 §7 备份 + 最终 cutover
 
-### Phase 3 — 配置 / Users（最后动，所有路由都依赖它）  ⬜
-- [ ] Notion Users page → `advisors` 表（name / role / features / OAuth tokens）
-- [ ] 重写 `getAdvisorConfig`：不再需要 per-advisor DB ID；OAuth token 顺便**加密存储**（接安全审查第 2 项）
-- [ ] 登录、`/api/auth/*`、多顾问隔离、Admin 看全部
-- ✅ 通过标准：登录正常、数据隔离正确；此步做完即可切断 Notion 主链路
-- 💾 测通后 → 提醒 Commit（`feat(migrate): advisors/config on supabase`）
+### Phase 3 — 配置 / Users  ✅ 完成（2026-07-19，代码测通，cutover 并入统一切换）
+- [x] `public.users`（已预置 8 行）+ `features` 列（migration 2026-07-19）；`scripts/reconcile-users.ts`（dry-run 拉齐，含 password_hash）
+- [x] `lib/repos/users.ts` + `getAdvisorConfig` Supabase 分支（`DATA_SOURCE_USERS`）——身份键 **仍用 notion_id**（dashed advisorId 读时归一化 → 老 session 不失效）；字段映射逐字段镜像 `stored || env.COMPANY_*` fallback
+- [x] 读:login（bcrypt/JWT 不变）、me（继承）、settings/users GET、admin/clients FA-map
+- [x] 写:6 token 写回 + settings/password + settings/profile（name+gmailAddress）+ settings/users POST（生成 dashless notion_id 当身份）/PATCH;`addAdvisorSelectOption` 在 supabase 为 no-op
+- [x] 测试 `scripts/test-users-supabase.ts`（打真库、自清、绝不碰真实 8 用户）
+- ✅ 通过标准:登录正常、数据隔离正确;此步做完即可切断 Notion 主链路（cutover 时统一翻 flag）
+- ⏭️ **延后（future）**:OAuth token 加密（安全审查 #2,紧接的独立一步）;UUID 身份迁移（可选;滚动 login-backfill + `keyType` JWT claim,因 Notion page id 与 uuid 同为 dashed 不可格式区分）
 
 ### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
