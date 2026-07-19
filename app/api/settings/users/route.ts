@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
 import { getAdvisorConfig, addAdvisorSelectOption } from '@/lib/getAdvisorConfig';
+import * as sbUsers from '@/lib/repos/users';
 
 export const dynamic = 'force-dynamic';
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 function rt(props: Record<string, unknown>, key: string): string {
   const p = props[key] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
@@ -17,6 +19,11 @@ export async function GET(req: NextRequest) {
 
   const config = await getAdvisorConfig(advisorId);
   if (config?.role !== 'Admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+
+  if (useSupabaseUsers()) {
+    try { return NextResponse.json({ users: await sbUsers.listUsers() }); }
+    catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  }
 
   const hostKey  = process.env.NOTION_API_KEY;
   const usersDbId = process.env.NOTION_USERS_DB_ID;

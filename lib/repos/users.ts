@@ -81,3 +81,38 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
   if (error) throw new Error(`users getAdvisorConfig failed: ${error.message}`);
   return data ? toConfig(data as UserRow) : null;
 }
+
+/** Look up an ACTIVE user by username for login. Returns the stored hash +
+ *  identity; the caller runs bcrypt.compare (keeps bcrypt logic in the route). */
+export async function verifyLogin(username: string): Promise<{ notionId: string; role: string; passwordHash: string } | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .select('notion_id, role, password_hash, active')
+    .eq('username', username).eq('active', true).limit(1).maybeSingle();
+  if (error) throw new Error(`users verifyLogin failed: ${error.message}`);
+  if (!data) return null;
+  const r = data as { notion_id: string; role: string | null; password_hash: string | null };
+  return { notionId: r.notion_id, role: r.role ?? 'Advisor', passwordHash: r.password_hash ?? '' };
+}
+
+/** List all users (admin console). `id` is the notion_id, matching the Notion path. */
+export async function listUsers(): Promise<{ id: string; name: string; username: string; role: string; active: boolean; hasGmail: boolean }[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .select('notion_id, name, username, role, active, gmail_refresh_token');
+  if (error) throw new Error(`users listUsers failed: ${error.message}`);
+  return (data as Array<{ notion_id: string; name: string | null; username: string | null; role: string | null; active: boolean | null; gmail_refresh_token: string | null }>)
+    .map(u => ({ id: u.notion_id, name: u.name ?? '', username: u.username ?? '', role: u.role ?? 'Advisor', active: u.active ?? true, hasGmail: !!u.gmail_refresh_token }));
+}
+
+/** advisor name → notion_id, for record attribution (active Advisors). */
+export async function nameToIdMap(): Promise<Record<string, string>> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('notion_id, name, role, active').eq('active', true);
+  if (error) throw new Error(`users nameToIdMap failed: ${error.message}`);
+  const map: Record<string, string> = {};
+  for (const u of data as Array<{ notion_id: string; name: string | null; role: string | null }>) {
+    if (u.role === 'Advisor' && u.name) map[u.name] = u.notion_id;
+  }
+  return map;
+}

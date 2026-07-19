@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT } from 'jose';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
+import * as sbUsers from '@/lib/repos/users';
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 // ── Simple in-memory rate limiter ─────────────────────────────────────────────
 // Limits login attempts per IP: 5 attempts per 5-minute window.
@@ -56,6 +58,20 @@ export async function POST(req: NextRequest) {
 
   if (!usersDbId || !hostKey || !authSecret) {
     return NextResponse.json({ error: 'Server configuration error.' }, { status: 500 });
+  }
+
+  if (useSupabaseUsers()) {
+    const found = await sbUsers.verifyLogin(username).catch(() => null);
+    if (!found) return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+    const valid = await bcrypt.compare(password, found.passwordHash);
+    if (!valid) return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+    const secret = new TextEncoder().encode(authSecret);
+    const token  = await new SignJWT({ advisorId: found.notionId, username, role: found.role })
+      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('7d').sign(secret);
+    clearRateLimit(ip);
+    const res = NextResponse.json({ success: true });
+    res.cookies.set('aria-session', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    return res;
   }
 
   // ── 1. Find user in Notion Users table ──────────────────────────────────────

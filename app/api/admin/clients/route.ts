@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
+import * as sbUsers from '@/lib/repos/users';
 
 export const dynamic = 'force-dynamic';
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 export interface AdminClient {
   id:          string;
@@ -37,18 +39,22 @@ export async function GET(req: NextRequest) {
   const notion = new Client({ auth: hostKey });
 
   // Get all FA users → build Advisor name → user-id map for attribution.
-  // (Users still comes from Notion — its migration is Phase 3.)
-  const usersRes = await notion.databases.query({ database_id: usersDbId, page_size: 50 });
-  const faUsers = usersRes.results.filter(isFullPage).filter(page => {
-    const p    = page.properties as Record<string, unknown>;
-    const role = (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor';
-    const active = (p['Active'] as { type: string; checkbox?: boolean } | undefined)?.checkbox ?? true;
-    return role === 'Advisor' && active;
-  });
-  const nameToId: Record<string, string> = {};
-  for (const fa of faUsers) {
-    const nm = (fa.properties['Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '';
-    if (nm) nameToId[nm] = fa.id;
+  let nameToId: Record<string, string>;
+  if (useSupabaseUsers()) {
+    nameToId = await sbUsers.nameToIdMap();
+  } else {
+    const usersRes = await notion.databases.query({ database_id: usersDbId, page_size: 50 });
+    const faUsers = usersRes.results.filter(isFullPage).filter(page => {
+      const p    = page.properties as Record<string, unknown>;
+      const role = (p['Role'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? 'Advisor';
+      const active = (p['Active'] as { type: string; checkbox?: boolean } | undefined)?.checkbox ?? true;
+      return role === 'Advisor' && active;
+    });
+    nameToId = {};
+    for (const fa of faUsers) {
+      const nm = (fa.properties['Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '';
+      if (nm) nameToId[nm] = fa.id;
+    }
   }
   // If filtering by a specific FA, resolve their name to filter on the Advisor tag
   const filterFaName = filterFaId

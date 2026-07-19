@@ -52,6 +52,20 @@ async function main() {
     ok(!!c2 && c2!.name === c1!.name, 'getAdvisorConfig resolves the dashed advisorId identically');
 
     ok((await sbUsers.getAdvisorConfig('nonexistentid0000000000000000000')) === null, 'unknown id → null');
+
+    // login lookup + bcrypt (verifyLogin returns the hash; caller compares)
+    const bcrypt = (await import('bcryptjs')).default;
+    const hash = await bcrypt.hash('secret123', 10);
+    await sb.from('users').update({ password_hash: hash }).eq('notion_id', NID);
+    const vl = await sbUsers.verifyLogin(`${MARK}_user`);
+    ok(!!vl && vl.notionId === NID, 'verifyLogin finds the active test user');
+    ok(await bcrypt.compare('secret123', vl!.passwordHash), 'verifyLogin returns the usable password hash');
+    // inactive user is not returned
+    await sb.from('users').update({ active: false }).eq('notion_id', NID);
+    ok((await sbUsers.verifyLogin(`${MARK}_user`)) === null, 'inactive user is not returned by verifyLogin');
+    await sb.from('users').update({ active: true }).eq('notion_id', NID);
+    // listUsers includes the test user with id == notion_id
+    ok((await sbUsers.listUsers()).some(u => u.id === NID && u.username === `${MARK}_user`), 'listUsers includes the test user keyed by notion_id');
   } finally {
     await purge();
   }
