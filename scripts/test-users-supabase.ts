@@ -91,6 +91,44 @@ async function main() {
     // setUserById toggles active
     await sbUsers.setUserById(nid2, { active: false });
     ok((await sbUsers.verifyLogin(`${MARK}_two`)) === null, 'setUserById active=false disables login');
+
+    // ── company JSON columns (Phase 3.5a) ──────────────────────────────────
+    // Snapshot the real users' 3 columns FIRST; asserted unchanged at the end.
+    const { data: realBefore } = await sb.from('users')
+      .select('notion_id, institutions_json, email_themes_json, market_digest_json')
+      .neq('notion_id', NID).not('username', 'like', `${MARK}%`);
+    const snap = JSON.stringify(realBefore);
+
+    // email_themes_json is empty for every real user → the fixture is the only
+    // non-empty value, so "first non-empty" is unambiguous here.
+    await sbUsers.writeCompanyJson('email_themes_json', NID, '[{"id":"t1"}]');
+    const themeBlobs = await sbUsers.listCompanyJson('email_themes_json');
+    ok(themeBlobs.length === 1 && themeBlobs[0] === '[{"id":"t1"}]', 'listCompanyJson(email_themes_json) returns the fixture blob');
+
+    // institutions_json: Administrator already holds a real blob → assert the
+    // fixture is INCLUDED alongside it (not that it is the only one).
+    await sbUsers.writeCompanyJson('institutions_json', NID, '[{"domain":"fixture.test"}]');
+    const instBlobs = await sbUsers.listCompanyJson('institutions_json');
+    ok(instBlobs.includes('[{"domain":"fixture.test"}]'), 'listCompanyJson(institutions_json) includes the fixture blob');
+    ok(instBlobs.length >= 2, 'listCompanyJson returns real blobs alongside the fixture');
+
+    // no truncation: a blob well past the old 2000-char Notion cap round-trips intact
+    const big = JSON.stringify([{ domain: 'big.test', pad: 'x'.repeat(3000) }]);
+    await sbUsers.writeCompanyJson('institutions_json', NID, big);
+    const bigBack = (await sbUsers.listCompanyJson('institutions_json')).find(b => b.includes('big.test'));
+    ok(bigBack === big, 'writeCompanyJson stores >2000 chars without truncation');
+    ok(JSON.parse(bigBack!).length === 1, 'the >2000-char blob is still valid JSON');
+
+    // digest target prefers the Admin row (read-only)
+    const target = await sbUsers.findDigestTargetNotionId();
+    const { data: adminRow } = await sb.from('users').select('notion_id').eq('role', 'Admin').limit(1).maybeSingle();
+    ok(!!target && target === (adminRow as { notion_id: string } | null)?.notion_id, 'findDigestTargetNotionId prefers the Admin row');
+
+    // the 8 real users' 3 columns are untouched by everything above
+    const { data: realAfter } = await sb.from('users')
+      .select('notion_id, institutions_json, email_themes_json, market_digest_json')
+      .neq('notion_id', NID).not('username', 'like', `${MARK}%`);
+    ok(JSON.stringify(realAfter) === snap, 'real users’ company-JSON columns unchanged (content compare)');
   } finally {
     await purge();
   }

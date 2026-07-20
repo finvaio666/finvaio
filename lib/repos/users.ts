@@ -133,7 +133,10 @@ export const setOutlookToken = (id: string, t: string, addr: string) => patchByN
 export const setCalendarToken= (id: string, provider: string, t: string, addr: string) => patchByNotionId(id, { calendar_provider: provider, calendar_refresh_token: t, calendar_address: addr });
 export const setDriveToken   = (id: string, t: string) => patchByNotionId(id, { drive_refresh_token: t });
 export const setEmailProvider= (id: string, provider: string) => patchByNotionId(id, { email_provider: provider });
-export const setInstitutions = (id: string, json: string) => patchByNotionId(id, { institutions_json: json.slice(0, 2000) });
+// No truncation: institutions_json is a text column. slice() on JSON produces an
+// unparseable string that silently reads back as an empty list (Phase 3 carried
+// the Notion 2000-char cap over by mistake).
+export const setInstitutions = (id: string, json: string) => patchByNotionId(id, { institutions_json: json });
 export const setPassword     = (id: string, newHash: string) => patchByNotionId(id, { password_hash: newHash });
 
 export function updateProfile(id: string, patch: { name?: string; gmailAddress?: string }): Promise<void> {
@@ -173,4 +176,60 @@ export async function getStoredHash(advisorId: string): Promise<string | null> {
   const { data, error } = await sb.from(TABLE).select('password_hash').eq('notion_id', dashless(advisorId)).limit(1).maybeSingle();
   if (error) throw new Error(`users getStoredHash failed: ${error.message}`);
   return data ? ((data as { password_hash: string | null }).password_hash ?? '') : null;
+}
+
+/* ─── Company-wide JSON blobs ───────────────────────────────────────────────
+ * Three text columns on public.users hold company-scoped config (not per-advisor):
+ * the institution whitelist, the email-theme list, and the cached market digest.
+ * The Notion originals stored these as rich_text on a Users page, which forced
+ * 2000-char chunking/truncation; Postgres text has no such limit, so these
+ * functions never truncate (truncated JSON is unparseable — silent data loss).
+ * Ordered by created_at so "first non-empty" is deterministic.
+ */
+export type CompanyJsonCol = 'institutions_json' | 'email_themes_json' | 'market_digest_json';
+
+/** Every non-empty value of a company JSON column, oldest row first. */
+export async function listCompanyJson(col: CompanyJsonCol): Promise<string[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .select(col).not(col, 'is', null).neq(col, '')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`users listCompanyJson(${col}) failed: ${error.message}`);
+  return (data as Array<Record<string, string | null>>)
+    .map(r => r[col])
+    .filter((v): v is string => typeof v === 'string' && v !== '');
+}
+
+/** Write a company JSON blob onto one user row. No truncation — text column. */
+export async function writeCompanyJson(col: CompanyJsonCol, notionId: string, json: string): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE)
+    .update({ [col]: json }).eq('notion_id', dashless(notionId));
+  if (error) throw new Error(`users writeCompanyJson(${col}) failed: ${error.message}`);
+}
+
+/**
+ * Clear the column on every row EXCEPT the keeper, so the keeper's record is the
+ * single source of truth (institutions: removals must stick).
+ * NOT covered by the test suite — it mutates every real user by design (spec §7).
+ */
+export async function clearCompanyJsonExcept(col: CompanyJsonCol, keepNotionId: string): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE)
+    .update({ [col]: '' })
+    .neq('notion_id', dashless(keepNotionId))
+    .not(col, 'is', null).neq(col, '');
+  if (error) throw new Error(`users clearCompanyJsonExcept(${col}) failed: ${error.message}`);
+}
+
+/** Digest storage target: prefer an Admin row, else the oldest user. */
+export async function findDigestTargetNotionId(): Promise<string | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .select('notion_id, role').order('created_at', { ascending: true });
+  if (error) throw new Error(`users findDigestTargetNotionId failed: ${error.message}`);
+  const rows = data as Array<{ notion_id: string; role: string | null }>;
+  if (!rows.length) return null;
+  const admin = rows.find(r => (r.role || 'Advisor') === 'Admin');
+  return (admin ?? rows[0]).notion_id;
 }
