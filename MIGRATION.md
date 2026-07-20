@@ -230,6 +230,17 @@ DATA_SOURCE_CLIENTS=notion
 - ✅ 通过标准:登录正常、数据隔离正确;此步做完即可切断 Notion 主链路（cutover 时统一翻 flag）
 - ⏭️ **延后（future）**:OAuth token 加密（安全审查 #2,紧接的独立一步）;UUID 身份迁移（可选;滚动 login-backfill + `keyType` JWT claim,因 Notion page id 与 uuid 同为 dashed 不可格式区分）
 
+### Phase 3.5a — Users-DB 侧信道  ✅ 完成（2026-07-19）
+> **为什么有这一期**：Phase 3 后做分支 cutover 测试，UI 全绿零报错，但审计 `new Client(` 发现 **7 个文件仍直连 Notion 且无 flag 门控**，全打在已迁移的表上。这类缺陷 cutover 前**完全无症状**——页面正常、数据正确，因为 Notion 还活着；翻 flag 那刻读的变旧数据、写的进黑洞。7 个按数据源拆两期，本期是打 `NOTION_USERS_DB_ID` 的 4 个。
+- [x] `lib/repos/users.ts` 加公司级 JSON API（`CompanyJsonCol` + `listCompanyJson`/`writeCompanyJson`/`clearCompanyJsonExcept`/`findDigestTargetNotionId`）；三列（`institutions_json`/`email_themes_json`/`market_digest_json`）种子时已存在，**无需 migration**
+- [x] **不再截断 JSON**：Notion 的 rich_text 2000 上限在 text 列不存在，`slice()` 截断 JSON 会读回成不可解析串→静默丢数据。顺手修掉 Phase 3 误带入 `setInstitutions` 的 `slice(0,2000)`
+- [x] `lib/themesStore.ts`、`lib/marketDigestStore.ts`、`lib/institutions.ts` 加 `DATA_SOURCE_USERS` 分支；解析/合并去重/`withOther` 等业务规则提取为**两路径共用的纯函数**（不复制逻辑块）
+- [x] `app/api/admin/overview/route.ts`：users 半边改走 `sbUsers.listUsers()`（clients 半边早已走抽象），两源归一到 `FaUser` 再组装 `FAStats`
+- [x] `scripts/audit-notion-gates.ts`：未门控的 Notion 调用 → exit 1。把这次的人工 grep 固化为可重复检查
+- [x] 测试分层（spec §7）：纯函数 + 读路径 + 单行写打 fixture；**`clearCompanyJsonExcept` 不在真库执行**（它按设计清空所有行），仅代码审查兜底。断言真实 8 用户三列内容前后不变
+- ⏭️ **Phase 3.5b（待做）**：`networth/submit`(assets 写)、`portfolio-switch`(portfolio 写)、`reports/client`(clients+portfolio+insurance 读)——零新增 repo 代码，纯复用现成抽象。审计脚本目前正确地把这 3 个报为 ungated
+- ⏭️ **断-Notion 运行时验收**：把 `NOTION_API_KEY` 换成无效值全站走查，凡炸的即仍依赖 Notion。3.5b 收尾后执行，作为「全部已链接 Supabase」的最终证明
+
 ### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
 > 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。
