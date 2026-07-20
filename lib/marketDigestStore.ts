@@ -7,12 +7,21 @@
 
 import { Client, isFullPage } from '@notionhq/client';
 import { getBnmMarketData, generateMarketDigest, type MarketData } from './marketData';
+import * as sbUsers from './repos/users';
+
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 export interface StoredDigest {
   digest:      string;     // markdown
   data:        MarketData; // raw live figures
   dataDate:    string;     // YYYY-MM-DD of the figures
   generatedAt: string;     // ISO timestamp of generation
+}
+
+/** Parse a stored-digest blob — shared by both data sources. */
+function parseDigest(txt: string | null | undefined): StoredDigest | null {
+  if (!txt) return null;
+  try { return JSON.parse(txt) as StoredDigest; } catch { return null; }
 }
 
 function hostNotion(): Client | null {
@@ -33,6 +42,18 @@ async function findStoragePageId(notion: Client, usersDb: string): Promise<strin
 
 export async function getStoredDigest(): Promise<StoredDigest | null> {
   if (cache && Date.now() - cache.ts < TTL) return cache.d;
+
+  if (useSupabaseUsers()) {
+    try {
+      // first parseable blob wins; a bad one must not stop the search
+      for (const txt of await sbUsers.listCompanyJson('market_digest_json')) {
+        const d = parseDigest(txt);
+        if (d) { cache = { d, ts: Date.now() }; return d; }
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
   const notion = hostNotion();
   const usersDb = process.env.NOTION_USERS_DB_ID;
   if (!notion || !usersDb) return null;
@@ -55,6 +76,16 @@ export async function refreshDigest(): Promise<StoredDigest> {
   const data = await getBnmMarketData();
   const digest = await generateMarketDigest(data);
   const payload: StoredDigest = { digest, data, dataDate: data.dataDate, generatedAt: new Date().toISOString() };
+
+  if (useSupabaseUsers()) {
+    try {
+      const target = await sbUsers.findDigestTargetNotionId();
+      // text column: store whole, no 1900-char chunking and no 18000 cap
+      if (target) await sbUsers.writeCompanyJson('market_digest_json', target, JSON.stringify(payload));
+    } catch { /* non-critical — still return the fresh digest */ }
+    cache = { d: payload, ts: Date.now() };
+    return payload;
+  }
 
   const notion = hostNotion();
   const usersDb = process.env.NOTION_USERS_DB_ID;
