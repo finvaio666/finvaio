@@ -283,6 +283,18 @@ DATA_SOURCE_CLIENTS=notion
 
 > **给未来的自己**：任何「已验证一致」的结论，先问一句 —— **是跟真实数据对的，还是跟另一份同源数据对的？**
 
+### §5.2 分页截断（数据补全后立即暴露）  ✅ 已修（2026-07-21）
+数据补全后 `scripts/cutover-smoke.ts` 立刻抓到:**应用读到 insurance 1000 条，DB 实有 1080**。
+`lib/repos/insurance.ts` 无分页，而 **PostgREST 单次响应上限 1000 行**——超出部分被**静默丢弃，不报错**。80 张保单对应用不可见。
+此前不可见是因为 insurance 只有 81 行，永远碰不到上限；补到 1080 后立刻生效。
+
+已修 `insurance`（1080 ✅）与 `clients`（896，距上限仅 104 行，属「下一个必炸」），均照抄 `lib/repos/portfolio.ts` 已验证的 `PAGE = 1000` 循环。
+
+⚠️ **仍未分页的 repo（阈值提醒）**：`tasks`(27) `aiUsage`(89) `meetingNotes`(11) `assets`(8) `cashflow`(2) `users`(8) `formsLibrary`(0) `products`(0)。
+目前都远低于 1000，**但任何一张表涨到 1001 行就会开始静默少显示**。新增列表读取时请一并加分页。
+
+🔁 **这是同一个元模式的第三次**：portfolio 当年修过分页、insurance/portfolio 修过 CHECK——**修复都只落在当时那张表，没有推广到同类**。下次修这类基础设施缺陷，先问：**还有哪几张表有同样的问题？**
+
 ### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
 > 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。

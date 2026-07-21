@@ -17,6 +17,7 @@ import type { AdvisorConfig } from '../getAdvisorConfig';
 import type { ClientRecord } from '../clients';
 
 const TABLE = 'clients';
+const PAGE = 1000; // PostgREST caps a single response at 1000 rows — paginate past it.
 
 interface Row {
   id: string;
@@ -67,14 +68,20 @@ export async function listClients(
   opts: { advisorName?: string } = {},
 ): Promise<ClientRecord[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select(CLIENT_COLS);
-  // Centralized model: scope to this advisor (Admin sees all; Admin may narrow to one FA).
-  if (config.role !== 'Admin') q = q.eq('advisor', config.name);
-  else if (opts.advisorName)   q = q.eq('advisor', opts.advisorName);
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = sb.from(TABLE).select(CLIENT_COLS).range(from, from + PAGE - 1);
+    // Centralized model: scope to this advisor (Admin sees all; Admin may narrow to one FA).
+    if (config.role !== 'Admin') q = q.eq('advisor', config.name);
+    else if (opts.advisorName)   q = q.eq('advisor', opts.advisorName);
 
-  const { data, error } = await q;
-  if (error) throw new Error(`clients list failed: ${error.message}`);
-  return (data as Row[]).map(toClient);
+    const { data, error } = await q;
+    if (error) throw new Error(`clients list failed: ${error.message}`);
+    const batch = data as Row[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return rows.map(toClient);
 }
 
 /** A single client by uuid, or null. Unscoped — callers enforce ownership. */

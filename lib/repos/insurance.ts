@@ -16,6 +16,7 @@ import type { AdvisorConfig } from '../getAdvisorConfig';
 import type { InsurancePolicy } from '../insurance';
 
 const TABLE = 'insurance_policies';
+const PAGE = 1000; // PostgREST caps a single response at 1000 rows — paginate past it.
 const COLS = 'id, notion_id, policy_name, client_notion_id, policy_number, policy_owner, life_assured, insurer, insurance_type, benefits, annual_premium_myr, sum_assured_myr, life_cover_myr, ci_cover_myr, tpd_cover_myr, pa_cover_myr, medical_card, medical_class, beneficiary, commencement_date, maturity_date, status, notes, advisor';
 
 interface Row {
@@ -79,11 +80,17 @@ function toPolicy(r: Row): InsurancePolicy {
 /** List policies scoped to this advisor (Admin sees all). */
 export async function listPolicies(config: AdvisorConfig): Promise<InsurancePolicy[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select(COLS).is('deleted_at', null);
-  if (config.role !== 'Admin') q = q.eq('advisor', config.name);
-  const { data, error } = await q;
-  if (error) throw new Error(`insurance list failed: ${error.message}`);
-  return (data as Row[]).map(toPolicy);
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = sb.from(TABLE).select(COLS).is('deleted_at', null).range(from, from + PAGE - 1);
+    if (config.role !== 'Admin') q = q.eq('advisor', config.name);
+    const { data, error } = await q;
+    if (error) throw new Error(`insurance list failed: ${error.message}`);
+    const batch = data as Row[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return rows.map(toPolicy);
 }
 
 /** Guard: non-admins may only touch their own rows. Throws 'Forbidden' otherwise. */
