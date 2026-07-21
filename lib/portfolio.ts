@@ -140,3 +140,42 @@ export async function setHoldingValue(config: AdvisorConfig, holdingId: string, 
     },
   });
 }
+
+/** Fields a caller may set on a holding. Superset shared by the CRUD route and
+ *  the switch route — both map to columns through buildPortfolioPatch so the
+ *  column names exist in exactly one place. */
+export interface PortfolioPatchInput {
+  holdingName?:  string;
+  assetClass?:   string;
+  institution?:  string;
+  status?:       string;
+  currency?:     string;
+  valueOrig?:    number;
+  purchaseOrig?: number;
+  fxRate?:       number;
+  valueMyr?:     number;
+  purchaseMyr?:  number;
+  units?:        number;
+  maturityDate?: string;
+}
+
+/** Map caller fields → portfolio_holdings columns. `isCreate` forces the name
+ *  and stamps the owning advisor; on update, only provided fields are patched. */
+export function buildPortfolioPatch(b: PortfolioPatchInput, advisorName: string, isCreate: boolean): Record<string, unknown> {
+  const t = (s?: string) => (s ?? '').slice(0, 1900);
+  const p: Record<string, unknown> = {};
+  if (isCreate || b.holdingName !== undefined) p.holding_name = t(b.holdingName);
+  if (b.assetClass)               p.asset_class            = b.assetClass;
+  if (b.institution !== undefined) p.institution           = t(b.institution);
+  if (b.status)                   p.status                 = b.status;
+  if (b.currency)                 p.currency               = b.currency;
+  if (b.valueOrig    !== undefined) p.value_original_currency = b.valueOrig || 0;
+  if (b.purchaseOrig !== undefined) p.purchase_price_original = b.purchaseOrig || 0;
+  if (b.fxRate       !== undefined) p.fx_rate_to_myr          = b.fxRate || 1;
+  if (b.valueMyr     !== undefined) p.value_myr               = b.valueMyr || 0;
+  if (b.purchaseMyr  !== undefined) p.purchase_price_myr      = b.purchaseMyr || 0;
+  if (b.units        !== undefined) p.units                   = b.units || 0;
+  if (b.maturityDate !== undefined) p.maturity_date           = b.maturityDate || null;
+  if (isCreate) p.advisor = advisorName;
+  return p;
+}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { resolveClientNotionId } from '@/lib/clients';
+import { buildPortfolioPatch } from '@/lib/portfolio';
 import * as sbPortfolio from '@/lib/repos/portfolio';
 
 export const dynamic = 'force-dynamic';
@@ -47,26 +48,6 @@ function buildProps(b: Body, advisorName: string, isCreate: boolean) {
   } else if (b.clientId !== undefined) {
     p['👥 Clients'] = { relation: b.clientId ? [{ id: b.clientId }] : [] };
   }
-  return p;
-}
-
-/** Supabase column patch — mirrors buildProps() field-for-field (client linkage set by caller). */
-function buildPortfolioPatch(b: Body, advisorName: string, isCreate: boolean): Record<string, unknown> {
-  const t = (s?: string) => (s ?? '').slice(0, 1900);
-  const p: Record<string, unknown> = {};
-  if (isCreate || b.holdingName !== undefined) p.holding_name = t(b.holdingName);
-  if (b.assetClass)               p.asset_class            = b.assetClass;
-  if (b.institution !== undefined) p.institution           = t(b.institution);
-  if (b.status)                   p.status                 = b.status;
-  if (b.currency)                 p.currency               = b.currency;
-  if (b.valueOrig    !== undefined) p.value_original_currency = b.valueOrig || 0;
-  if (b.purchaseOrig !== undefined) p.purchase_price_original = b.purchaseOrig || 0;
-  if (b.fxRate       !== undefined) p.fx_rate_to_myr          = b.fxRate || 1;
-  if (b.valueMyr     !== undefined) p.value_myr               = b.valueMyr || 0;
-  if (b.purchaseMyr  !== undefined) p.purchase_price_myr      = b.purchaseMyr || 0;
-  if (b.units        !== undefined) p.units                   = b.units || 0;
-  if (b.maturityDate !== undefined) p.maturity_date           = b.maturityDate || null;
-  if (isCreate) p.advisor = advisorName;
   return p;
 }
 
