@@ -44,6 +44,8 @@ export async function POST(req: NextRequest) {
     count: rows.length,
   };
 
+  if (config.notionApiKey === 'DEMO_MODE') return NextResponse.json(summary);
+
   if (useSupabase()) {
     try {
       const today = new Date().toISOString().split('T')[0];

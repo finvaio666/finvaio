@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
   const { redeemed = [], newFunds = [] } = body;
   const results: { action: string; id?: string; name?: string; ok: boolean; error?: string }[] = [];
 
+  if (config.notionApiKey === 'DEMO_MODE') return NextResponse.json({ ok: true, results: [] });
+
   if (useSupabase()) {
     for (const item of redeemed) {
       try {
@@ -52,7 +54,8 @@ export async function POST(req: NextRequest) {
           await sbPortfolio.updateHolding(config, item.id, { status: 'Redeemed' });
           results.push({ action: 'redeem', id: item.id, ok: true });
         } else {
-          await sbPortfolio.setHoldingValue(item.id, item.newValueOrig ?? 0, item.newValueMyr ?? 0);
+          await sbPortfolio.updateHolding(config, item.id,
+            buildPortfolioPatch({ valueOrig: item.newValueOrig ?? 0, valueMyr: item.newValueMyr ?? 0 }, config.name, false));
           results.push({ action: 'partial', id: item.id, ok: true });
         }
       } catch (e) {

@@ -92,11 +92,17 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
 /** Update a holding's value (original currency + MYR). `holdingId` is the Supabase uuid. */
 export async function setHoldingValue(holdingId: string, valueOriginal: number, valueMyr: number): Promise<void> {
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE)
+  // PostgREST does not error on a zero-row UPDATE, so a switch against a stale
+  // or soft-deleted holding id would otherwise resolve silently with nothing
+  // written; the Notion path 404s on a bad page id and portfolio-switch's
+  // per-item ok/207 reporting depends on that distinction, so we throw instead.
+  const { data, error } = await sb.from(TABLE)
     .update({ value_original_currency: valueOriginal, value_myr: valueMyr })
     .eq('id', holdingId)
-    .is('deleted_at', null);
-  if (error) throw new Error(`portfolio setValue failed: ${error.message}`);
+    .is('deleted_at', null)
+    .select('id');
+  if (error) throw new Error(`portfolio setHoldingValue failed: ${error.message}`);
+  if (!data || data.length === 0) throw new Error(`portfolio setHoldingValue: no live holding with id ${holdingId}`);
 }
 
 /** Guard: non-admins may only touch their own rows. Throws 'Forbidden' otherwise. */
@@ -120,8 +126,13 @@ export async function createHolding(patch: Record<string, unknown>): Promise<{ i
 export async function updateHolding(config: AdvisorConfig, id: string, patch: Record<string, unknown>): Promise<void> {
   await assertOwner(config, id);
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).update(patch).eq('id', id).is('deleted_at', null);
+  // PostgREST does not error on a zero-row UPDATE, so a switch against a stale
+  // or soft-deleted holding id would otherwise resolve silently with nothing
+  // written; the Notion path 404s on a bad page id and portfolio-switch's
+  // per-item ok/207 reporting depends on that distinction, so we throw instead.
+  const { data, error } = await sb.from(TABLE).update(patch).eq('id', id).is('deleted_at', null).select('id');
   if (error) throw new Error(`portfolio update failed: ${error.message}`);
+  if (!data || data.length === 0) throw new Error(`portfolio update: no live holding with id ${id}`);
 }
 
 /** Soft-delete one holding (advisor-scoped; recoverable — clear deleted_at to restore). */
