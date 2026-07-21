@@ -20,7 +20,7 @@ let cache: { themes: Theme[]; ts: number } | null = null;
 const TTL = 5 * 60 * 1000; // 5 min
 
 /** Parse a themes JSON blob — shared by both data sources. */
-function parseThemes(txt: string | null | undefined): Theme[] | null {
+export function parseThemes(txt: string | null | undefined): Theme[] | null {
   if (!txt) return null;
   try {
     const arr = JSON.parse(txt) as Theme[];

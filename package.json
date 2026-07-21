@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "audit:notion": "node --import tsx scripts/audit-notion-gates.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

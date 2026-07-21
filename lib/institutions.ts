@@ -18,14 +18,14 @@ function hostNotion(): Client | null {
 }
 
 /** Parse an institutions JSON blob — shared by both data sources. */
-function parseInstitutions(txt: string | null | undefined): Institution[] {
+export function parseInstitutions(txt: string | null | undefined): Institution[] {
   if (!txt) return [];
   try { return JSON.parse(txt) as Institution[]; } catch { return []; }
 }
 
 /** Merge institution lists, deduped by lowercased domain — first occurrence wins.
  *  Shared by both data sources so the merge rule exists in exactly one place. */
-function mergeInstitutions(lists: Institution[][]): Institution[] {
+export function mergeInstitutions(lists: Institution[][]): Institution[] {
   const merged = new Map<string, Institution>();
   for (const list of lists) {
     for (const inst of list) {

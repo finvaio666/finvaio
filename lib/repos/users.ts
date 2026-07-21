@@ -184,7 +184,9 @@ export async function getStoredHash(advisorId: string): Promise<string | null> {
  * The Notion originals stored these as rich_text on a Users page, which forced
  * 2000-char chunking/truncation; Postgres text has no such limit, so these
  * functions never truncate (truncated JSON is unparseable — silent data loss).
- * Ordered by created_at so "first non-empty" is deterministic.
+ * Ordering is stable — created_at then notion_id as tiebreaker — so "first
+ * non-empty" is deterministic. It does NOT reflect insertion order: all 8 rows
+ * share one bulk-seed created_at, so notion_id is the effective tiebreaker.
  */
 export type CompanyJsonCol = 'institutions_json' | 'email_themes_json' | 'market_digest_json';
 
@@ -193,7 +195,7 @@ export async function listCompanyJson(col: CompanyJsonCol): Promise<string[]> {
   const sb = getSupabase();
   const { data, error } = await sb.from(TABLE)
     .select(col).not(col, 'is', null).neq(col, '')
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true }).order('notion_id', { ascending: true });
   if (error) throw new Error(`users listCompanyJson(${col}) failed: ${error.message}`);
   return (data as Array<Record<string, string | null>>)
     .map(r => r[col])
@@ -203,9 +205,13 @@ export async function listCompanyJson(col: CompanyJsonCol): Promise<string[]> {
 /** Write a company JSON blob onto one user row. No truncation — text column. */
 export async function writeCompanyJson(col: CompanyJsonCol, notionId: string, json: string): Promise<void> {
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE)
-    .update({ [col]: json }).eq('notion_id', dashless(notionId));
+  const { data, error } = await sb.from(TABLE)
+    .update({ [col]: json }).eq('notion_id', dashless(notionId)).select('notion_id');
   if (error) throw new Error(`users writeCompanyJson(${col}) failed: ${error.message}`);
+  // PostgREST does not error on a zero-row UPDATE. Notion's pages.update throws on an
+  // unknown page, and setCompanyInstitutions relies on that: if step 1 silently saved
+  // nothing, step 2 would clear every other row and wipe the list.
+  if (!data || data.length === 0) throw new Error(`users writeCompanyJson(${col}): no user with notion_id ${dashless(notionId)}`);
 }
 
 /**
@@ -226,7 +232,8 @@ export async function clearCompanyJsonExcept(col: CompanyJsonCol, keepNotionId: 
 export async function findDigestTargetNotionId(): Promise<string | null> {
   const sb = getSupabase();
   const { data, error } = await sb.from(TABLE)
-    .select('notion_id, role').order('created_at', { ascending: true });
+    .select('notion_id, role')
+    .order('created_at', { ascending: true }).order('notion_id', { ascending: true });
   if (error) throw new Error(`users findDigestTargetNotionId failed: ${error.message}`);
   const rows = data as Array<{ notion_id: string; role: string | null }>;
   if (!rows.length) return null;

@@ -19,7 +19,7 @@ export interface StoredDigest {
 }
 
 /** Parse a stored-digest blob — shared by both data sources. */
-function parseDigest(txt: string | null | undefined): StoredDigest | null {
+export function parseDigest(txt: string | null | undefined): StoredDigest | null {
   if (!txt) return null;
   try { return JSON.parse(txt) as StoredDigest; } catch { return null; }
 }
@@ -64,7 +64,8 @@ export async function getStoredDigest(): Promise<StoredDigest | null> {
       const v = pg.properties['Market Digest JSON'] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
       const txt = v?.type === 'rich_text' ? (v.rich_text?.map(r => r.plain_text).join('') ?? '') : '';
       if (txt) {
-        try { const d = JSON.parse(txt) as StoredDigest; cache = { d, ts: Date.now() }; return d; } catch { /* keep looking */ }
+        const d = parseDigest(txt);
+        if (d) { cache = { d, ts: Date.now() }; return d; }
       }
     }
   } catch { /* ignore */ }

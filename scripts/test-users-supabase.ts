@@ -8,6 +8,9 @@
  */
 import { getSupabase } from '../lib/supabase';
 import * as sbUsers from '../lib/repos/users';
+import { mergeInstitutions, parseInstitutions } from '../lib/institutions';
+import { parseThemes } from '../lib/themesStore';
+import { parseDigest } from '../lib/marketDigestStore';
 
 const MARK = 'PHASE3_TEST';
 const NID  = 'phase3testnotionid00000000000001'; // dashless 32-hex, cannot collide with real notion_ids
@@ -28,8 +31,49 @@ async function purge(): Promise<void> {
   await sb.from('users').delete().like('username', `${MARK}%`);
 }
 
+/**
+ * Zero-DB layer: the pure functions shared by the Notion and Supabase paths.
+ * These carry the merge/first-wins/parse-tolerance rules, so a drift here would
+ * change behaviour on BOTH sources — worth covering without touching the DB.
+ */
+function pureFunctionChecks(): void {
+  // mergeInstitutions: dedup by LOWERCASED domain, first occurrence wins
+  const merged = mergeInstitutions([
+    [{ domain: 'A.com', name: 'first' }],
+    [{ domain: 'a.com', name: 'second' }],
+  ] as Parameters<typeof mergeInstitutions>[0]);
+  ok(merged.length === 1, 'mergeInstitutions dedups case-insensitively by domain');
+  ok((merged[0] as { name: string }).name === 'first', 'mergeInstitutions keeps the FIRST occurrence');
+
+  const skipped = mergeInstitutions([
+    [{ domain: '', name: 'no-domain' }, { domain: 'ok.com', name: 'keep' }],
+  ] as Parameters<typeof mergeInstitutions>[0]);
+  ok(skipped.length === 1 && (skipped[0] as { name: string }).name === 'keep',
+     'mergeInstitutions skips entries with an empty domain');
+
+  // parseInstitutions: tolerant, always an array
+  ok(parseInstitutions(null).length === 0, 'parseInstitutions(null) → []');
+  ok(parseInstitutions('').length === 0, 'parseInstitutions("") → []');
+  ok(parseInstitutions('{oops').length === 0, 'parseInstitutions(malformed) → []');
+
+  // parseThemes: null for anything unusable, including a valid-but-empty array
+  ok(parseThemes(null) === null, 'parseThemes(null) → null');
+  ok(parseThemes('') === null, 'parseThemes("") → null');
+  ok(parseThemes('{oops') === null, 'parseThemes(malformed) → null');
+  ok(parseThemes('[]') === null, 'parseThemes("[]") → null (empty array is not a theme list)');
+  ok(parseThemes('[{"id":"x"}]')?.length === 1, 'parseThemes(valid) → parsed array');
+
+  // parseDigest: null for anything unusable
+  ok(parseDigest(null) === null, 'parseDigest(null) → null');
+  ok(parseDigest('') === null, 'parseDigest("") → null');
+  ok(parseDigest('{oops') === null, 'parseDigest(malformed) → null');
+  ok(parseDigest('{"digest":"d","dataDate":"2026-01-01"}')?.dataDate === '2026-01-01',
+     'parseDigest(valid) → parsed object');
+}
+
 async function main() {
   const sb = getSupabase();
+  pureFunctionChecks();
   const before = await count();
   try {
     // seed a test user with NO clients_db_id → must fall back to env.COMPANY_CLIENTS_DB_ID
@@ -118,6 +162,21 @@ async function main() {
     const bigBack = (await sbUsers.listCompanyJson('institutions_json')).find(b => b.includes('big.test'));
     ok(bigBack === big, 'writeCompanyJson stores >2000 chars without truncation');
     ok(JSON.parse(bigBack!).length === 1, 'the >2000-char blob is still valid JSON');
+
+    // clearCompanyJsonExcept is never EXECUTED here — it clears every row by design
+    // (spec §7), and running it would wipe the real Administrator's whitelist. Its
+    // PREDICATE is still verifiable read-only: issue the same filter chain as a
+    // select and assert the victim set is "every non-empty row except the keeper".
+    // Catches an eq/neq inversion, a wrong column, or a missing non-empty guard.
+    const { data: victims } = await sb.from('users').select('notion_id')
+      .neq('notion_id', NID).not('institutions_json', 'is', null).neq('institutions_json', '');
+    const victimIds = (victims as Array<{ notion_id: string }>).map(v => v.notion_id);
+    const { data: allNonEmpty } = await sb.from('users').select('notion_id')
+      .not('institutions_json', 'is', null).neq('institutions_json', '');
+    const allIds = (allNonEmpty as Array<{ notion_id: string }>).map(a => a.notion_id);
+    ok(!victimIds.includes(NID), 'clearCompanyJsonExcept predicate excludes the keeper');
+    ok(allIds.includes(NID) && victimIds.length === allIds.length - 1,
+       'clearCompanyJsonExcept predicate targets every non-empty row except the keeper');
 
     // digest target prefers the Admin row (read-only)
     const target = await sbUsers.findDigestTargetNotionId();
