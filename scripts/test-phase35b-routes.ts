@@ -12,11 +12,17 @@
  */
 import { getSupabase } from '../lib/supabase';
 import * as sbAssets from '../lib/repos/assets';
+import * as sbPortfolio from '../lib/repos/portfolio';
+import { buildPortfolioPatch } from '../lib/portfolio';
+import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 
 const MARK   = 'PHASE35B_TEST';
 const CLIENT = `${MARK} Client`;
 const ADV    = `${MARK} Advisor`;
 const MARKER = 'client-form'; // same marker networth/submit uses
+// Admin role short-circuits updateHolding's ownership guard, so the fixture is
+// reachable without impersonating a real advisor.
+const ADMIN_CFG = { role: 'Admin', name: ADV } as unknown as AdvisorConfig;
 
 let failures = 0;
 function ok(cond: boolean, msg: string): void {
@@ -72,6 +78,48 @@ async function main() {
     const r2 = rows2 as Array<Record<string, unknown>>;
     ok(r2.length === 1, 're-submit replaces prior client-form rows (no stacking)');
     ok(Number(r2[0].value_myr) === 2500, 're-submit stores the new value');
+
+    // ── portfolio-switch mapping ───────────────────────────────────────────
+    // The exact patch the route builds for a new fund.
+    const patch = buildPortfolioPatch({
+      holdingName:  'PHASE35B Fund',
+      assetClass:   'Equity',
+      institution:  'Test House',
+      currency:     'USD',
+      valueOrig:    1000,
+      purchaseOrig: 900,
+      fxRate:       4.5,
+      valueMyr:     4500,
+      purchaseMyr:  4050,
+      status:       'Active',
+    }, ADV, true);
+    const { id: holdingId } = await sbPortfolio.createHolding(patch);
+    const { data: h1 } = await sb.from('portfolio_holdings')
+      .select('holding_name, asset_class, institution, currency, value_original_currency, value_myr, purchase_price_original, purchase_price_myr, fx_rate_to_myr, status, advisor')
+      .eq('id', holdingId).single();
+    const h = h1 as Record<string, unknown>;
+    ok(h.holding_name === 'PHASE35B Fund' && h.currency === 'USD' && h.asset_class === 'Equity',
+       'createHolding maps name/currency/asset_class');
+    ok(Number(h.value_original_currency) === 1000 && Number(h.value_myr) === 4500,
+       'createHolding maps both value columns');
+    ok(Number(h.purchase_price_original) === 900 && Number(h.purchase_price_myr) === 4050,
+       'createHolding maps both purchase columns');
+    ok(Number(h.fx_rate_to_myr) === 4.5, 'createHolding maps fx_rate_to_myr');
+    ok(h.status === 'Active' && h.advisor === ADV, 'createHolding stamps status and advisor');
+
+    // partial switch → setHoldingValue updates exactly the two value columns
+    await sbPortfolio.setHoldingValue(holdingId, 400, 1800);
+    const { data: h2 } = await sb.from('portfolio_holdings')
+      .select('value_original_currency, value_myr, purchase_price_original').eq('id', holdingId).single();
+    const hv = h2 as Record<string, unknown>;
+    ok(Number(hv.value_original_currency) === 400 && Number(hv.value_myr) === 1800,
+       'setHoldingValue updates both value columns');
+    ok(Number(hv.purchase_price_original) === 900, 'setHoldingValue leaves purchase price alone');
+
+    // full redemption → status flips
+    await sbPortfolio.updateHolding(ADMIN_CFG, holdingId, { status: 'Redeemed' });
+    const { data: h3 } = await sb.from('portfolio_holdings').select('status').eq('id', holdingId).single();
+    ok((h3 as { status: string }).status === 'Redeemed', 'updateHolding flips status to Redeemed');
   } finally {
     await purge();
   }
