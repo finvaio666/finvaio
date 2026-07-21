@@ -1,0 +1,25 @@
+-- Migration: 2026-07-21  meeting_notes — drop the narrow meeting_type CHECK
+--
+-- WHY: the CHECK allowed only the six values in the frontend MEETING_TYPES enum
+-- (Annual Review / Follow-up / Phone Call / Video Call / Ad-hoc / Onboarding),
+-- but Notion's 'Meeting Type' is a FREE select — advisors have entered values
+-- outside that list. Reconciling the live Notion data hit
+--   new row for relation "meeting_notes" violates check constraint
+--   "meeting_notes_meeting_type_check"
+-- on 4 rows typed as "Review", which aborted the whole insert loop and left 5 of
+-- 11 meeting notes unmigrated.
+--
+-- This is the third instance of the same defect: a CHECK inferred from the
+-- frontend enum (or from a seed sample) rather than from the real Notion data.
+-- See 2026-07-16-insurance-drop-narrow-checks.sql and
+--     2026-07-16-portfolio-drop-currency-check.sql — same root cause, same fix.
+-- Any whitelist here will break again the next time someone types a new value,
+-- so the constraint is removed rather than widened.
+--
+-- Rollback: re-add with
+--   alter table public.meeting_notes add constraint meeting_notes_meeting_type_check
+--     check (meeting_type = any (array['Annual Review','Follow-up','Phone Call',
+--                                      'Video Call','Ad-hoc','Onboarding']));
+--   (only safe once every stored meeting_type is inside that list)
+
+alter table public.meeting_notes drop constraint if exists meeting_notes_meeting_type_check;

@@ -178,7 +178,8 @@ DATA_SOURCE_CLIENTS=notion
   - 两写**独立门控**：note 建在 `DATA_SOURCE_MEETINGS`、review 回写在 `DATA_SOURCE_CLIENTS`（可任意组合，各自正确）
   - review 日期语义：`Last review date` 恒设；`Next review date` 有值则设、`clearNextReview` 则清（null）、否则不动（undefined）——与 Notion 三态一致
   - Notion 路径逐字不变（note 建 create+retry-on-"is not a property" 原样保留；review 回写内联块移入 chokepoint 的 Notion 分支、字节一致）
-  - ⚠️ `meeting_type` Supabase 有 CHECK 约束，取值 = 前端 `MEETING_TYPES` 枚举（Annual Review/Follow-up/Phone Call/Video Call/Ad-hoc/Onboarding）——已核对一致，合法提交不会被拒
+  - ~~⚠️ `meeting_type` Supabase 有 CHECK 约束，取值 = 前端 `MEETING_TYPES` 枚举（Annual Review/Follow-up/Phone Call/Video Call/Ad-hoc/Onboarding）——已核对一致，合法提交不会被拒~~
+    **❌ 此结论已证伪（2026-07-21）**：当时只核对了「CHECK 值 == 前端枚举」，**没有核对真实 Notion 数据**。Notion 的 Meeting Type 是**自由 select**，实际存在 `"Review"`（4 条），全量 reconcile 时触发 CHECK 违例并中断整个插入循环。已删除该约束（migration `2026-07-21-meeting-notes-drop-narrow-check.sql`）。详见 §5.1
   - 🔬 **已验**（repo 级平滑测试打真库，自清 meeting_notes 6→6、client 还原、0 残留）：createMeeting 插入+listMeetings 读回（标题解析 clientName、字段往返、空串→NULL）；setClientReviewDates 三态（both set / clear next / undefined 不动）+ 还原。`tsc --noEmit` 全绿
 - [x] `products` POST（Gemini 抽取 + 存回，`action: extract|save`）→ 写 `createPlan`/`createFund`（`DATA_SOURCE_PRODUCTS`）
   - `action:extract` 纯 Gemini AI、**无数据源**，迁移不碰；只有 `action:save`（insurance→`insurance_plans`、fund→`funds`）走 flag 分支
@@ -251,7 +252,36 @@ DATA_SOURCE_CLIENTS=notion
 - [x] 测试 `scripts/test-phase35b-routes.ts`（自清、打真库、两表计数还原；reports 段纯读）——覆盖本期唯一的新逻辑：路由字段映射。repo 函数本身 Phase 2.11 已测
 - [x] **`audit:notion` 首次 exit 0**，并接入 `deploy.yml` 部署前门禁（`deploy` 依赖 `audit` job）——未门控的 Notion 调用从此进不了生产
 - ⚠️ **Flag 顺序约束**：`reports/client` 只按 `DATA_SOURCE_CLIENTS` 分支。若 `CLIENTS=notion` 而 `PORTFOLIO`/`INSURANCE=supabase`，它的 Notion 分支会直接读 Notion 的持仓/保单（陈旧数据），且审计脚本从结构上看不见这种情况。统一 cutover 下不会发生；**`DATA_SOURCE_CLIENTS` 绝不可落后于 `PORTFOLIO`/`INSURANCE`**
-- ✅ **迁移代码层到此全部完成**；剩余为 §7 备份上云三步 + 断-Notion 终验 + cutover
+- ✅ **迁移代码层到此全部完成**；剩余为 §7 备份上云三步 + cutover
+
+### 断-Notion 终验  ✅ 通过（2026-07-21）
+> 把 `NOTION_API_KEY` 换成**无效但非空**的值（守卫照过、真实调用必炸），生产构建 + 11 个 flag 全 supabase，全站只读走查。
+- 登录、`/api/auth/me`、clients、insurance、portfolio、cashflow、meetings、tasks、assets、admin/overview、admin/clients、settings/users、update-nav **全部 200 且返回真实数据**
+- Phase 3.5 的四条侧信道全部通过：institutions（读出真实白名单）、themes、market-digest（读出真实 blob）、reports/client（真实客户 + 持仓关联）
+- **服务端日志除启动行外空无一物 —— 零错误、零 Notion 认证失败**
+- ✅ 这是审计脚本**做不到**的证明：审计只做子串匹配，看不见经注入 client 的 Notion 调用；断网是从运行时行为验证，无盲区
+
+### §5.1 全量 reconcile --apply  ✅ 完成（2026-07-21）
+> ⚠️ **本次发现了一个足以毁掉 cutover 的问题，务必读完。**
+
+**Supabase 的种子数据一直是残缺的 —— 不是「种子后漂移」，是一开始就只进了一部分：**
+
+| 表 | 同步前 | Notion | 覆盖率 |
+|---|---|---|---|
+| clients | 305 | 896 | 34% |
+| insurance | 81 | 1080 | **7.5%** |
+| portfolio | 1038 | 1234 | 79% |
+
+**为什么一直没被发现**：此前所有「parity 已验证」都是**拿 Supabase 跟它自己比**（例如 insurance 平滑测试「自清 81→81」），**从未与 Notion 对过总数**。同日的断-Notion 终验也跑在这份残缺数据上——页面全绿，因为**缺数据不报错，只是少**。若照此 cutover，应用会**静默丢失约 1900 条真实业务记录**（仍在冻结的 Notion 里，但应用再也看不到）。
+
+**执行过程**：先做全新备份 `finvaio-20260721-195243.dump` → 先定性 portfolio 的 65 个孤儿（全部 Sky Siew / Active / 种子日创建，全是 `CASH BAL` / `AMT DUE` 对账单行项；Notion 现存 34 条同类且更新 → 属周期性替换的**旧快照**，删除正确）→ 逐进程 env 覆盖解除切换后防呆（shell env 优先于 `--env-file`，`.env.local` 未改动）。
+
+**结果**：clients 896=896、portfolio 1234=1234（+261 / ~816 / −65）、insurance 1080=1080（+999 / ~73）、assets 8=8、cashflow 2=2、forms 0=0、users 8=8（~2 OAuth token）、meeting_notes 11=11、tasks 27（26+1 原生）、ai-usage 89（88+1 原生）。
+**全部 10 张表复跑 dry-run 已收敛：`ins=0 upd=0 orph=0`。**
+
+🐞 **过程中第三次撞上同一类缺陷**：`meeting_notes` 的 `meeting_type` CHECK 太窄（只允许前端 6 个枚举，Notion 实有 `"Review"`），触发违例并中断整个插入循环。前有 insurance 双 CHECK、portfolio currency CHECK——**根因都是拿代码里的枚举 / 种子样本推约束，而不是拿真实 Notion 数据**。已删除（migration `2026-07-21-meeting-notes-drop-narrow-check.sql`）。
+
+> **给未来的自己**：任何「已验证一致」的结论，先问一句 —— **是跟真实数据对的，还是跟另一份同源数据对的？**
 
 ### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
