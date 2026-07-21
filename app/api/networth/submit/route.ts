@@ -4,6 +4,7 @@ import { verifyFormToken } from '@/lib/formToken';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { NW_ITEMS } from '@/lib/networthForm';
 import * as sbAssets from '@/lib/repos/assets';
+import { buildAssetRows } from '@/lib/assets';
 
 const useSupabase = () => process.env.DATA_SOURCE_ASSETS === 'supabase';
 
@@ -51,15 +52,8 @@ export async function POST(req: NextRequest) {
       const today = new Date().toISOString().split('T')[0];
       // one call replaces the query→archive→create loop; no sleep() needed —
       // those were Notion rate-limit pacing
-      await sbAssets.replaceAssetEntries(config.name, clientName, MARKER, rows.map(r => ({
-        name:     r.label,
-        client:   clientName,
-        type:     r.type,
-        category: r.category,
-        valueMyr: r.value,
-        notes:    `${MARKER} · submitted ${today}`,
-        advisor:  config.name,
-      })));
+      await sbAssets.replaceAssetEntries(config.name, clientName, MARKER,
+        buildAssetRows(rows, clientName, config.name, MARKER, today));
       return NextResponse.json(summary);
     } catch (e: unknown) {
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

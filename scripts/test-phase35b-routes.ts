@@ -13,7 +13,8 @@
 import { getSupabase } from '../lib/supabase';
 import * as sbAssets from '../lib/repos/assets';
 import * as sbPortfolio from '../lib/repos/portfolio';
-import { buildPortfolioPatch, listHoldings } from '../lib/portfolio';
+import { buildPortfolioPatch, newFundToPatchInput, listHoldings } from '../lib/portfolio';
+import { buildAssetRows } from '../lib/assets';
 import { getClientById, listClients } from '../lib/clients';
 import { listPolicies } from '../lib/insurance';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
@@ -48,14 +49,15 @@ async function main() {
   const beforePortfolio = await countRows('portfolio_holdings');
   try {
     // ── networth/submit mapping ────────────────────────────────────────────
-    // Exactly the call the route makes, with the route's own marker.
+    // Built through buildAssetRows — the SAME function the route calls. Typing
+    // these literals here instead would assert against a copy of the mapping,
+    // so a route-side change (r.label → r.key, a dropped advisor stamp) would
+    // leave every check below green.
     const today = new Date().toISOString().split('T')[0];
-    await sbAssets.replaceAssetEntries(ADV, CLIENT, MARKER, [
-      { name: 'Cash', client: CLIENT, type: 'Asset', category: 'Liquid',
-        valueMyr: 1500, notes: `${MARKER} · submitted ${today}`, advisor: ADV },
-      { name: 'Car Loan', client: CLIENT, type: 'Liability', category: 'Loans',
-        valueMyr: 800, notes: `${MARKER} · submitted ${today}`, advisor: ADV },
-    ]);
+    await sbAssets.replaceAssetEntries(ADV, CLIENT, MARKER, buildAssetRows([
+      { label: 'Cash',     type: 'Asset',     category: 'Liquid', value: 1500 },
+      { label: 'Car Loan', type: 'Liability', category: 'Loans',  value: 800  },
+    ], CLIENT, ADV, MARKER, today));
     const { data: rows1 } = await sb.from('assets_liabilities')
       .select('name, client, type, category, value_myr, notes, advisor')
       .eq('advisor', ADV).is('deleted_at', null).order('name');
@@ -71,10 +73,9 @@ async function main() {
 
     // Idempotent re-submit is this route's core contract: the second submission
     // must REPLACE the prior client-form rows, not stack on top of them.
-    await sbAssets.replaceAssetEntries(ADV, CLIENT, MARKER, [
-      { name: 'Cash', client: CLIENT, type: 'Asset', category: 'Liquid',
-        valueMyr: 2500, notes: `${MARKER} · submitted ${today}`, advisor: ADV },
-    ]);
+    await sbAssets.replaceAssetEntries(ADV, CLIENT, MARKER, buildAssetRows([
+      { label: 'Cash', type: 'Asset', category: 'Liquid', value: 2500 },
+    ], CLIENT, ADV, MARKER, today));
     const { data: rows2 } = await sb.from('assets_liabilities')
       .select('name, value_myr').eq('advisor', ADV).is('deleted_at', null);
     const r2 = rows2 as Array<Record<string, unknown>>;
@@ -82,19 +83,20 @@ async function main() {
     ok(Number(r2[0].value_myr) === 2500, 're-submit stores the new value');
 
     // ── portfolio-switch mapping ───────────────────────────────────────────
-    // The exact patch the route builds for a new fund.
-    const patch = buildPortfolioPatch({
-      holdingName:  'PHASE35B Fund',
+    // Built through newFundToPatchInput + buildPortfolioPatch — the SAME pair the
+    // route calls, so this asserts the route's mapping rather than a copy of it.
+    // valueMyr/purchaseMyr are left out deliberately: the shared function derives
+    // them as valueOrig * fxRate (1000 * 4.5 = 4500, 900 * 4.5 = 4050), which the
+    // column assertions below then verify.
+    const patch = buildPortfolioPatch(newFundToPatchInput({
+      name:         'PHASE35B Fund',
       assetClass:   'Equity',
       institution:  'Test House',
       currency:     'USD',
       valueOrig:    1000,
       purchaseOrig: 900,
       fxRate:       4.5,
-      valueMyr:     4500,
-      purchaseMyr:  4050,
-      status:       'Active',
-    }, ADV, true);
+    }), ADV, true);
     const { id: holdingId } = await sbPortfolio.createHolding(patch);
     const { data: h1 } = await sb.from('portfolio_holdings')
       .select('holding_name, asset_class, institution, currency, value_original_currency, value_myr, purchase_price_original, purchase_price_myr, fx_rate_to_myr, status, advisor')

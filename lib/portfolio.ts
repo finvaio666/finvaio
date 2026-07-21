@@ -179,3 +179,30 @@ export function buildPortfolioPatch(b: PortfolioPatchInput, advisorName: string,
   if (isCreate) p.advisor = advisorName;
   return p;
 }
+
+/**
+ * Map a fund-switch new-fund payload → PortfolioPatchInput.
+ *
+ * Shared by portfolio-switch and its test for the same reason as buildAssetRows:
+ * a test that retypes the mapping asserts against itself, not the route.
+ * The fxRate/derived-MYR defaults live here so both callers inherit them.
+ */
+export function newFundToPatchInput(fund: {
+  name: string; assetClass?: string; institution?: string; currency?: string;
+  valueOrig: number; purchaseOrig: number; fxRate: number;
+  valueMyr?: number; purchaseMyr?: number;
+}): PortfolioPatchInput {
+  const fxRate = fund.fxRate || 1;
+  return {
+    holdingName:  fund.name,
+    assetClass:   fund.assetClass,
+    institution:  fund.institution,
+    currency:     fund.currency || 'MYR',
+    status:       'Active',
+    valueOrig:    fund.valueOrig,
+    purchaseOrig: fund.purchaseOrig,
+    fxRate,
+    valueMyr:     fund.valueMyr    || fund.valueOrig    * fxRate,
+    purchaseMyr:  fund.purchaseMyr || fund.purchaseOrig * fxRate,
+  };
+}

@@ -250,6 +250,7 @@ DATA_SOURCE_CLIENTS=notion
 - [x] **守卫处置**：`notionApiKey`/`*DbId` 检查移入各自 Notion 分支。`reports/client` 尤其关键——原来的 `if (config.portfolioDbId)` 若留在 Supabase 路径，Phase 4 清掉该 env 后报告会**静默少掉整个投资组合**（不报错，只是空的）
 - [x] 测试 `scripts/test-phase35b-routes.ts`（自清、打真库、两表计数还原；reports 段纯读）——覆盖本期唯一的新逻辑：路由字段映射。repo 函数本身 Phase 2.11 已测
 - [x] **`audit:notion` 首次 exit 0**，并接入 `deploy.yml` 部署前门禁（`deploy` 依赖 `audit` job）——未门控的 Notion 调用从此进不了生产
+- ⚠️ **Flag 顺序约束**：`reports/client` 只按 `DATA_SOURCE_CLIENTS` 分支。若 `CLIENTS=notion` 而 `PORTFOLIO`/`INSURANCE=supabase`，它的 Notion 分支会直接读 Notion 的持仓/保单（陈旧数据），且审计脚本从结构上看不见这种情况。统一 cutover 下不会发生；**`DATA_SOURCE_CLIENTS` 绝不可落后于 `PORTFOLIO`/`INSURANCE`**
 - ✅ **迁移代码层到此全部完成**；剩余为 §7 备份上云三步 + 断-Notion 终验 + cutover
 
 ### Phase 4 — 清理（暂缓执行）  ⏸

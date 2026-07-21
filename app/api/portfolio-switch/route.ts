@@ -3,7 +3,7 @@ import { Client } from '@notionhq/client';
 import type { UpdatePageParameters, CreatePageParameters } from '@notionhq/client/build/src/api-endpoints';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import * as sbPortfolio from '@/lib/repos/portfolio';
-import { buildPortfolioPatch } from '@/lib/portfolio';
+import { buildPortfolioPatch, newFundToPatchInput } from '@/lib/portfolio';
 import { resolveClientNotionId } from '@/lib/clients';
 
 const useSupabase = () => process.env.DATA_SOURCE_PORTFOLIO === 'supabase';
@@ -64,19 +64,7 @@ export async function POST(req: NextRequest) {
     }
     for (const fund of newFunds) {
       try {
-        const fxRate = fund.fxRate || 1;
-        const patch = buildPortfolioPatch({
-          holdingName:  fund.name,
-          assetClass:   fund.assetClass,
-          institution:  fund.institution,
-          currency:     fund.currency || 'MYR',
-          status:       'Active',
-          valueOrig:    fund.valueOrig,
-          purchaseOrig: fund.purchaseOrig,
-          fxRate,
-          valueMyr:     fund.valueMyr    || fund.valueOrig    * fxRate,
-          purchaseMyr:  fund.purchaseMyr || fund.purchaseOrig * fxRate,
-        }, config.name, true);
+        const patch = buildPortfolioPatch(newFundToPatchInput(fund), config.name, true);
         if (fund.clientId) patch.client_notion_id = await resolveClientNotionId(fund.clientId);
         const { id } = await sbPortfolio.createHolding(patch);
         results.push({ action: 'create', id, name: fund.name, ok: true });

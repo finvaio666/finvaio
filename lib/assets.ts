@@ -84,3 +84,26 @@ export async function listAssets(config: AdvisorConfig): Promise<AssetItem[]> {
   } while (cursor);
   return out;
 }
+
+/**
+ * Map net-worth form rows → asset rows for replaceAssetEntries.
+ *
+ * Shared by the client-form route and its test on purpose: when the test built
+ * these literals itself it was asserting against its own copy, so a route-side
+ * change (r.label → r.key, a dropped advisor stamp) would have kept every check
+ * green. Both now call this.
+ */
+export function buildAssetRows(
+  rows: Array<{ label: string; type: string; category: string; value: number }>,
+  clientName: string, advisorName: string, marker: string, today: string,
+): sbAssets.AssetInsert[] {
+  return rows.map(r => ({
+    name:     r.label,
+    client:   clientName,
+    type:     r.type,
+    category: r.category,
+    valueMyr: r.value,
+    notes:    `${marker} · submitted ${today}`,
+    advisor:  advisorName,
+  }));
+}
