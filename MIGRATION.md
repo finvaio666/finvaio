@@ -241,6 +241,17 @@ DATA_SOURCE_CLIENTS=notion
 - ⏭️ **Phase 3.5b（待做）**：`networth/submit`(assets 写)、`portfolio-switch`(portfolio 写)、`reports/client`(clients+portfolio+insurance 读)——零新增 repo 代码，纯复用现成抽象。审计脚本目前正确地把这 3 个报为 ungated
 - ⏭️ **断-Notion 运行时验收**：把 `NOTION_API_KEY` 换成无效值全站走查，凡炸的即仍依赖 Notion。3.5b 收尾后执行，作为「全部已链接 Supabase」的最终证明
 
+### Phase 3.5b — 业务表侧信道  ✅ 完成（2026-07-21）
+> 7 个未门控缺口的后 3 个（打业务表的）。本期做完，**迁移代码层全部完成**。
+- [x] `networth/submit`（客户端净值表单，`DATA_SOURCE_ASSETS`）→ `replaceAssetEntries`，与顾问端 networth 路由同一个 marker-replace；重复提交仍替换而非叠加。Supabase 分支不带 `sleep()`（那是 Notion 限流节拍）
+- [x] `portfolio-switch`（`DATA_SOURCE_PORTFOLIO`）→ full 赎回 `updateHolding(status:'Redeemed')`、partial `setHoldingValue`、新建 `createHolding` + `resolveClientNotionId`；逐项 try/catch 与 `allOk ? 200 : 207` 原样保留
+- [x] `reports/client`（纯读，无独立 flag）→ `getClientById` + `listHoldings` + `listPolicies`，按 `clientNotionId` 关联（同 prefill 模式）
+- [x] **`buildPortfolioPatch` 提取到 `lib/portfolio.ts`** 共用 —— 列映射全库仅一处定义，避免在 switch 路由手抄第二份
+- [x] **守卫处置**：`notionApiKey`/`*DbId` 检查移入各自 Notion 分支。`reports/client` 尤其关键——原来的 `if (config.portfolioDbId)` 若留在 Supabase 路径，Phase 4 清掉该 env 后报告会**静默少掉整个投资组合**（不报错，只是空的）
+- [x] 测试 `scripts/test-phase35b-routes.ts`（自清、打真库、两表计数还原；reports 段纯读）——覆盖本期唯一的新逻辑：路由字段映射。repo 函数本身 Phase 2.11 已测
+- [x] **`audit:notion` 首次 exit 0**，并接入 `deploy.yml` 部署前门禁（`deploy` 依赖 `audit` job）——未门控的 Notion 调用从此进不了生产
+- ✅ **迁移代码层到此全部完成**；剩余为 §7 备份上云三步 + 断-Notion 终验 + cutover
+
 ### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
 > 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。
