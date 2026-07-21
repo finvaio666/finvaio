@@ -13,7 +13,9 @@
 import { getSupabase } from '../lib/supabase';
 import * as sbAssets from '../lib/repos/assets';
 import * as sbPortfolio from '../lib/repos/portfolio';
-import { buildPortfolioPatch } from '../lib/portfolio';
+import { buildPortfolioPatch, listHoldings } from '../lib/portfolio';
+import { getClientById, listClients } from '../lib/clients';
+import { listPolicies } from '../lib/insurance';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 
 const MARK   = 'PHASE35B_TEST';
@@ -120,6 +122,38 @@ async function main() {
     await sbPortfolio.updateHolding(ADMIN_CFG, holdingId, { status: 'Redeemed' });
     const { data: h3 } = await sb.from('portfolio_holdings').select('status').eq('id', holdingId).single();
     ok((h3 as { status: string }).status === 'Redeemed', 'updateHolding flips status to Redeemed');
+
+    // ── reports/client mapping (READ-ONLY — touches no fixture) ────────────
+    // Pick a real client that actually has holdings, so the join is exercised.
+    const { data: linkRow } = await sb.from('portfolio_holdings')
+      .select('client_notion_id').not('client_notion_id', 'is', null).limit(1).single();
+    const cnid = (linkRow as { client_notion_id: string }).client_notion_id;
+    const allClients = await listClients(ADMIN_CFG);
+    const subject = allClients.find(c => c.notionId === cnid);
+    ok(!!subject, 'found a real client that owns holdings (join fixture)');
+
+    const rec = await getClientById(ADMIN_CFG, subject!.id);
+    ok(!!rec, 'getClientById resolves the client');
+    ok(rec!.name.length > 0, 'ClientRecord.name populated');
+    ok(rec!.notionId === cnid, 'ClientRecord.notionId is the join key');
+    ok(typeof rec!.aum === 'number' && typeof rec!.monthlyIncome === 'number',
+       'ClientRecord aum/monthlyIncome are numbers (report maps income→monthlyIncome)');
+    ok(Array.isArray(rec!.financialGoals), 'ClientRecord.financialGoals is an array (report maps goals→financialGoals)');
+    ok(typeof rec!.onboardingDate === 'string' && typeof rec!.dob === 'string',
+       'ClientRecord onboardingDate/dob are strings (report maps onboarding→onboardingDate)');
+
+    // the join the report performs must match a direct SQL count
+    const holdings = (await listHoldings(ADMIN_CFG)).filter(h => h.clientNotionId === cnid);
+    const { count: sqlHoldings } = await sb.from('portfolio_holdings')
+      .select('*', { count: 'exact', head: true }).eq('client_notion_id', cnid).is('deleted_at', null);
+    ok(holdings.length === (sqlHoldings ?? -1),
+       `holdings join by clientNotionId matches SQL (${holdings.length} = ${sqlHoldings})`);
+
+    const policies = (await listPolicies(ADMIN_CFG)).filter(p => p.clientNotionId === cnid);
+    const { count: sqlPolicies } = await sb.from('insurance_policies')
+      .select('*', { count: 'exact', head: true }).eq('client_notion_id', cnid).is('deleted_at', null);
+    ok(policies.length === (sqlPolicies ?? -1),
+       `policies join by clientNotionId matches SQL (${policies.length} = ${sqlPolicies})`);
   } finally {
     await purge();
   }
