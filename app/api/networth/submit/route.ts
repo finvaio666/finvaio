@@ -3,6 +3,9 @@ import { Client, isFullPage } from '@notionhq/client';
 import { verifyFormToken } from '@/lib/formToken';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { NW_ITEMS } from '@/lib/networthForm';
+import * as sbAssets from '@/lib/repos/assets';
+
+const useSupabase = () => process.env.DATA_SOURCE_ASSETS === 'supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,13 +22,10 @@ export async function POST(req: NextRequest) {
 
   // 2. Load advisor config
   const config = await getAdvisorConfig(payload.advisorId);
-  if (!config?.notionApiKey || !config.assetsDbId) {
-    return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 500 });
-  }
+  if (!config) return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 500 });
   const clientName = payload.clientName;
-  const notion = new Client({ auth: config.notionApiKey });
 
-  // 3. Parse amounts
+  // 3. Parse amounts  (unchanged — source-independent)
   const num = (v: unknown) => Math.max(0, Number(String(v ?? '0').replace(/[^0-9.]/g, '')) || 0);
   const rows = NW_ITEMS
     .map(it => ({ ...it, value: num(body[it.key]) }))
@@ -36,6 +36,39 @@ export async function POST(req: NextRequest) {
     if (r.type === 'Asset') totalAssets += r.value; else totalLiabilities += r.value;
   }
 
+  const summary = {
+    success: true,
+    totalAssets,
+    totalLiabilities,
+    netWorth: totalAssets - totalLiabilities,
+    count: rows.length,
+  };
+
+  if (useSupabase()) {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      // one call replaces the query→archive→create loop; no sleep() needed —
+      // those were Notion rate-limit pacing
+      await sbAssets.replaceAssetEntries(config.name, clientName, MARKER, rows.map(r => ({
+        name:     r.label,
+        client:   clientName,
+        type:     r.type,
+        category: r.category,
+        valueMyr: r.value,
+        notes:    `${MARKER} · submitted ${today}`,
+        advisor:  config.name,
+      })));
+      return NextResponse.json(summary);
+    } catch (e: unknown) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+  }
+
+  // ── Notion path (unchanged) ──
+  if (!config.notionApiKey || !config.assetsDbId) {
+    return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 500 });
+  }
+  const notion = new Client({ auth: config.notionApiKey });
   try {
     // 4. Replace prior client-form entries for this client (idempotent re-submit)
     const existing = await notion.databases.query({
@@ -71,13 +104,7 @@ export async function POST(req: NextRequest) {
       await sleep(250);
     }
 
-    return NextResponse.json({
-      success: true,
-      totalAssets,
-      totalLiabilities,
-      netWorth: totalAssets - totalLiabilities,
-      count: rows.length,
-    });
+    return NextResponse.json(summary);
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
