@@ -295,6 +295,23 @@ DATA_SOURCE_CLIENTS=notion
 
 🔁 **这是同一个元模式的第三次**：portfolio 当年修过分页、insurance/portfolio 修过 CHECK——**修复都只落在当时那张表，没有推广到同类**。下次修这类基础设施缺陷，先问：**还有哪几张表有同样的问题？**
 
+### §5.3 RLS 缺失（Supabase Security Advisor ERROR）  ✅ 已修（2026-07-22）
+Supabase 2026-07-20 邮件告警 + Security Advisor 报 2 条 ERROR（`rls_disabled_in_public`）：
+`insurance_plans` 与 `funds` 未开 RLS——**public schema 的表会被 PostgREST 直接暴露，无 RLS 时任何持 anon key 者可读/改/删全表**。
+
+**根因**：全库 12 张表里只有这两张是用手写 SQL 迁移建的（`2026-07-14-create-products-tables.sql`），
+**原生 SQL 建表默认不开 RLS**（Dashboard 建表才默认开），迁移里漏了 `enable row level security`。
+
+已修（`db/migrations/2026-07-22-products-enable-rls.sql`，commit `50da6a1`）：两表 `enable row level security`，
+零 policy——与其余 10 张表一致：**RLS 开启 + 零 policy = anon/authenticated 全拒绝，仅服务端 service_role（`lib/supabase.ts`）可访问**，对应用零影响。
+已验证：线上 `relrowsecurity=true`、smoke 全绿、advisor 两条 ERROR 消失（两表转入 `rls_enabled_no_policy` INFO 列表）。
+
+ℹ️ Advisor 剩余 12 条 `rls_enabled_no_policy` INFO 是**按设计工作**（linter 分不清「忘写 policy」和「故意锁死」），
+**不要**为消 INFO 去写 policy——任何 policy 都是在给客户端角色开权限。Errors=0 即健康。
+
+🔁 **同一元模式的第四次**（分页 ×2、CHECK、RLS）：基础设施默认值不会自动落到手写迁移上。
+**今后所有 `create table` 迁移必须带 `alter table <t> enable row level security;`**。
+
 ### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
 > 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。
