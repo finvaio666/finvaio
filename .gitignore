@@ -54,3 +54,5 @@ next-env.d.ts
 
 # private planning / design docs (not for the public repo)
 /docs/
+# compiled launchd wrapper binary — rebuilt locally from the .swift source
+/scripts/FinvaSupabaseBackup
