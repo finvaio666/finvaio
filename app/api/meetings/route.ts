@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client, isFullPage } from '@notionhq/client';
+import { Client } from '@notionhq/client';
 import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { queryAllPages } from '@/lib/notionQueryAll';
 import { DEMO_MEETINGS } from '@/lib/demoData';
 
 export const dynamic = 'force-dynamic';
@@ -16,13 +17,15 @@ export async function GET(req: NextRequest) {
   const notion = new Client({ auth: config.notionApiKey });
   try {
     const f = advisorFilter(config);
-    const res = await notion.databases.query({
+    // Page through the cursor — a bare query caps at 100, which silently hides
+    // the older half of an established advisor's history.
+    const pages = await queryAllPages(notion, {
       database_id: config.meetingNotesDbId,
       ...(f ? { filter: f } : {}),
       sorts: [{ property: 'Meeting Date', direction: 'descending' }],
     });
 
-    const data = res.results.filter(isFullPage).map(page => {
+    const data = pages.map(page => {
       const p = page.properties;
 
       // Title is always saved as: "ClientName — MeetingType — Date"
