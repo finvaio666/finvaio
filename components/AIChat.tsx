@@ -17,6 +17,10 @@ interface AIChatProps {
   promptTrigger?: { text: string; seq: number } | null;
   /** When set, the AI route fetches live Notion data for this client and injects it into the system prompt */
   clientName?: string;
+  /** Exact Notion page ID for the selected client — always send this alongside clientName so the
+   *  API looks the client up unambiguously instead of guessing by name (surnames like Lim/Tan/Wong
+   *  are shared by many clients). */
+  clientId?: string;
 }
 
 export default function AIChat({
@@ -26,6 +30,7 @@ export default function AIChat({
   placeholder = "Ask about any client...",
   promptTrigger = null,
   clientName,
+  clientId,
 }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: initialMessage },
@@ -62,7 +67,7 @@ export default function AIChat({
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newHistory, clientName: clientName ?? null }),
+        body: JSON.stringify({ messages: newHistory, clientName: clientName ?? null, clientId: clientId ?? null }),
       });
       const data = await res.json();
       let reply = data.content;
