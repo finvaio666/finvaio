@@ -231,6 +231,7 @@ export default function AIPage() {
           placeholder={selectedClient ? `Ask anything about ${selectedClient.name}…` : 'Select a client above, or ask a general question…'}
           promptTrigger={promptTrigger}
           clientName={selectedClient?.name}
+          clientId={selectedClient?.id}
         />
       </div>
 

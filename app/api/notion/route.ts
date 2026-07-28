@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { queryAllPages } from '@/lib/notionQueryAll';
+import { decryptNric, maskNric } from '@/lib/nricCrypto';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { listPolicies } from '@/lib/insurance';
@@ -81,6 +83,39 @@ export async function GET(req: NextRequest) {
 
   try {
     if (type === 'clients') {
+      if (!DB.clients) return NextResponse.json({ data: [] });
+      const pages = await queryAllPages(notion, {
+        database_id: DB.clients,
+        ...scoped(),
+        sorts: [{ property: 'Client Name', direction: 'ascending' }],
+      });
+      const data = pages.map(page => {
+        const p = page.properties;
+        // NRIC is stored encrypted (enc:v1:…) in Notion; only a masked form ever
+        // leaves this route. Full value is served by /api/clients/[id]/nric.
+        let nricMasked = '';
+        try {
+          const nricRaw = p['NRIC / Reg No']?.type === 'rich_text' ? p['NRIC / Reg No'].rich_text[0]?.plain_text ?? '' : '';
+          nricMasked = maskNric(decryptNric(nricRaw));
+        } catch { /* missing key or corrupt ciphertext — omit rather than fail the list */ }
+        return {
+          id: page.id,
+          nricMasked,
+          name:        p['Client Name']?.type === 'title'           ? p['Client Name'].title[0]?.plain_text ?? ''            : '',
+          status:      p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                         : '',
+          segment:     p['Client Segment']?.type === 'select'       ? p['Client Segment'].select?.name ?? ''                 : '',
+          aum:         p['AUM (MYR)']?.type === 'number'            ? p['AUM (MYR)'].number ?? 0                             : 0,
+          income:      p['Monthly income (MYR)']?.type === 'number' ? p['Monthly income (MYR)'].number ?? 0                  : 0,
+          risk:        p['Risk Profile']?.type === 'select'         ? p['Risk Profile'].select?.name ?? ''                   : '',
+          nextReview:  p['Next review date']?.type === 'date'       ? p['Next review date'].date?.start ?? ''                : '',
+          lastReview:  p['Last review date']?.type === 'date'       ? p['Last review date'].date?.start ?? ''                : '',
+          onboarding:  p['Onboarding date']?.type === 'date'        ? p['Onboarding date'].date?.start ?? ''                 : '',
+          goals:       p['Financial goals']?.type === 'multi_select'? p['Financial goals'].multi_select.map(g => g.name)    : [],
+          phone:       p['Phone']?.type === 'phone_number'          ? p['Phone'].phone_number ?? ''                          : '',
+          email:       p['Email']?.type === 'email'                 ? p['Email'].email ?? ''                                 : '',
+          dob:         p['Date of Birth']?.type === 'date'          ? p['Date of Birth'].date?.start ?? ''                   : '',
+        };
+      });
       // Clients via the data-source abstraction (Notion or Supabase per flag).
       const data = (await listClients(config))
         .sort((a, b) => a.name.localeCompare(b.name))

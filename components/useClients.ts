@@ -17,6 +17,7 @@ export interface Client {
   phone: string;
   email: string;
   dob: string;
+  nricMasked?: string;
 }
 
 export function useClients() {

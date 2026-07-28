@@ -57,6 +57,11 @@ export default function MeetingCapture({
 }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
 
+  // Prospects created mid-flow, held separately so they're selectable straight
+  // away and survive the parent re-fetching its own client list.
+  const [newClients, setNewClients] = useState<CaptureClient[]>([]);
+  const localClients = [...clients, ...newClients.filter(n => !clients.some(c => c.id === n.id))];
+
   const [step, setStep] = useState<'capture' | 'confirm' | 'done'>('capture');
   const [clientId,    setClientId]    = useState(prefill?.clientId ?? '');
   const [clientName,  setClientName]  = useState(prefill?.clientName ?? '');
@@ -165,6 +170,32 @@ export default function MeetingCapture({
     finally { setSavingRaw(false); }
   }
 
+  // ── Quick-create a prospect ─────────────────────────────────────────────────
+  // Most "not in the CRM yet" people an FA meets are prospects, and they belong
+  // in the pipeline. Creating a real client record here keeps tasks, review
+  // dates and the follow-up email working, unlike the free-text path.
+  const [prospect, setProspect] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [creatingProspect, setCreatingProspect] = useState(false);
+
+  async function createProspect() {
+    if (!prospect?.name.trim()) return;
+    setCreatingProspect(true); setError('');
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: prospect.name.trim(), email: prospect.email.trim(), phone: prospect.phone.trim() }),
+      });
+      const j = await res.json();
+      if (!res.ok) { setError(j.error || 'Could not create the prospect.'); return; }
+      const c: CaptureClient = { id: j.client.id, name: j.client.name, email: j.client.email, segment: 'Prospect' };
+      setNewClients(prev => [...prev, c]);
+      setClientId(c.id);
+      setClientName(c.name);
+      setProspect(null);
+    } catch { setError('Network error while creating the prospect.'); }
+    finally { setCreatingProspect(false); }
+  }
+
   function validate(): boolean {
     if (!clientId && !clientName) { setError('Please select a client.'); return false; }
     if (!meetingDate)             { setError('Please enter the meeting date.'); return false; }
@@ -190,7 +221,10 @@ export default function MeetingCapture({
     setEmailBody(result.email.body);
   }, [result]);
 
-  const clientEmail = clients.find(c => c.id === clientId)?.email ?? '';
+  const clientEmail = localClients.find(c => c.id === clientId)?.email ?? '';
+  // Logged against a free-text name — there is no CRM page to link, so review
+  // dates can't be updated and there's no address to email.
+  const isNonClient = !clientId && !!clientName;
 
   async function confirmSave() {
     if (!validate()) return;
@@ -280,12 +314,21 @@ export default function MeetingCapture({
               <div>
                 <label style={labelStyle}>Client *</label>
                 <ClientSearchCombobox
-                  clients={clients}
+                  clients={localClients}
                   value={clientId}
+                  fallbackName={clientName}
                   onChange={c => { setClientId(c?.id ?? ''); setClientName(c?.name ?? ''); }}
                   placeholder="Search client…"
+                  allowFreeText
+                  onCreateNew={name => setProspect({ name, email: '', phone: '' })}
                   inputStyle={{ border: '1px solid var(--border)', background: 'var(--bg)' }}
                 />
+                {isNonClient && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 5, lineHeight: 1.45 }}>
+                    👤 Logging against <strong>{clientName}</strong> as a non-client — the note is saved,
+                    but no CRM record, review date or follow-up email.
+                  </div>
+                )}
               </div>
               <div>
                 <label style={labelStyle}>Date *</label>
@@ -387,15 +430,25 @@ export default function MeetingCapture({
               </button>
             </div>
 
-            <div>
-              <label style={labelStyle}>Next Review Date (updates CRM)</label>
-              <input type="date" value={nextReview} onChange={e => setNextReview(e.target.value)} style={{ ...inputStyle, width: 'auto' }} />
-            </div>
+            {isNonClient && (
+              <div style={{ padding: '10px 13px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5 }}>
+                👤 <strong>{clientName}</strong> isn&apos;t in your client list. The note and tasks will be
+                saved, but the review date and follow-up email need a CRM record — go back and use
+                <em> Add &quot;{clientName}&quot; as a prospect</em> if you want those.
+              </div>
+            )}
+
+            {!isNonClient && (
+              <div>
+                <label style={labelStyle}>Next Review Date (updates CRM)</label>
+                <input type="date" value={nextReview} onChange={e => setNextReview(e.target.value)} style={{ ...inputStyle, width: 'auto' }} />
+              </div>
+            )}
 
             {/* Follow-up email */}
-            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', background: 'var(--bg)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: sendEmail ? 10 : 0 }}>
-                <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} />
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', background: 'var(--bg)', opacity: isNonClient ? 0.55 : 1 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isNonClient ? 'not-allowed' : 'pointer', marginBottom: sendEmail ? 10 : 0 }}>
+                <input type="checkbox" checked={sendEmail} disabled={isNonClient} onChange={e => setSendEmail(e.target.checked)} />
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
                   ✉️ Send follow-up email {clientEmail ? `to ${clientEmail}` : ''}
                 </span>
@@ -439,6 +492,51 @@ export default function MeetingCapture({
           </div>
         )}
       </div>
+
+      {/* ── Quick-create prospect ── */}
+      {prospect && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,20,19,0.55)', zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', width: '100%', maxWidth: 380, padding: 20, boxShadow: 'var(--shadow)' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>➕ New prospect</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 16, lineHeight: 1.5 }}>
+              Adds them to your client list as a prospect so this meeting, its tasks and the follow-up
+              email all attach properly. You can fill in the rest later.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label style={labelStyle}>Name *</label>
+                <input value={prospect.name} onChange={e => setProspect(p => p && { ...p, name: e.target.value })}
+                  style={inputStyle} autoFocus />
+              </div>
+              <div>
+                <label style={labelStyle}>Email</label>
+                <input value={prospect.email} onChange={e => setProspect(p => p && { ...p, email: e.target.value })}
+                  type="email" placeholder="Needed to send a follow-up email" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Phone</label>
+                <input value={prospect.phone} onChange={e => setProspect(p => p && { ...p, phone: e.target.value })}
+                  type="tel" placeholder="Optional" style={inputStyle} />
+              </div>
+            </div>
+
+            {error && <div style={{ marginTop: 12, padding: '9px 13px', background: 'var(--red-dim)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--red)' }}>{error}</div>}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+              <button onClick={() => { setProspect(null); setError(''); }} disabled={creatingProspect}
+                style={{ padding: '9px 16px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
+                Cancel
+              </button>
+              <button onClick={createProspect} disabled={creatingProspect || !prospect.name.trim()}
+                style={{ padding: '9px 20px', borderRadius: 'var(--r-pill)', border: 'none', background: '#F37338', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: creatingProspect || !prospect.name.trim() ? 0.6 : 1 }}>
+                {creatingProspect ? 'Creating…' : 'Create & select'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }`}</style>
     </div>
   );

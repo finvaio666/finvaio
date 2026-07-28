@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
+import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { queryAllPages } from '@/lib/notionQueryAll';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listMeetings } from '@/lib/meetingNotes';
 import { setClientReviewDates } from '@/lib/clients';
@@ -19,6 +21,48 @@ export async function GET(req: NextRequest) {
   if (!config.meetingNotesDbId) return NextResponse.json({ data: [] });
 
   try {
+    const f = advisorFilter(config);
+    // Page through the cursor — a bare query caps at 100, which silently hides
+    // the older half of an established advisor's history.
+    const pages = await queryAllPages(notion, {
+      database_id: config.meetingNotesDbId,
+      ...(f ? { filter: f } : {}),
+      sorts: [{ property: 'Meeting Date', direction: 'descending' }],
+    });
+
+    const data = pages.map(page => {
+      const p = page.properties;
+
+      // Title is always saved as: "ClientName — MeetingType — Date"
+      const titleStr = p['Name']?.type === 'title'
+        ? (p['Name'] as { type: 'title'; title: { plain_text: string }[] }).title[0]?.plain_text ?? ''
+        : '';
+
+      // clientName: prefer dedicated 'Client Name' field; fall back to parsing the title
+      const clientNameFromField = p['Client Name']?.type === 'rich_text'
+        ? (p['Client Name'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? ''
+        : '';
+      const clientNameFromTitle = titleStr.split(' — ')[0]?.trim() ?? '';
+      const clientName = clientNameFromField || clientNameFromTitle;
+
+      // clientId: prefer 'Client' relation field if it exists
+      const clientId = p['Client']?.type === 'relation'
+        ? (p['Client'] as { type: 'relation'; relation: { id: string }[] }).relation[0]?.id ?? ''
+        : '';
+
+      return {
+        id:             page.id,
+        clientId,
+        clientName,
+        meetingDate:    p['Meeting Date']?.type === 'date'     ? (p['Meeting Date'] as { type: 'date'; date: { start: string } | null }).date?.start ?? '' : '',
+        meetingType:    p['Meeting Type']?.type === 'select'   ? (p['Meeting Type'] as { type: 'select'; select: { name: string } | null }).select?.name ?? '' : '',
+        notes:          p['Notes']?.type === 'rich_text'       ? (p['Notes'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? '' : '',
+        actionItems:    p['Action Items']?.type === 'rich_text'? (p['Action Items'] as { type: 'rich_text'; rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? '' : '',
+        nextReviewDate: p['Next Review Date']?.type === 'date' ? (p['Next Review Date'] as { type: 'date'; date: { start: string } | null }).date?.start ?? '' : '',
+        title:          titleStr,
+      };
+    });
+    return NextResponse.json({ data });
     // Meetings via the data-source abstraction (Notion or Supabase per flag).
     // Already sorted by meeting date desc; the empty-advisor-option case returns [].
     return NextResponse.json({ data: await listMeetings(config) });

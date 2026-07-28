@@ -59,10 +59,40 @@ function LogMeetingModal({
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
 
+  // Prospects created from inside this modal, held locally so they're
+  // selectable immediately without waiting for the page to re-fetch.
+  const [newClients, setNewClients] = useState<Client[]>([]);
+  const allClients = [...clients, ...newClients.filter(n => !clients.some(c => c.id === n.id))];
+
+  // Logged against a free-text name — no CRM page to link, so the next review
+  // date has nothing to write to.
+  const isNonClient = !form.clientId && !!form.clientName;
+
   const set = (k: keyof typeof form) => (v: string) => setForm(p => ({ ...p, [k]: v }));
 
+  // ── Quick-create a prospect ─────────────────────────────────────────────────
+  const [prospect, setProspect] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [creatingProspect, setCreatingProspect] = useState(false);
+
+  async function createProspect() {
+    if (!prospect?.name.trim()) return;
+    setCreatingProspect(true); setError('');
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: prospect.name.trim(), email: prospect.email.trim(), phone: prospect.phone.trim() }),
+      });
+      const j = await res.json();
+      if (!res.ok) { setError(j.error || 'Could not create the prospect.'); return; }
+      setNewClients(prev => [...prev, j.client as Client]);
+      setForm(p => ({ ...p, clientId: j.client.id, clientName: j.client.name }));
+      setProspect(null);
+    } catch { setError('Network error while creating the prospect.'); }
+    finally { setCreatingProspect(false); }
+  }
+
   async function handleSave() {
-    if (!form.clientId) { setError('Please select a client.'); return; }
+    if (!form.clientId && !form.clientName) { setError('Please select a client.'); return; }
     if (!form.meetingDate) { setError('Please enter a meeting date.'); return; }
     setSaving(true); setError('');
     try {
@@ -103,10 +133,13 @@ function LogMeetingModal({
             <div>
               <label style={labelStyle}>Client *</label>
               <ClientSearchCombobox
-                clients={clients}
+                clients={allClients}
                 value={form.clientId}
+                fallbackName={form.clientName}
                 onChange={c => setForm(p => ({ ...p, clientId: c?.id ?? '', clientName: c?.name ?? '' }))}
                 placeholder="Search client…"
+                allowFreeText
+                onCreateNew={name => setProspect({ name, email: '', phone: '' })}
                 inputStyle={{ border: '1px solid var(--border)', background: 'var(--bg)' }}
               />
             </div>
@@ -151,9 +184,12 @@ function LogMeetingModal({
           {/* Next Review Date */}
           <div>
             <label style={labelStyle}>Next Review Date</label>
-            <input type="date" value={form.nextReviewDate} onChange={e => set('nextReviewDate')(e.target.value)} style={inputStyle} />
+            <input type="date" value={form.nextReviewDate} onChange={e => set('nextReviewDate')(e.target.value)}
+              disabled={isNonClient} style={{ ...inputStyle, opacity: isNonClient ? 0.5 : 1 }} />
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-              This will update the client&apos;s next review date in your CRM
+              {isNonClient
+                ? <>👤 <strong>{form.clientName}</strong> isn&apos;t in your client list — the note is saved, but there&apos;s no CRM record to set a review date on. Use <em>Add &quot;{form.clientName}&quot; as a prospect</em> above if you want one.</>
+                : <>This will update the client&apos;s next review date in your CRM</>}
             </div>
           </div>
 
@@ -168,6 +204,50 @@ function LogMeetingModal({
           </div>
         </div>
       </div>
+
+      {/* ── Quick-create prospect ── */}
+      {prospect && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,20,19,0.55)', zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', width: '100%', maxWidth: 380, padding: 22, boxShadow: 'var(--shadow)' }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>➕ New prospect</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 16, lineHeight: 1.5 }}>
+              Adds them to your client list as a prospect so this meeting and its next review date
+              attach properly. You can fill in the rest later.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Name *</label>
+                <input value={prospect.name} onChange={e => setProspect(p => p && { ...p, name: e.target.value })}
+                  style={inputStyle} autoFocus />
+              </div>
+              <div>
+                <label style={labelStyle}>Email</label>
+                <input value={prospect.email} onChange={e => setProspect(p => p && { ...p, email: e.target.value })}
+                  type="email" placeholder="Optional" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Phone</label>
+                <input value={prospect.phone} onChange={e => setProspect(p => p && { ...p, phone: e.target.value })}
+                  type="tel" placeholder="Optional" style={inputStyle} />
+              </div>
+            </div>
+
+            {error && <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--red-dim)', border: '1px solid rgba(235,0,27,0.2)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--red)' }}>{error}</div>}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => { setProspect(null); setError(''); }} disabled={creatingProspect}
+                style={{ padding: '9px 20px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
+                Cancel
+              </button>
+              <button onClick={createProspect} disabled={creatingProspect || !prospect.name.trim()}
+                style={{ padding: '9px 22px', borderRadius: 'var(--r-pill)', border: 'none', background: 'var(--text)', color: 'var(--bg)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', opacity: creatingProspect || !prospect.name.trim() ? 0.6 : 1 }}>
+                {creatingProspect ? 'Creating…' : 'Create & select'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

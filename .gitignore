@@ -48,6 +48,8 @@ next-env.d.ts
 /FA_Onboarding_Templates
 *.zip
 
+# NRIC migration plaintext backup — never commit
+scripts/.nric-backup.csv
 # migration planning docs — local only, not part of the app repo
 /MIGRATION.md
 /NOTION_CLEANUP.md

@@ -11,6 +11,7 @@ import {
 import CashflowFormModal from '@/components/CashflowFormModal';
 import NetWorthFormModal from '@/components/NetWorthFormModal';
 import { MedicalDetail } from '@/components/MedicalDetail';
+import MaskedValue from '@/components/MaskedValue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,15 @@ function OverviewTab({ client }: { client: ReturnType<typeof useClients>['client
         <SectionHeader dot="var(--accent)" title="Personal Information" />
         <div style={{ padding: '0 20px 16px' }}>
           <InfoRow label="Full Name" value={client.name} />
+          <InfoRow label="NRIC / Reg No" mono value={
+            client.nricMasked
+              ? <MaskedValue masked={client.nricMasked} onReveal={async () => {
+                  const r = await fetch(`/api/clients/${client.id}/nric`, { cache: 'no-store' });
+                  if (!r.ok) throw new Error('reveal failed');
+                  return (await r.json()).nric as string;
+                }} />
+              : '—'
+          } />
           <InfoRow label="Date of Birth" value={client.dob ? `${formatDate(client.dob)}${age ? ` (Age ${age})` : ''}` : '—'} />
           <InfoRow label="Phone" value={client.phone} />
           <InfoRow label="Email" value={
@@ -905,9 +915,164 @@ function CorrespondenceTab({ clientName }: { clientName: string }) {
   );
 }
 
+// ── Meetings Tab ───────────────────────────────────────────────────────────────
+
+interface ClientMeeting {
+  id: string; clientId: string; clientName: string; meetingDate: string;
+  meetingType: string; notes: string; actionItems: string; nextReviewDate: string;
+}
+
+const MEETING_TYPE_COLORS: Record<string, string> = {
+  'Annual Review': 'var(--blue)', 'Follow-up': 'var(--green)', 'Phone Call': 'var(--gold)',
+  'Video Call': 'var(--purple)', 'Ad-hoc': 'var(--text3)', 'Onboarding': 'var(--accent)',
+};
+
+/**
+ * Full meeting history for one client — the "what did we last talk about?"
+ * recap an FA needs before walking back into the room. Deliberately shows
+ * every meeting regardless of whether it left anything to follow up on; a
+ * meeting with no action items is still context worth re-reading.
+ */
+function MeetingsTab({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const [meetings, setMeetings] = useState<ClientMeeting[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [failed,   setFailed]   = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true); setFailed(false);
+    fetch('/api/meetings', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        const all: ClientMeeting[] = d.data ?? [];
+        // Match on id where the Client relation exists, falling back to name —
+        // notes logged before the relation column existed only carry a name.
+        setMeetings(all.filter(m => m.clientId === clientId || m.clientName === clientName));
+      })
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
+  }, [clientId, clientName]);
+
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  const firstName = clientName.split(' ')[0];
+  const lastSeen  = meetings[0]?.meetingDate;
+
+  return (
+    <div className="section">
+      <SectionHeader
+        dot="var(--accent)"
+        title="Meeting History"
+        sub={
+          loading ? 'Loading…'
+          : meetings.length === 0 ? `No meetings logged for ${firstName} yet`
+          : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'} · last seen ${fmtDate(lastSeen)}`
+        }
+      />
+
+      {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading meeting history…</div>}
+
+      {!loading && failed && (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--red)', fontSize: 13 }}>Failed to load meeting history.</div>
+      )}
+
+      {!loading && !failed && meetings.length === 0 && (
+        <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--text3)' }}>
+          <div style={{ fontSize: 30, marginBottom: 10 }}>📝</div>
+          <div style={{ fontSize: 14, marginBottom: 14 }}>Nothing logged for {firstName} yet.</div>
+          <Link href={`/reviews?client=${clientId}`} style={{ fontSize: 13, color: 'var(--accent2)', textDecoration: 'none' }}>
+            Log a meeting →
+          </Link>
+        </div>
+      )}
+
+      {!loading && !failed && meetings.length > 0 && (
+        <div>
+          {meetings.map(m => {
+            const isExpanded = expanded === m.id;
+            const d = new Date(m.meetingDate);
+            const typeColor = MEETING_TYPE_COLORS[m.meetingType] || 'var(--text3)';
+            return (
+              <div key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <div
+                  onClick={() => setExpanded(isExpanded ? null : m.id)}
+                  style={{ display: 'flex', gap: 14, alignItems: 'flex-start', padding: '13px 4px', cursor: 'pointer' }}
+                >
+                  <div style={{ textAlign: 'center', minWidth: 42, flexShrink: 0 }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1 }}>{d.getDate()}</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', letterSpacing: '0.05em' }}>
+                      {d.toLocaleString('en', { month: 'short' }).toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{d.getFullYear()}</div>
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{
+                        fontSize: 11.5, padding: '2px 10px', borderRadius: 'var(--r-pill)',
+                        background: 'var(--surface2)', color: typeColor, fontWeight: 600,
+                        border: `1px solid ${typeColor}20`,
+                      }}>{m.meetingType}</span>
+                      {m.actionItems
+                        ? <span style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 600 }}>● has action items</span>
+                        : <span style={{ fontSize: 11, color: 'var(--text3)' }}>no follow-up</span>}
+                    </div>
+                    <div style={{
+                      fontSize: 13, color: 'var(--text3)', lineHeight: 1.5,
+                      ...(isExpanded ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+                    }}>
+                      {m.notes || <em>No notes recorded</em>}
+                    </div>
+                  </div>
+
+                  <span style={{ fontSize: 12, color: 'var(--text3)', flexShrink: 0, paddingTop: 4 }}>{isExpanded ? '▲' : '▼'}</span>
+                </div>
+
+                {isExpanded && (
+                  <div style={{ padding: '0 4px 18px 60px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {m.notes && (
+                      <div style={{ background: 'var(--bg2)', borderRadius: 'var(--r-sm)', padding: '12px 14px', borderLeft: '3px solid var(--accent)' }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Meeting Notes</div>
+                        <div style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{m.notes}</div>
+                      </div>
+                    )}
+                    {m.actionItems && (
+                      <div style={{ background: 'var(--gold-dim)', borderRadius: 'var(--r-sm)', padding: '12px 14px', borderLeft: '3px solid var(--gold)' }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Action Items</div>
+                        <div style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{m.actionItems}</div>
+                      </div>
+                    )}
+                    {m.nextReviewDate && (
+                      <div style={{ fontSize: 12.5, color: 'var(--blue)' }}>
+                        📅 Next review set at the time: <strong>{fmtDate(m.nextReviewDate)}</strong>
+                      </div>
+                    )}
+                    {!m.notes && !m.actionItems && (
+                      <div style={{ fontSize: 12.5, color: 'var(--text3)', fontStyle: 'italic' }}>
+                        This meeting was logged without notes.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div style={{ paddingTop: 14 }}>
+            <Link href={`/reviews?client=${clientId}`} style={{ fontSize: 12.5, color: 'var(--accent2)', textDecoration: 'none' }}>
+              Log a new meeting for {firstName} →
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'portfolio' | 'networth' | 'insurance' | 'cashflow' | 'correspondence';
+type Tab = 'overview' | 'portfolio' | 'networth' | 'insurance' | 'cashflow' | 'meetings' | 'correspondence';
 
 export default function ClientDetailPage({ clientId }: { clientId: string }) {
   const router = useRouter();
@@ -947,6 +1112,7 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
     { id: 'networth',       label: 'Net Worth',      icon: '💰' },
     { id: 'insurance',      label: 'Insurance',      icon: '🛡️' },
     { id: 'cashflow',       label: 'Cash Flow',      icon: '💸' },
+    { id: 'meetings',       label: 'Meetings',       icon: '📝' },
     { id: 'correspondence', label: 'Correspondence', icon: '✉️' },
   ];
 
@@ -1017,6 +1183,7 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
       {activeTab === 'networth'       && <NetWorthTab       clientId={client.id} clientName={client.name} />}
       {activeTab === 'insurance'      && <InsuranceTab      clientName={client.name} />}
       {activeTab === 'cashflow'       && <CashflowTab       clientId={client.id} clientName={client.name} />}
+      {activeTab === 'meetings'       && <MeetingsTab       clientId={client.id} clientName={client.name} />}
       {activeTab === 'correspondence' && <CorrespondenceTab clientName={client.name} />}
     </>
   );

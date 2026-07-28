@@ -85,15 +85,53 @@ async function buildClientContext(
   clientName: string,
   config: AdvisorConfig,
   advisorId: string,
+  clientId?: string,
 ): Promise<string> {
   // Demo mode — skip Notion entirely
   if (config.notionApiKey === 'DEMO_MODE') return buildDemoClientContext(clientName);
 
-  const cacheKey = `${advisorId}:${clientName.toLowerCase()}`;
+  const cacheKey = clientId ? `${advisorId}:id:${clientId}` : `${advisorId}:${clientName.toLowerCase()}`;
   const cached   = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.context;
 
   if (!config.notionApiKey || !config.clientsDbId) return '';
+  const notion = new Client({ auth: config.notionApiKey });
+  const af = advisorFilter(config);
+
+  // ── 1. Resolve the client page ───────────────────────────────────────────
+  // Prefer the exact Notion page ID the frontend already has from the client
+  // picker — this is the only way to avoid mismatches when multiple clients
+  // share a surname (very common: Lim, Tan, Wong, Ng, ...). Name-based lookup
+  // is kept only as a fallback for older callers that don't pass an ID; it
+  // now requires an EXACT (not "contains") name match to stay safe.
+  let clientPage: Awaited<ReturnType<typeof notion.pages.retrieve>> | undefined;
+
+  if (clientId) {
+    try {
+      const pg = await notion.pages.retrieve({ page_id: clientId });
+      if (isFullPage(pg)) {
+        const owner = (pg.properties['Advisor'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? '';
+        const isAdmin = config.role === 'Admin';
+        if (isAdmin || owner === config.name) clientPage = pg;
+      }
+    } catch (e) { console.error('Client page retrieve failed:', e); }
+
+    if (!clientPage) {
+      return `Client not found or not accessible. Please re-select the client.`;
+    }
+  } else {
+    const clientRes = await notion.databases.query({
+      database_id: config.clientsDbId,
+      filter: af ? { and: [af, { property: 'Client Name', title: { equals: clientName } }] } : { property: 'Client Name', title: { equals: clientName } },
+    });
+    const clientPages = clientRes.results.filter(isFullPage);
+    if (clientPages.length > 1) {
+      return `Multiple clients are named "${clientName}" — please select the specific client from the picker instead of typing the name.`;
+    }
+    clientPage = clientPages[0];
+  }
+
+  if (!clientPage || !isFullPage(clientPage)) {
 
   // ── 1. Find client by name (via the clients abstraction; advisor-scoped) ────
   const first       = clientName.split(' ')[0].toLowerCase();
@@ -303,7 +341,7 @@ TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what 
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, clientName } = await req.json();
+    const { messages, clientName, clientId } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
@@ -322,7 +360,8 @@ export async function POST(req: NextRequest) {
     let systemPrompt = BASE_PROMPT;
     if (clientName && typeof clientName === 'string' && clientName.trim() && config) {
       try {
-        const clientContext = await buildClientContext(clientName.trim(), config, advisorId);
+        const idArg = typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined;
+        const clientContext = await buildClientContext(clientName.trim(), config, advisorId, idArg);
         if (clientContext) systemPrompt = `${BASE_PROMPT}\n\n${clientContext}`;
       } catch (notionErr) {
         console.error('Notion context fetch failed:', notionErr);

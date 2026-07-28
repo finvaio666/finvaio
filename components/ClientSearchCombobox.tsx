@@ -15,6 +15,10 @@
  * placeholder  – input placeholder text (default: "Search client…")
  * inputStyle   – optional style overrides for the input element
  * disabled     – disables the input
+ * allowFreeText   – offer "use <typed name> (not a client)" when nothing matches;
+ *                   selecting it calls onChange with { id: '', name: query }
+ * onCreateNew     – offer "add <typed name> as a prospect"; receives the typed name
+ * fallbackName    – name to display when value is '' (a free-text pick has no id)
  */
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
@@ -36,6 +40,9 @@ interface Props {
   placeholder?: string;
   inputStyle?: React.CSSProperties;
   disabled?: boolean;
+  allowFreeText?: boolean;
+  onCreateNew?: (name: string) => void;
+  fallbackName?: string;
 }
 
 const SEGMENT_COLORS: Record<string, { bg: string; color: string }> = {
@@ -53,8 +60,14 @@ export default function ClientSearchCombobox({
   placeholder = 'Search client…',
   inputStyle,
   disabled,
+  allowFreeText,
+  onCreateNew,
+  fallbackName,
 }: Props) {
-  const selected: ComboboxClient | null = clients.find(c => c.id === value) ?? null;
+  // A free-text pick has no id, so fall back to the name the parent is holding.
+  const selected: ComboboxClient | null =
+    clients.find(c => c.id === value)
+    ?? (!value && fallbackName ? { id: '', name: fallbackName } : null);
 
   const [query, setQuery]         = useState('');
   const [open, setOpen]           = useState(false);
@@ -75,6 +88,27 @@ export default function ClientSearchCombobox({
           c.phone?.replace(/\s/g, '').includes(q.replace(/\s/g, ''))
         );
       });
+
+  // Extra "escape hatch" rows shown under the results: create the typed name as
+  // a prospect, or log against it as a one-off non-client. Hidden once the typed
+  // text exactly matches an existing client — that client is the obvious pick.
+  const q = query.trim();
+  const exactMatch = clients.some(c => c.name?.toLowerCase() === q.toLowerCase());
+  const extras: { key: string; icon: string; label: string; hint: string; run: () => void }[] = [];
+  if (q && !exactMatch) {
+    if (onCreateNew) extras.push({
+      key: 'create', icon: '➕',
+      label: `Add "${q}" as a prospect`,
+      hint: 'Creates a client record — tasks, reviews and follow-up email all work',
+      run: () => { onCreateNew(q); setQuery(''); setOpen(false); },
+    });
+    if (allowFreeText) extras.push({
+      key: 'freetext', icon: '👤',
+      label: `Use "${q}" (not a client)`,
+      hint: 'One-off — no CRM record, no follow-up email',
+      run: () => handleSelect({ id: '', name: q }),
+    });
+  }
 
   // Reset highlight when list changes
   useEffect(() => { setHighlighted(0); }, [query]);
@@ -125,13 +159,17 @@ export default function ClientSearchCombobox({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlighted(h => Math.min(h + 1, filtered.length - 1));
+      setHighlighted(h => Math.min(h + 1, filtered.length + extras.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlighted(h => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filtered[highlighted]) handleSelect(filtered[highlighted]);
+      if (highlighted < filtered.length) {
+        if (filtered[highlighted]) handleSelect(filtered[highlighted]);
+      } else {
+        extras[highlighted - filtered.length]?.run();
+      }
     } else if (e.key === 'Escape') {
       setOpen(false);
       setQuery('');
@@ -230,7 +268,7 @@ export default function ClientSearchCombobox({
             listStyle: 'none',
           }}
         >
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && extras.length === 0 ? (
             <li style={{ padding: '12px 16px', color: 'var(--text3)', fontSize: 13 }}>
               No clients found
             </li>
@@ -303,6 +341,45 @@ export default function ClientSearchCombobox({
               );
             })
           )}
+
+          {extras.map((x, xi) => {
+            const i = filtered.length + xi;
+            const isHighlighted = i === highlighted;
+            return (
+              <li
+                key={x.key}
+                role="option"
+                aria-selected={false}
+                onMouseEnter={() => setHighlighted(i)}
+                onMouseDown={x.run}
+                style={{
+                  padding: '9px 14px',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: isHighlighted ? 'var(--surface2)' : 'transparent',
+                  borderLeft: '3px solid transparent',
+                  borderTop: xi === 0 && filtered.length > 0 ? '1px solid var(--border)' : 'none',
+                  transition: 'background 0.08s',
+                }}
+              >
+                <span style={{
+                  width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                  background: 'var(--border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
+                }}>{x.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 600, color: 'var(--text)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>{x.label}</div>
+                  <div style={{
+                    fontSize: 11, color: 'var(--text3)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>{x.hint}</div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
