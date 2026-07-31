@@ -1,21 +1,15 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import {
-  estimateAll, LSA_PRODUCT, type Gender, type LsaInsurer, type LsaResult,
-} from '@/lib/lsaCalculator';
+import { estimateAll, type Gender, type LsaInsurer, type LsaResult } from '@/lib/lsaCalculator';
 import { LSA_BENEFITS, LSA_PLAN_LABEL } from '@/lib/lsaBenefits';
-
-const fmt = (n: number) => 'RM ' + Math.round(n).toLocaleString();
+import {
+  Section, Grid, Field, Segmented, Btn, Pill, Notice, FinePrint,
+  inp, money, fmtRM, fmtRMShort,
+} from '@/components/calculatorUI';
 
 const INSURER_COLOR: Record<LsaInsurer, string> = {
-  AIA: '#1F4E78', GE: '#1F6B3B', Allianz: '#6B2C8F', HLA: '#B8860B', Prudential: '#C8102E',
-};
-
-const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, display: 'block' };
-const inp: React.CSSProperties = {
-  width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)',
-  background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-sans)',
+  AIA: '#3860BE', GE: '#16A34A', Allianz: '#7C3AED', HLA: '#F79E1B', Prudential: '#EB001B',
 };
 
 export default function LsaCalculator() {
@@ -35,7 +29,6 @@ export default function LsaCalculator() {
   function calculate() {
     const r = estimateAll(gender, smoker, ageN, saN);
     setResults(r);
-    // default = cheapest 3 that actually have a quote
     setPicked(new Set(r.filter((x) => x.monthly != null).slice(0, 3).map((x) => x.insurer)));
     setShowProposal(false);
   }
@@ -74,7 +67,7 @@ export default function LsaCalculator() {
     doc.setFontSize(9); doc.setTextColor(110, 110, 110);
     doc.text('Prepared in FINVA  |  ' + new Date().toLocaleDateString('en-GB'), 40, 62);
 
-    const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}  -  Sum Assured ${fmt(saN)}`;
+    const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}  -  Sum Assured ${fmtRM(saN)}`;
     doc.setFontSize(10); doc.setTextColor(40, 40, 40);
     if (clientName) doc.text('Client: ' + clientName, 40, 84);
     doc.text(prof, 40, clientName ? 98 : 84);
@@ -83,7 +76,7 @@ export default function LsaCalculator() {
     autoTable(doc, {
       startY: y,
       head: [['Insurer', 'Product', 'Monthly', 'Annual', 'Total to 80', 'Death benefit basis']],
-      body: chosen.map((c) => [c.insurer, c.product, fmt(c.monthly as number), fmt(c.annual as number), c.outlay80 != null ? fmt(c.outlay80) : '-', c.deathBasis]),
+      body: chosen.map((c) => [c.insurer, c.product, fmtRM(c.monthly as number), fmtRM(c.annual as number), c.outlay80 != null ? fmtRM(c.outlay80) : '-', c.deathBasis]),
       styles: { fontSize: 9, cellPadding: 5 },
       headStyles: { fillColor: [31, 62, 100] },
       columnStyles: { 5: { cellWidth: 130 } },
@@ -126,157 +119,179 @@ export default function LsaCalculator() {
   }
 
   return (
-    <div className="section" style={{ padding: 24 }}>
-      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 4 }}>🏛️ Large Sum Assured Calculator</div>
-      <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 20 }}>
-        Compare RM1,000,000-class wealth / legacy ILP premiums across AIA, Allianz, Great Eastern, HLA and Prudential, then build a client proposal. Figures are estimates — confirm against the insurer system before issue.
-      </div>
+    <>
+      <Section title="Client & Coverage" dot="var(--accent2)">
+        <Grid min={190}>
+          <Field label="Client name (optional)">
+            <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="e.g. Mr Tan" style={inp} />
+          </Field>
+          <Field label="Age last birthday (20–60)" hint="Key the client's actual age — a Prudential/GE sheet showing ANB X means age X−1 here.">
+            <input type="number" min={20} max={60} value={age} onChange={(e) => setAge(e.target.value)} style={inp} />
+          </Field>
+          <Field label="Gender">
+            <Segmented<Gender>
+              value={gender}
+              onChange={setGender}
+              options={[{ value: 'M', label: 'Male' }, { value: 'F', label: 'Female' }]}
+            />
+          </Field>
+          <Field label="Smoker">
+            <Segmented<boolean>
+              value={smoker}
+              onChange={setSmoker}
+              options={[{ value: false, label: 'Non-Smoker' }, { value: true, label: 'Smoker' }]}
+            />
+          </Field>
+          <Field label="Sum Assured (RM)">
+            <input type="number" min={100000} step={100000} value={sumAssured} onChange={(e) => setSumAssured(e.target.value)} style={inp} />
+          </Field>
+        </Grid>
+        <div style={{ marginTop: 18 }}>
+          <Btn onClick={calculate}>Calculate premiums</Btn>
+        </div>
+      </Section>
 
-      {/* Inputs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 18 }}>
-        <div>
-          <label style={lbl}>Client name (optional)</label>
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="e.g. Mr Tan" style={inp} />
-        </div>
-        <div>
-          <label style={lbl}>Age last birthday (20–60)</label>
-          <input type="number" min={20} max={60} value={age} onChange={(e) => setAge(e.target.value)} style={inp} />
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>Key the client&apos;s actual age — if a Prudential/GE sheet shows ANB X, that is age X−1 here.</div>
-        </div>
-        <div>
-          <label style={lbl}>Gender</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['M', 'F'] as Gender[]).map((g) => (
-              <button key={g} onClick={() => setGender(g)} style={{
-                flex: 1, padding: '9px 0', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                border: `1.5px solid ${gender === g ? 'var(--accent2)' : 'var(--border)'}`,
-                background: gender === g ? 'var(--accent2)' : 'var(--surface)', color: gender === g ? '#fff' : 'var(--text3)',
-              }}>{g === 'M' ? 'Male' : 'Female'}</button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label style={lbl}>Smoker</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[false, true].map((s) => (
-              <button key={String(s)} onClick={() => setSmoker(s)} style={{
-                flex: 1, padding: '9px 0', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                border: `1.5px solid ${smoker === s ? 'var(--accent2)' : 'var(--border)'}`,
-                background: smoker === s ? 'var(--accent2)' : 'var(--surface)', color: smoker === s ? '#fff' : 'var(--text3)',
-              }}>{s ? 'Smoker' : 'Non-Smoker'}</button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label style={lbl}>Sum Assured (RM)</label>
-          <input type="number" min={100000} step={100000} value={sumAssured} onChange={(e) => setSumAssured(e.target.value)} style={inp} />
-        </div>
-      </div>
-
-      <button onClick={calculate} style={{
-        padding: '10px 24px', borderRadius: 'var(--r-pill)', border: 'none', background: '#F37338',
-        color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-      }}>Calculate premiums</button>
-
-      {/* Results */}
       {results && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
-            Tick the insurers to include in the proposal (cheapest 3 with a quote pre-selected).{' '}
-            <span style={{ color: 'var(--text)' }}>&ldquo;Total to age 80&rdquo;</span> is the full premium outlay over the life of the policy — the honest cost, where a low <em>stepped</em> monthly (e.g. GE) can end up the most expensive.
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+        <Section
+          title="Estimated Premiums"
+          dot="var(--green)"
+          action={<span style={{ fontSize: 12, color: 'var(--text3)' }}>{chosen.length} selected</span>}
+        >
+          <Notice>
+            <strong>Total to age 80</strong> is the full premium outlay over the life of the policy — the honest cost.
+            A low <em>stepped</em> monthly premium (GE) can still end up the most expensive.
+          </Notice>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: 14 }}>
             {results.map((r) => {
               const hasQuote = r.monthly != null;
-              const on = picked.has(r.insurer); const c = INSURER_COLOR[r.insurer];
-              const isLowest = hasQuote && r.insurer === firstQuoted;
+              const on = picked.has(r.insurer);
+              const c = INSURER_COLOR[r.insurer];
+              const isLowest = hasQuote && r.insurer === firstQuoted && r.structure !== 'stepped';
+              const isLoOutlay = outlayRange && r.outlay80 != null && r.outlay80 === outlayRange.lo;
+              const isHiOutlay = outlayRange && r.outlay80 != null && r.outlay80 === outlayRange.hi;
               return (
-                <div key={r.insurer} onClick={() => togglePick(r.insurer, hasQuote)} style={{
-                  cursor: hasQuote ? 'pointer' : 'not-allowed', opacity: hasQuote ? 1 : 0.6,
-                  border: `2px solid ${on ? c : 'var(--border)'}`, borderRadius: 12,
-                  padding: 14, background: on ? `${c}0D` : 'var(--surface)', position: 'relative',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: c }}>{r.insurer}</span>
-                    {hasQuote && <span style={{ fontSize: 16 }}>{on ? '☑' : '☐'}</span>}
+                <div
+                  key={r.insurer}
+                  onClick={() => togglePick(r.insurer, hasQuote)}
+                  style={{
+                    position: 'relative', overflow: 'hidden',
+                    background: 'var(--surface)', borderRadius: 24, padding: '18px 16px 16px',
+                    cursor: hasQuote ? 'pointer' : 'not-allowed',
+                    opacity: hasQuote ? 1 : 0.55,
+                    border: `1.5px solid ${on ? c : 'var(--border)'}`,
+                    boxShadow: on ? 'var(--shadow-sm)' : 'none',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c }} />
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: c, letterSpacing: '-0.01em' }}>{r.insurer}</span>
+                    {hasQuote && (
+                      <span style={{ fontSize: 15, color: on ? c : 'var(--text3)' }}>{on ? '☑' : '☐'}</span>
+                    )}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8 }}>{r.product}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 2, marginBottom: 10 }}>{r.product}</div>
+
                   {hasQuote ? (
                     <>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>{fmt(r.monthly as number)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text3)' }}> /mo</span></div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmt(r.annual as number)} / year</div>
-                      {r.outlay80 != null && (() => {
-                        const isLo = outlayRange && r.outlay80 === outlayRange.lo;
-                        const isHi = outlayRange && r.outlay80 === outlayRange.hi;
-                        const col = isHi ? '#B45309' : isLo ? '#1F6B3B' : 'var(--text3)';
-                        return (
-                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)', fontSize: 11 }}>
-                            <span style={{ color: 'var(--text3)' }}>Total to age 80: </span>
-                            <span style={{ fontWeight: 700, color: col }}>{fmt(r.outlay80)}</span>
-                            {isHi && <span style={{ color: col, fontWeight: 600 }}> · most</span>}
-                            {isLo && <span style={{ color: col, fontWeight: 600 }}> · least</span>}
+                      <div style={{ ...money, fontSize: 26, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                        {fmtRM(r.monthly as number)}
+                        <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--font-sans)' }}> /mo</span>
+                      </div>
+                      <div style={{ ...money, fontSize: 12, color: 'var(--text3)', marginTop: 3 }}>
+                        {fmtRM(r.annual as number)} / year
+                      </div>
+
+                      {r.outlay80 != null && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                            Total to age 80
                           </div>
-                        );
-                      })()}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                            <span style={{
+                              ...money, fontSize: 15, fontWeight: 600,
+                              color: isHiOutlay ? '#92400E' : isLoOutlay ? 'var(--green)' : 'var(--text2)',
+                            }}>
+                              {fmtRMShort(r.outlay80)}
+                            </span>
+                            {isLoOutlay && <Pill color="#16A34A">LEAST</Pill>}
+                            {isHiOutlay && <Pill color="#92400E">MOST</Pill>}
+                          </div>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text3)', padding: '8px 0' }}>{r.note ?? 'No quote'}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text3)', padding: '14px 0' }}>
+                      {r.note ?? 'No quote'}
+                    </div>
                   )}
-                  {r.structure === 'stepped' && hasQuote && (
-                    <div style={{ position: 'absolute', top: 10, right: 38, fontSize: 9, fontWeight: 700, color: '#B45309', background: '#B453091A', padding: '2px 6px', borderRadius: 6 }}>STEPPED</div>
-                  )}
-                  {isLowest && r.structure !== 'stepped' && (
-                    <div style={{ position: 'absolute', top: 10, right: 38, fontSize: 9, fontWeight: 700, color: '#1F6B3B', background: '#1F6B3B1A', padding: '2px 6px', borderRadius: 6 }}>LOWEST</div>
-                  )}
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8, lineHeight: 1.4 }}>{r.caveat}</div>
+
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
+                    {hasQuote && r.structure === 'stepped' && <Pill color="#92400E">STEPPED</Pill>}
+                    {isLowest && <Pill color="#16A34A">LOWEST</Pill>}
+                  </div>
+
+                  <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>{r.caveat}</div>
                 </div>
               );
             })}
           </div>
 
-          <button onClick={() => setShowProposal(true)} disabled={chosen.length === 0} style={{
-            marginTop: 18, padding: '10px 24px', borderRadius: 'var(--r-pill)', border: 'none',
-            background: chosen.length ? 'var(--accent2)' : 'var(--border)', color: '#fff', fontSize: 14, fontWeight: 700,
-            cursor: chosen.length ? 'pointer' : 'not-allowed',
-          }}>📄 Generate proposal ({chosen.length} insurer{chosen.length === 1 ? '' : 's'})</button>
-        </div>
+          <div style={{ marginTop: 18 }}>
+            <Btn onClick={() => setShowProposal(true)} disabled={chosen.length === 0}>
+              Generate proposal ({chosen.length} insurer{chosen.length === 1 ? '' : 's'})
+            </Btn>
+          </div>
+        </Section>
       )}
 
-      {/* Proposal */}
       {showProposal && chosen.length > 0 && (
-        <div style={{ marginTop: 24, border: '1px solid var(--border)', borderRadius: 12, padding: 20, background: 'var(--bg2)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Legacy Proposal{clientName ? ` — ${clientName}` : ''}</div>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{gender === 'M' ? 'Male' : 'Female'} · {smoker ? 'Smoker' : 'Non-Smoker'} · Age {ageN} · Sum Assured {fmt(saN)}</div>
-            </div>
-            <button onClick={downloadPdf} style={{
-              padding: '9px 18px', borderRadius: 'var(--r-pill)', border: 'none', background: '#F37338',
-              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}>⬇ Download PDF</button>
+        <Section
+          title={`Legacy Proposal${clientName ? ` — ${clientName}` : ''}`}
+          dot="var(--blue)"
+          action={<Btn variant="ghost" onClick={downloadPdf}>⬇ Download PDF</Btn>}
+        >
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>
+            {gender === 'M' ? 'Male' : 'Female'} · {smoker ? 'Smoker' : 'Non-Smoker'} · Age {ageN} · Sum Assured{' '}
+            <span style={money}>{fmtRM(saN)}</span>
           </div>
 
-          {/* Premium summary */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
             {chosen.map((c) => (
-              <div key={c.insurer} style={{ flex: '1 1 150px', border: `1px solid ${INSURER_COLOR[c.insurer]}55`, borderRadius: 10, padding: 12, background: 'var(--surface)' }}>
-                <div style={{ fontWeight: 700, color: INSURER_COLOR[c.insurer], fontSize: 13 }}>{c.insurer}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{fmt(c.monthly as number)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/mo</span></div>
-                <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmt(c.annual as number)}/yr</div>
-                {c.outlay80 != null && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>Total to 80: <strong style={{ color: 'var(--text)' }}>{fmt(c.outlay80)}</strong></div>}
+              <div key={c.insurer} style={{
+                flex: '1 1 155px', borderRadius: 20, padding: 14,
+                background: 'var(--bg2)', border: `1px solid ${INSURER_COLOR[c.insurer]}40`,
+              }}>
+                <div style={{ fontWeight: 700, color: INSURER_COLOR[c.insurer], fontSize: 12.5 }}>{c.insurer}</div>
+                <div style={{ ...money, fontSize: 19, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.02em', marginTop: 4 }}>
+                  {fmtRM(c.monthly as number)}
+                  <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-sans)' }}>/mo</span>
+                </div>
+                <div style={{ ...money, fontSize: 11, color: 'var(--text3)' }}>{fmtRM(c.annual as number)}/yr</div>
+                {c.outlay80 != null && (
+                  <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 6 }}>
+                    Total to 80: <strong style={{ ...money, color: 'var(--text2)' }}>{fmtRMShort(c.outlay80)}</strong>
+                  </div>
+                )}
               </div>
             ))}
           </div>
 
-          {/* Benefit comparison table */}
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 16 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', background: 'var(--surface2)', color: 'var(--text3)', position: 'sticky', left: 0 }}>Feature</th>
+                  <th style={{
+                    textAlign: 'left', padding: '10px 12px', background: 'var(--bg2)', color: 'var(--text3)',
+                    fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                    position: 'sticky', left: 0, minWidth: 150,
+                  }}>Feature</th>
                   {chosenInsurers.map((i) => (
-                    <th key={i} style={{ textAlign: 'left', padding: '6px 8px', background: 'var(--surface2)', color: INSURER_COLOR[i], minWidth: 150 }}>
-                      {i}<div style={{ fontSize: 9, fontWeight: 400, color: 'var(--text3)' }}>{LSA_PLAN_LABEL[i]}</div>
+                    <th key={i} style={{ textAlign: 'left', padding: '10px 12px', background: 'var(--bg2)', minWidth: 155 }}>
+                      <div style={{ color: INSURER_COLOR[i], fontSize: 12, fontWeight: 700 }}>{i}</div>
+                      <div style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--text3)' }}>{LSA_PLAN_LABEL[i]}</div>
                     </th>
                   ))}
                 </tr>
@@ -284,13 +299,16 @@ export default function LsaCalculator() {
               <tbody>
                 {LSA_BENEFITS.flatMap((sec) => [
                   <tr key={sec.section}>
-                    <td colSpan={chosenInsurers.length + 1} style={{ padding: '6px 8px', background: 'var(--surface2)', fontWeight: 700, color: 'var(--text)', fontSize: 11 }}>{sec.section}</td>
+                    <td colSpan={chosenInsurers.length + 1} style={{
+                      padding: '8px 12px', background: 'var(--surface2)', fontWeight: 700,
+                      color: 'var(--text)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
+                    }}>{sec.section}</td>
                   </tr>,
                   ...sec.rows.map((row) => (
                     <tr key={sec.section + row.benefit} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '5px 8px', fontWeight: 600, color: 'var(--text)' }}>{row.benefit}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text2)' }}>{row.benefit}</td>
                       {chosenInsurers.map((i) => (
-                        <td key={i} style={{ padding: '5px 8px', color: 'var(--text3)' }}>{row[i]}</td>
+                        <td key={i} style={{ padding: '8px 12px', color: 'var(--text3)', lineHeight: 1.5 }}>{row[i]}</td>
                       ))}
                     </tr>
                   )),
@@ -299,11 +317,15 @@ export default function LsaCalculator() {
             </table>
           </div>
 
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 12, lineHeight: 1.5 }}>
-            Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA, Prudential; AIA &amp; GE scale linearly pending high-SA quotes) — not official quotations; confirm against the insurer system before issue. GE uses a stepped premium (rises steeply with age) and has no male rates. Death-benefit basis and free riders differ materially — see comparison. For advisory discussion only.
-          </div>
-        </div>
+          <FinePrint>
+            Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured
+            using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA, Prudential; AIA &amp; GE
+            scale linearly pending high-SA quotes) — not official quotations; confirm against the insurer system before issue.
+            GE uses a stepped premium and has no male rates. Death-benefit basis and free riders differ materially — see comparison.
+            For advisory discussion only.
+          </FinePrint>
+        </Section>
       )}
-    </div>
+    </>
   );
 }
