@@ -246,12 +246,6 @@ export default function PortfolioPage() {
           <div className="stat-value">{loading ? '…' : visible.length}</div>
           <div className="stat-sub">{activeTab === 'All' ? `${clientNames.length} clients` : 'Active holdings'}</div>
         </div>
-        <div className="stat-card red">
-          <div className="stat-icon red">🌐</div>
-          <div className="stat-label">Currencies</div>
-          <div className="stat-value">{loading ? '…' : currencies.length}</div>
-          <div className="stat-sub">{foreignCount > 0 ? `${currencies.filter(c => c !== 'MYR').join(', ')}` : 'All MYR'}</div>
-        </div>
       </div>
       )}
 
