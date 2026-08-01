@@ -128,6 +128,11 @@ export default function PortfolioPage() {
   const foreignCount  = visible.filter(h => h.currency && h.currency !== 'MYR').length;
   const currencies    = [...new Set(visible.map(h => h.currency || 'MYR'))];
 
+  // Platform split: a FAME Account No means the holding was synced from FAME,
+  // which is the Phillip platform; everything else is manually tracked iFAST.
+  const phillipValue = visible.filter(h => h.fameAccountNo).reduce((s, h) => s + h.value, 0);
+  const ifastValue   = totalValue - phillipValue;
+
   // Group rows by client for visual separation
   const grouped: { client: string; rows: Holding[] }[] = activeTab === 'All'
     ? clientNames.map(c => ({ client: c, rows: holdings.filter(h => h.clientName === c) }))
@@ -224,12 +229,16 @@ export default function PortfolioPage() {
           <div className="stat-sub">{visible.length} holdings · MYR equiv.</div>
         </div>
         <div className="stat-card gold">
-          <div className="stat-icon gold">💵</div>
-          <div className="stat-label">Total Gains</div>
-          <div className="stat-value" style={{ color: Number(avgReturn) >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {loading ? '…' : fmtK(totalGain)}
-          </div>
-          <div className="stat-sub">{Number(avgReturn) >= 0 ? '+' : ''}{avgReturn}% avg return</div>
+          <div className="stat-icon gold">🏦</div>
+          <div className="stat-label">Phillip Platform</div>
+          <div className="stat-value">{loading ? '…' : fmtK(phillipValue)}</div>
+          <div className="stat-sub">{totalValue > 0 ? `${((phillipValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-icon purple">🏛️</div>
+          <div className="stat-label">iFAST Platform</div>
+          <div className="stat-value">{loading ? '…' : fmtK(ifastValue)}</div>
+          <div className="stat-sub">{totalValue > 0 ? `${((ifastValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
         </div>
         <div className="stat-card blue">
           <div className="stat-icon blue">📦</div>
