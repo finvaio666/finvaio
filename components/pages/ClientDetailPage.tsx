@@ -10,6 +10,7 @@ import {
 } from '@/components/useClients';
 import CashflowFormModal from '@/components/CashflowFormModal';
 import NetWorthFormModal from '@/components/NetWorthFormModal';
+import type { PlatformGroup } from '@/lib/platformGroups';
 import { MedicalDetail } from '@/components/MedicalDetail';
 import MaskedValue from '@/components/MaskedValue';
 
@@ -20,7 +21,7 @@ interface Holding {
   assetClass: string; institution: string; status: string; maturity: string;
   currency: string; valueOrig: number; purchaseOrig: number; fxRate: number;
   value: number; purchase: number; gain: number; returnPct: number; units: number;
-  fameAccountNo?: string; fundSource?: string;
+  fameAccountNo?: string; fundSource?: string; platform?: string;
 }
 
 interface Policy {
@@ -65,6 +66,10 @@ const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 // they're not. Collapse to a single "PRS Acc" label; the account number
 // already distinguishes the group.
 const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
+
+// Colours cycle so a newly added platform group still gets a distinct card.
+const GROUP_CARD_COLORS = ['gold', 'purple', 'blue', 'green', 'red'] as const;
+const GROUP_CARD_ICONS  = ['🏦', '🏛️', '🌏', '💼', '📉'] as const;
 
 const TYPE_COLORS: Record<string, string> = {
   'ILP': '#60A5FA', 'IUL': '#818CF8', 'UL': '#A78BFA',
@@ -198,6 +203,14 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
+
+  useEffect(() => {
+    fetch('/api/admin/platform-groups')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.groups)) setPlatformGroups(d.groups); })
+      .catch(() => { /* breakdown just falls back to "Ungrouped" */ });
+  }, []);
 
   useEffect(() => {
     fetch('/api/notion?type=portfolio', { cache: 'no-store' })
@@ -219,33 +232,57 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
   const totalGain     = totalValue - totalPurchase;
   const avgReturn     = totalPurchase > 0 ? ((totalGain / totalPurchase) * 100).toFixed(1) : '0.0';
 
-  // Platform split: a FAME Account No means the holding was synced from FAME,
-  // which is the Phillip platform; everything else is manually tracked iFAST.
-  const phillipValue = holdings.filter(h => h.fameAccountNo).reduce((s, h) => s + h.value, 0);
-  const ifastValue   = totalValue - phillipValue;
+  // AUM split by admin-defined platform group (Local UT / Local EAM / …).
+  // Anything whose platform isn't in a group yet shows as "Ungrouped" rather
+  // than being silently dropped — fix it in Admin → Platforms.
+  const groupTotals = (() => {
+    const totals = platformGroups.map(g => ({ name: g.name, value: 0 }));
+    let ungrouped = 0;
+    for (const h of holdings) {
+      const idx = platformGroups.findIndex(g =>
+        g.platforms.some(p => p.toLowerCase() === (h.platform ?? '').toLowerCase()));
+      if (idx >= 0) totals[idx].value += h.value;
+      else ungrouped += h.value;
+    }
+    const rows = totals.filter(t => t.value > 0);
+    if (ungrouped > 0) rows.push({ name: 'Ungrouped', value: ungrouped });
+    return rows;
+  })();
 
   // Group holdings by FAME account no (e.g. "PMART" account M018415 holds several
   // underlying funds) so a wrapper account and its funds don't read as unrelated,
   // duplicated line items. Holdings with no account no (older manual entries) fall
   // into a single "Other" bucket.
   const accountGroups: { key: string; label: string; rows: Holding[] }[] = (() => {
-    const byAccount = new Map<string, Holding[]>();
-    const ungrouped: Holding[] = [];
+    const byAccount  = new Map<string, Holding[]>();   // holdings that carry an account no
+    const byPlatform = new Map<string, Holding[]>();   // no account no — bucket per platform
+    const loose: Holding[] = [];                       // neither — nothing to group on
     for (const h of holdings) {
       if (h.fameAccountNo) {
         const arr = byAccount.get(h.fameAccountNo) ?? [];
         arr.push(h);
         byAccount.set(h.fameAccountNo, arr);
+      } else if (h.platform) {
+        const arr = byPlatform.get(h.platform) ?? [];
+        arr.push(h);
+        byPlatform.set(h.platform, arr);
       } else {
-        ungrouped.push(h);
+        loose.push(h);
       }
     }
     const groups = Array.from(byAccount.entries()).map(([acct, rows]) => ({
       key: acct,
-      label: `Account ${acct}${rows[0].fundSource ? ` · ${normalizeFundSource(rows[0].fundSource)}` : ''}`,
+      label: [
+        rows[0].platform,
+        `Account ${acct}`,
+        rows[0].fundSource ? normalizeFundSource(rows[0].fundSource) : '',
+      ].filter(Boolean).join(' · '),
       rows,
     }));
-    if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });
+    for (const [platform, pRows] of byPlatform) {
+      groups.push({ key: `platform:${platform}`, label: platform, rows: pRows });
+    }
+    if (loose.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: loose });
     return groups;
   })();
   // Always show the account header, even for a single account — every
@@ -272,18 +309,17 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
           <div className="stat-value">{fmtK(totalValue)}</div>
           <div className="stat-sub">{holdings.length} holdings</div>
         </div>
-        <div className="stat-card gold">
-          <div className="stat-icon gold">🏦</div>
-          <div className="stat-label">Phillip Platform</div>
-          <div className="stat-value">{fmtK(phillipValue)}</div>
-          <div className="stat-sub">{totalValue > 0 ? `${((phillipValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
-        </div>
-        <div className="stat-card purple">
-          <div className="stat-icon purple">🏛️</div>
-          <div className="stat-label">iFAST Platform</div>
-          <div className="stat-value">{fmtK(ifastValue)}</div>
-          <div className="stat-sub">{totalValue > 0 ? `${((ifastValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
-        </div>
+        {groupTotals.map((g, i) => {
+          const color = GROUP_CARD_COLORS[i % GROUP_CARD_COLORS.length];
+          return (
+            <div key={g.name} className={`stat-card ${color}`}>
+              <div className={`stat-icon ${color}`}>{GROUP_CARD_ICONS[i % GROUP_CARD_ICONS.length]}</div>
+              <div className="stat-label">{g.name}</div>
+              <div className="stat-value">{fmtK(g.value)}</div>
+              <div className="stat-sub">{totalValue > 0 ? `${((g.value / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Holdings table */}
