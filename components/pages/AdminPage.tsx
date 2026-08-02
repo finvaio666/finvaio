@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AdminOverview, FAStats } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
+import type { PlatformGroup } from '@/lib/platformGroups';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,7 +171,165 @@ function ClientsTab({ faId, faName, onBack }: { faId?: string; faName?: string; 
 
 // ── Main Admin page ───────────────────────────────────────────────────────────
 
-type AdminTab = 'overview' | 'advisors' | 'clients';
+// ── Platforms tab ─────────────────────────────────────────────────────────────
+
+function PlatformsTab() {
+  const [groups,  setGroups]  = useState<PlatformGroup[]>([]);
+  const [inUse,   setInUse]   = useState<string[]>([]);   // platforms seen on live holdings
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [msg,     setMsg]     = useState('');
+  const [err,     setErr]     = useState('');
+  const [newPlatform, setNewPlatform] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [gRes, pRes] = await Promise.all([
+        fetch('/api/admin/platform-groups').then(r => r.json()),
+        fetch('/api/notion?type=portfolio').then(r => r.json()),
+      ]);
+      if (gRes.error) { setErr(gRes.error); return; }
+      setGroups(gRes.groups ?? []);
+      if (Array.isArray(pRes.data)) {
+        setInUse([...new Set(
+          (pRes.data as { platform?: string }[]).map(h => h.platform ?? '').filter(Boolean),
+        )].sort());
+      }
+    } catch { setErr('Failed to load platform groups.'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Platforms present in holdings that no group claims — these are what an
+  // advisor sees as "uncategorised" on the Investment page.
+  const assigned   = new Set(groups.flatMap(g => g.platforms.map(p => p.toLowerCase())));
+  const unassigned = inUse.filter(p => !assigned.has(p.toLowerCase()));
+
+  function update(next: PlatformGroup[]) { setGroups(next); setMsg(''); setErr(''); }
+
+  const addGroup = () => update([...groups, { id: `group-${Date.now()}`, name: '', platforms: [] }]);
+  const removeGroup = (id: string) => update(groups.filter(g => g.id !== id));
+  const renameGroup = (id: string, name: string) =>
+    update(groups.map(g => (g.id === id ? { ...g, name } : g)));
+  const addPlatform = (id: string, platform: string) => {
+    const clean = platform.trim();
+    if (!clean) return;
+    update(groups.map(g => (g.id === id && !g.platforms.some(p => p.toLowerCase() === clean.toLowerCase())
+      ? { ...g, platforms: [...g.platforms, clean] } : g)));
+    setNewPlatform(prev => ({ ...prev, [id]: '' }));
+  };
+  const removePlatform = (id: string, platform: string) =>
+    update(groups.map(g => (g.id === id ? { ...g, platforms: g.platforms.filter(p => p !== platform) } : g)));
+
+  async function save() {
+    setSaving(true); setMsg(''); setErr('');
+    try {
+      const res  = await fetch('/api/admin/platform-groups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? 'Could not save.'); return; }
+      setGroups(data.groups);
+      setMsg('Saved. The Investment page will use these groups.');
+    } catch { setErr('Could not save.'); }
+    finally { setSaving(false); }
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading platform groups…</div>;
+
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 18, lineHeight: 1.6 }}>
+        Group the platforms your holdings sit on. The Investment page breaks total AUM down by these groups,
+        so a platform can only belong to one group.
+      </div>
+
+      {/* Unassigned platforms — surfaces new custodians as soon as holdings appear */}
+      {unassigned.length > 0 && (
+        <div style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '14px 18px', marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>
+            ⚠️ {unassigned.length} platform{unassigned.length === 1 ? '' : 's'} not in any group
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+            Found on live holdings but not grouped yet — their AUM shows as “Ungrouped”.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {unassigned.map(p => (
+              <span key={p} style={{ padding: '4px 10px', borderRadius: 99, fontSize: 12, fontWeight: 600, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'var(--font-mono)' }}>{p}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Groups */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {groups.map(g => (
+          <div key={g.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <input
+                value={g.name}
+                onChange={e => renameGroup(g.id, e.target.value)}
+                placeholder="Group name (e.g. Offshore EAM)"
+                style={{ flex: 1, padding: '8px 12px', fontSize: 14, fontWeight: 700, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+              />
+              <button onClick={() => removeGroup(g.id)} title="Delete group"
+                style={{ padding: '8px 12px', fontSize: 13, background: 'none', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text3)', cursor: 'pointer' }}>🗑</button>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {g.platforms.length === 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>No platforms yet.</span>
+              )}
+              {g.platforms.map(p => (
+                <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 11px', borderRadius: 99, fontSize: 12, fontWeight: 600, background: 'var(--accent-dim)', color: 'var(--accent2)', border: '1px solid var(--border)' }}>
+                  {p}
+                  {inUse.some(u => u.toLowerCase() === p.toLowerCase()) && (
+                    <span title="In use by live holdings" style={{ fontSize: 9, color: 'var(--green)' }}>●</span>
+                  )}
+                  <button onClick={() => removePlatform(g.id, p)} title={`Remove ${p}`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 13, lineHeight: 1, padding: '0 3px' }}>×</button>
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                value={newPlatform[g.id] ?? ''}
+                onChange={e => setNewPlatform(prev => ({ ...prev, [g.id]: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPlatform(g.id, newPlatform[g.id] ?? ''); } }}
+                placeholder="Add platform (e.g. SwissQuote)"
+                list={`platforms-in-use-${g.id}`}
+                style={{ flex: 1, maxWidth: 280, padding: '7px 11px', fontSize: 13, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+              />
+              <datalist id={`platforms-in-use-${g.id}`}>
+                {unassigned.map(p => <option key={p} value={p} />)}
+              </datalist>
+              <button onClick={() => addPlatform(g.id, newPlatform[g.id] ?? '')}
+                style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text2)', cursor: 'pointer' }}>＋ Add</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+        <button onClick={addGroup}
+          style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 99, color: 'var(--text2)', cursor: 'pointer' }}>＋ Add Group</button>
+        <button onClick={save} disabled={saving}
+          style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#F37338', border: 'none', borderRadius: 99, color: '#fff', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Saving…' : 'Save Groups'}
+        </button>
+        {msg && <span style={{ fontSize: 13, color: 'var(--green)' }}>✓ {msg}</span>}
+        {err && <span style={{ fontSize: 13, color: 'var(--red)' }}>{err}</span>}
+      </div>
+    </div>
+  );
+}
+
+type AdminTab = 'overview' | 'advisors' | 'clients' | 'platforms';
 
 export default function AdminPage() {
   const [tab,      setTab]      = useState<AdminTab>('overview');
@@ -226,9 +385,10 @@ export default function AdminPage() {
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
             {([
-              { id: 'overview', label: '📊 Overview'  },
-              { id: 'advisors', label: '👥 Advisors'  },
-              { id: 'clients',  label: '📋 All Clients' },
+              { id: 'overview',  label: '📊 Overview'  },
+              { id: 'advisors',  label: '👥 Advisors'  },
+              { id: 'clients',   label: '📋 All Clients' },
+              { id: 'platforms', label: '🏦 Platforms' },
             ] as { id: AdminTab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -306,6 +466,8 @@ export default function AdminPage() {
           {tab === 'advisors' && (
             <AdvisorsTab advisors={overview.advisors} onSelectFA={handleSelectFA} />
           )}
+
+          {tab === 'platforms' && <PlatformsTab />}
 
           {tab === 'clients' && (
             <ClientsTab

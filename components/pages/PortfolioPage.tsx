@@ -6,6 +6,7 @@ import NavUpdatePanel from '@/components/NavUpdatePanel';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
+import type { PlatformGroup } from '@/lib/platformGroups';
 
 interface Holding {
   id: string;
@@ -26,6 +27,7 @@ interface Holding {
   returnPct: number;
   fameAccountNo?: string;
   fundSource?: string;
+  platform?: string;
 }
 
 const CCY_COLORS: Record<string, string> = {
@@ -51,24 +53,40 @@ const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' :
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
+// Colours cycle so a newly added group still gets a distinct stat card.
+const GROUP_CARD_COLORS = ['gold', 'purple', 'blue', 'green', 'red'] as const;
+const GROUP_CARD_ICONS  = ['🏦', '🏛️', '🌏', '💼', '📉'] as const;
+
 function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Holding[] }[] {
-  const byAccount = new Map<string, Holding[]>();
-  const ungrouped: Holding[] = [];
+  const byAccount = new Map<string, Holding[]>();   // holdings that carry an account no
+  const byPlatform = new Map<string, Holding[]>();  // no account no — bucket per platform
+  const loose: Holding[] = [];                      // neither — nothing to group on
   for (const h of rows) {
     if (h.fameAccountNo) {
       const arr = byAccount.get(h.fameAccountNo) ?? [];
       arr.push(h);
       byAccount.set(h.fameAccountNo, arr);
+    } else if (h.platform) {
+      const arr = byPlatform.get(h.platform) ?? [];
+      arr.push(h);
+      byPlatform.set(h.platform, arr);
     } else {
-      ungrouped.push(h);
+      loose.push(h);
     }
   }
   const groups = Array.from(byAccount.entries()).map(([acct, acctRows]) => ({
     key: acct,
-    label: `Account ${acct}${acctRows[0].fundSource ? ` · ${normalizeFundSource(acctRows[0].fundSource)}` : ''}`,
+    label: [
+      acctRows[0].platform,
+      `Account ${acct}`,
+      acctRows[0].fundSource ? normalizeFundSource(acctRows[0].fundSource) : '',
+    ].filter(Boolean).join(' · '),
     rows: acctRows,
   }));
-  if (ungrouped.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: ungrouped });
+  for (const [platform, pRows] of byPlatform) {
+    groups.push({ key: `platform:${platform}`, label: platform, rows: pRows });
+  }
+  if (loose.length) groups.push({ key: '__manual__', label: 'Other Holdings (manual entries)', rows: loose });
   return groups;
 }
 
@@ -81,6 +99,7 @@ export default function PortfolioPage() {
   const [formOpen,     setFormOpen]    = useState(false);
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
   const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
+  const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
   const { clients: allClients }        = useClients();
 
   const loadHoldings = (fresh = false) => {
@@ -102,6 +121,13 @@ export default function PortfolioPage() {
   }
 
   useEffect(() => { loadHoldings(); }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/platform-groups')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.groups)) setPlatformGroups(d.groups); })
+      .catch(() => { /* breakdown just falls back to "Ungrouped" */ });
+  }, []);
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
 
@@ -128,10 +154,22 @@ export default function PortfolioPage() {
   const foreignCount  = visible.filter(h => h.currency && h.currency !== 'MYR').length;
   const currencies    = [...new Set(visible.map(h => h.currency || 'MYR'))];
 
-  // Platform split: a FAME Account No means the holding was synced from FAME,
-  // which is the Phillip platform; everything else is manually tracked iFAST.
-  const phillipValue = visible.filter(h => h.fameAccountNo).reduce((s, h) => s + h.value, 0);
-  const ifastValue   = totalValue - phillipValue;
+  // AUM split by admin-defined platform group (Local UT / Local EAM / …).
+  // Anything whose platform isn't in a group yet is surfaced as "Ungrouped"
+  // rather than silently dropped, so it can be fixed in Admin → Platforms.
+  const groupTotals = (() => {
+    const totals = platformGroups.map(g => ({ name: g.name, value: 0 }));
+    let ungrouped = 0;
+    for (const h of visible) {
+      const idx = platformGroups.findIndex(g =>
+        g.platforms.some(p => p.toLowerCase() === (h.platform ?? '').toLowerCase()));
+      if (idx >= 0) totals[idx].value += h.value;
+      else ungrouped += h.value;
+    }
+    const rows = totals.filter(t => t.value > 0);
+    if (ungrouped > 0) rows.push({ name: 'Ungrouped', value: ungrouped });
+    return rows;
+  })();
 
   // Group rows by client for visual separation
   const grouped: { client: string; rows: Holding[] }[] = activeTab === 'All'
@@ -228,18 +266,17 @@ export default function PortfolioPage() {
           <div className="stat-value">{loading ? '…' : fmtK(totalValue)}</div>
           <div className="stat-sub">{visible.length} holdings · MYR equiv.</div>
         </div>
-        <div className="stat-card gold">
-          <div className="stat-icon gold">🏦</div>
-          <div className="stat-label">Phillip Platform</div>
-          <div className="stat-value">{loading ? '…' : fmtK(phillipValue)}</div>
-          <div className="stat-sub">{totalValue > 0 ? `${((phillipValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
-        </div>
-        <div className="stat-card purple">
-          <div className="stat-icon purple">🏛️</div>
-          <div className="stat-label">iFAST Platform</div>
-          <div className="stat-value">{loading ? '…' : fmtK(ifastValue)}</div>
-          <div className="stat-sub">{totalValue > 0 ? `${((ifastValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
-        </div>
+        {groupTotals.map((g, i) => {
+          const color = GROUP_CARD_COLORS[i % GROUP_CARD_COLORS.length];
+          return (
+            <div key={g.name} className={`stat-card ${color}`}>
+              <div className={`stat-icon ${color}`}>{GROUP_CARD_ICONS[i % GROUP_CARD_ICONS.length]}</div>
+              <div className="stat-label">{g.name}</div>
+              <div className="stat-value">{loading ? '…' : fmtK(g.value)}</div>
+              <div className="stat-sub">{totalValue > 0 ? `${((g.value / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
+            </div>
+          );
+        })}
         <div className="stat-card blue">
           <div className="stat-icon blue">📦</div>
           <div className="stat-label">Holdings</div>

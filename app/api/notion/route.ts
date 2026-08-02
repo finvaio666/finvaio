@@ -160,6 +160,11 @@ export async function GET(req: NextRequest) {
           institution:   p['Institution']?.type === 'rich_text'  ? p['Institution'].rich_text[0]?.plain_text ?? ''     : '',
           fameAccountNo: p['FAME Account No']?.type === 'rich_text' ? p['FAME Account No'].rich_text[0]?.plain_text ?? '' : '',
           fundSource:    p['Fund Source']?.type === 'rich_text'  ? p['Fund Source'].rich_text[0]?.plain_text ?? ''     : '',
+          // Custodian/venue the holding sits on. Falls back to the pre-Platform
+          // rule so rows the backfill hasn't reached still resolve.
+          platform:      p['Platform']?.type === 'select' && p['Platform'].select?.name
+                           ? p['Platform'].select.name
+                           : (p['FAME Account No']?.type === 'rich_text' && p['FAME Account No'].rich_text[0]?.plain_text ? 'Phillip' : ''),
           status:      p['Status']?.type === 'select'          ? p['Status'].select?.name ?? ''                      : '',
           maturity:    p['Maturity date']?.type === 'date'     ? p['Maturity date'].date?.start ?? ''                 : '',
           currency,
