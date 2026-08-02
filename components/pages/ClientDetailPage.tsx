@@ -219,6 +219,11 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
   const totalGain     = totalValue - totalPurchase;
   const avgReturn     = totalPurchase > 0 ? ((totalGain / totalPurchase) * 100).toFixed(1) : '0.0';
 
+  // Platform split: a FAME Account No means the holding was synced from FAME,
+  // which is the Phillip platform; everything else is manually tracked iFAST.
+  const phillipValue = holdings.filter(h => h.fameAccountNo).reduce((s, h) => s + h.value, 0);
+  const ifastValue   = totalValue - phillipValue;
+
   // Group holdings by FAME account no (e.g. "PMART" account M018415 holds several
   // underlying funds) so a wrapper account and its funds don't read as unrelated,
   // duplicated line items. Holdings with no account no (older manual entries) fall
@@ -268,10 +273,16 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
           <div className="stat-sub">{holdings.length} holdings</div>
         </div>
         <div className="stat-card gold">
-          <div className="stat-icon gold">💵</div>
-          <div className="stat-label">Total Gain / Loss</div>
-          <div className="stat-value" style={{ color: totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtK(totalGain)}</div>
-          <div className="stat-sub">{Number(avgReturn) >= 0 ? '+' : ''}{avgReturn}% avg return</div>
+          <div className="stat-icon gold">🏦</div>
+          <div className="stat-label">Phillip Platform</div>
+          <div className="stat-value">{fmtK(phillipValue)}</div>
+          <div className="stat-sub">{totalValue > 0 ? `${((phillipValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-icon purple">🏛️</div>
+          <div className="stat-label">iFAST Platform</div>
+          <div className="stat-value">{fmtK(ifastValue)}</div>
+          <div className="stat-sub">{totalValue > 0 ? `${((ifastValue / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
         </div>
       </div>
 
