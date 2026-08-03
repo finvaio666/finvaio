@@ -388,7 +388,9 @@ Supabase 2026-07-20 邮件告警 + Security Advisor 报 2 条 ERROR（`rls_disab
 ### §5.6 安全表对齐已执行 + portfolio 暂缓（2026-08-03）
 用户授权「跑 Data aligned」。执行前**先验证**——发现两处与 §5.5 假设相悖，遂只同步无删除的表，portfolio 暂缓：
 
-**🚫 portfolio 暂缓（未跑）**：211 个「孤儿」经抽查**是真实持仓**（Kenanga Growth Fund / Manulife / Principal PRS Plus / TERNIUM SA-ADR / SSR MINING…），**不是** §5.1 那种可弃的 `CASH BAL`/`AMT DUE` 对账单行。`reconcile-portfolio --apply` 会**硬删**这 211 行。209 缺 + 211 孤儿的形态疑似 **Notion 侧重新 key**（同持仓换新 page-id：旧 id→孤儿，新 id→缺失）。删前必须查清，且当前**无新鲜备份**。
+**✅ portfolio 已对齐（2026-08-03，用户授权「Run the sync now」）**：先做只读调查——211 孤儿几乎全是 `[Sky Siew]`，是**其 Notion 组合被重建**（疑 FAME 重同步）的产物：混合了「重-key 的真实持仓」（≥85 确认孪生，重名多手份如 Kenanga ×2 / Principal PRS ×3 藏更多）和「可弃的对账单/现金/股息行」（`CASH BAL (MYR30.00)` 一堆、`…CASH DIVIDEND`）。Notion 为该顾问组合的权威源 → 对齐 = insert 209 新 id + 硬删 211 旧 id。**先把整表 1234 行快照到 scratchpad 兜底**，再 `reconcile-portfolio --apply`（防呆 override）→ **inserted 209 / updated 973 / deleted 211 → 1232 = Notion 1232**，重跑 dry-run **0/0/0** ✅。唯一残余风险（若 Notion 重建本身漏了持仓）需 Sky Siew 侧确认，非同步能验。
+
+> ~~211 孤儿疑似 Notion 重-key，删前须查清 + 需新鲜备份~~ —— 已查清（重建）、已快照、已同步。
 
 **🚨 备份管道已坏**：`~/finvaio-backups` 日备份自 7-28 起每天 `pg_dump rc=1` 失败，**最后一次成功是 7-27**（7 天前）；本机 `pg_dump` 不在 PATH。**任何带删除的 --apply 前必须先修好备份。**
 
