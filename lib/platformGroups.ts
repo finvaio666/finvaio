@@ -10,6 +10,9 @@
  */
 
 import { Client, isFullPage } from '@notionhq/client';
+import * as sbUsers from './repos/users';
+
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 export interface PlatformGroup {
   id:        string;
@@ -31,14 +34,19 @@ function hostNotion(): Client | null {
   return key ? new Client({ auth: key }) : null;
 }
 
-function readJson(p: Record<string, unknown>): PlatformGroup[] | null {
-  const v = p[PROP] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
-  const txt = v?.type === 'rich_text' ? (v.rich_text?.map(r => r.plain_text).join('') ?? '') : '';
+/** Parse a platform-groups JSON blob; null if empty/invalid. Shared by both sources. */
+export function parsePlatformGroups(txt: string | null | undefined): PlatformGroup[] | null {
   if (!txt) return null;
   try {
     const parsed = JSON.parse(txt);
     return Array.isArray(parsed) ? (parsed as PlatformGroup[]) : null;
   } catch { return null; }
+}
+
+function readJson(p: Record<string, unknown>): PlatformGroup[] | null {
+  const v = p[PROP] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
+  const txt = v?.type === 'rich_text' ? (v.rich_text?.map(r => r.plain_text).join('') ?? '') : '';
+  return parsePlatformGroups(txt);
 }
 
 /**
@@ -47,6 +55,17 @@ function readJson(p: Record<string, unknown>): PlatformGroup[] | null {
  * workspace still shows a sensible structure.
  */
 export async function getPlatformGroups(): Promise<PlatformGroup[]> {
+  if (useSupabaseUsers()) {
+    try {
+      const blobs = await sbUsers.listCompanyJson('platform_groups_json');
+      for (const txt of blobs) {
+        const groups = parsePlatformGroups(txt);
+        if (groups && groups.length) return groups;
+      }
+      return DEFAULT_PLATFORM_GROUPS;
+    } catch { return DEFAULT_PLATFORM_GROUPS; }
+  }
+
   const notion  = hostNotion();
   const usersDb = process.env.NOTION_USERS_DB_ID;
   if (!notion || !usersDb) return DEFAULT_PLATFORM_GROUPS;
@@ -67,6 +86,12 @@ export async function getPlatformGroups(): Promise<PlatformGroup[]> {
  * what makes deletions stick — same reasoning as setCompanyInstitutions).
  */
 export async function setPlatformGroups(adminId: string, groups: PlatformGroup[]): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.writeCompanyJson('platform_groups_json', adminId, JSON.stringify(groups));
+    try { await sbUsers.clearCompanyJsonExcept('platform_groups_json', adminId); } catch { /* non-critical */ }
+    return;
+  }
+
   const notion  = hostNotion();
   const usersDb = process.env.NOTION_USERS_DB_ID;
   if (!notion || !usersDb) throw new Error('Server config error');
