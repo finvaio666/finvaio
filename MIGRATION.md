@@ -312,7 +312,41 @@ Supabase 2026-07-20 邮件告警 + Security Advisor 报 2 条 ERROR（`rls_disab
 🔁 **同一元模式的第四次**（分页 ×2、CHECK、RLS）：基础设施默认值不会自动落到手写迁移上。
 **今后所有 `create table` 迁移必须带 `alter table <t> enable row level security;`**。
 
-### Phase 4 — 清理（暂缓执行）  ⏸
+### §5.4 Phase 3.5c — 补齐最后 3 个 ungated 文件 + NRIC 落库加密  ✅ 完成（2026-08-03）
+> 设计+计划：`docs/superpowers/specs/2026-08-03-phase-3.5c-connectivity-and-alignment-design.md`（本地）
+> 目标（用户定）：**全面证明「代码已全连 Supabase」+「数据与 Notion 对齐」**——见 §5.5 终验。
+
+**起因 1（构建炸了）**：合并 `e307124`（Merge branch 'dev'）把 3 个路由文件的**两侧版本直接拼接**（dev 的直连 Notion 版 + Supabase 抽象版），留下重复 import、未实例化的 `notion`、重复声明的 `const data`、未闭合的 `if`——分支自 7-28 起不编译（`npm run dev` 报的就是 `ai/route.ts` 少一个 `}`）。修复 `3aa21cb`：三文件（ai/meetings/notion routes）保留 Supabase 抽象版；`ai/route.ts` 把 dev 侧「同姓客户串数据」的修复**并入抽象版**（按 `clientId` == `ClientRecord.id` 精确解析 + 顾问域校验 + 多同名兜底）。
+
+**起因 2（审计红）**：`npm run audit:notion` 报 3 个 ungated 文件——都是经这次 dev 合并/近期分支工作进来、从未门控的直连 Notion：
+- `lib/platformGroups.ts`（平台分组配置，8-02 的 `b3a6da8`）
+- `app/api/clients/[id]/nric/route.ts`（NRIC reveal，7-17）
+- `app/api/clients/route.ts`（快速建客户，7-25）
+
+**⚠️ 安全发现（落库明文 PII）**：`clients.nric_reg_no` 有 856/896 行有值，且**全是明文**（抽样 30/30）。Notion 侧也约 90% 明文（抽样 34 明文 / 4 加密 / 2 空）——「NRIC 落盘加密」功能（`f40c368`）**代码写了但从未跑全**。且 `NRIC_ENCRYPTION_KEY` **本地任何 env 文件都没有**，那 ~4 条 `enc:v1:` 用的**旧密钥已丢**（不可逆）。用户定：**生成新密钥**，旧加密值 blank + 登记人工重录。
+
+**做法（T1–T6，逐任务提交，均过 task review）**：
+| 任务 | 提交 | 内容 |
+|---|---|---|
+| T1 | `77f2374` | migration 加 `users.platform_groups_json` + `CompanyJsonCol` 并集（`alter table`，非建表，无需 RLS 行） |
+| T2 | `81f2946` | `platformGroups.ts` 门控 `DATA_SOURCE_USERS`，照搬 `institutions.ts`（差异：**首条命中即返回**，非合并；空→DEFAULT） |
+| T3 | `ee504ed` | NRIC 读路径：`ClientRecord.nricRegNo`（**载原始值**，enc 或明文；**禁止整体序列化到浏览器**）；列表 `nricMasked = safeMaskNric`（maskNric∘decryptNric，try/catch→''，缺钥不炸列表）；reveal 路由加 `DATA_SOURCE_CLIENTS` 分支（按 uuid `getClientById` + 顾问域校验 + `decryptNric`） |
+| T4 | `451675e` | 快速建客户加 Supabase 分支 → **audit 0 ungated**。**段位 CHECK 决策**：`clients_client_segment_check` 只允许 HNW/Affluent/Mass Market/Mass Affluent，而快速建默认 `segment='Prospect'` → 决定 **insert 时 'Prospect'→null**（不删约束；reconcile 本就把未设段位当 null；`status='Prospect'` 仍留痕），响应体仍回原 'Prospect' 保持形状一致 |
+| T5 | `334e161` | 自清测试 `scripts/test-phase35c.ts`（22/22，两次跑 clients 896→896、users 8→8） |
+| T6a | `c257df6` | 落库加密脚本 `scripts/encrypt-nric-supabase.ts`（dry-run 默认；`--apply` 先写 gitignore 明文备份；enc:v1 用当前钥试解，成功=已加密跳过，失败=旧死钥 blank+登记；幂等） |
+| T6b | 数据操作(无提交) | 用户在 `.env.local` 放入新钥后：先 `--limit 2` 试跑并验证解密，再全量 `--apply` |
+
+**T6b 结果（库为准）**：854 加密 / **0 明文** / 42 空 / **0 解密失败**（脚本：encrypted 852，blanked 2，skipped 2 试跑，failed 0）。
+- **2 条 blank 需人工重录**（旧死钥不可逆）：`Wong Yoke Ling`、`Wu Ya Huey`——从**原始证件**重录，备份 CSV 里存的是死密文非明文。
+- **明文备份** `scripts/.nric-supabase-backup.csv`（gitignore，60KB，852 条明文）：新钥**安全存档后删除**。
+
+**⚠️ 顺序陷阱（务必）**：加密后 `decryptNric` 需要密钥——列表 mask 缺钥会静默空、reveal 会 500。**部署前新钥必须先进 Vercel（Production+Preview）**。落库加密只做 Supabase 侧（Notion 是 cutover 后冻结的旧源，不动）。
+
+**已知遗留（本轮不做）**：App 无 NRIC **写/改**入口（只在 Notion 里录）——cutover 后新客户 NRIC 无处录入，属既有缺口，另行处理。
+
+### §5.5 终验 —— 全连 Supabase + 与 Notion 数据对齐  🔬 见下节结果
+
+
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
 > 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。
 - [ ] 所有 Notion 旧路径用 `// [NOTION-LEGACY]` 标记 + 注释
