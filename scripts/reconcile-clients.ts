@@ -32,6 +32,13 @@ const ph = (p: P, k: string) => { const v = p[k] as { type: string; phone_number
 const sel = (p: P, k: string) => { const v = p[k] as { type: string; select?: { name: string } | null }; return v?.type === 'select' ? (v.select?.name ?? '') : ''; };
 // select-or-null: empty Notion selects → null (satisfies enum CHECK constraints, e.g. client_segment/risk_profile)
 const selN = (p: P, k: string): string | null => sel(p, k) || null;
+// Coerce out-of-domain select values to null so they satisfy the Supabase CHECKs
+// (clients_client_segment_check / clients_risk_profile_check). Notion selects are
+// free — e.g. 'Prospect' in Client Segment — but the DB only allows a fixed set.
+// Mirrors the app's quick-create decision (map out-of-domain segment → null).
+const SEGMENTS = new Set(['HNW', 'Affluent', 'Mass Market', 'Mass Affluent']);
+const RISKS    = new Set(['Aggressive', 'Moderate', 'Conservative']);
+const selDom = (p: P, k: string, allowed: Set<string>): string | null => { const v = sel(p, k); return v && allowed.has(v) ? v : null; };
 const ms = (p: P, k: string) => { const v = p[k] as { type: string; multi_select?: { name: string }[] }; return v?.type === 'multi_select' ? (v.multi_select ?? []).map(o => o.name) : []; };
 const nnum = (p: P, k: string): number | null => { const v = p[k] as { type: string; number?: number | null }; return v?.type === 'number' ? (v.number ?? null) : null; };
 const dt = (p: P, k: string): string | null => { const v = p[k] as { type: string; date?: { start: string } | null }; return v?.type === 'date' ? ((v.date?.start ?? '').slice(0, 10) || null) : null; };
@@ -54,8 +61,8 @@ function recFromNotion(pg: PageObjectResponse): Rec {
     phone:                ph(p, 'Phone'),
     email:                em(p, 'Email'),
     date_of_birth:        dt(p, 'Date of Birth'),
-    client_segment:       selN(p, 'Client Segment'),
-    risk_profile:         selN(p, 'Risk Profile'),
+    client_segment:       selDom(p, 'Client Segment', SEGMENTS),
+    risk_profile:         selDom(p, 'Risk Profile', RISKS),
     monthly_income_myr:   nnum(p, 'Monthly income (MYR)'),
     financial_goals:      ms(p, 'Financial goals'),
     status:               selN(p, 'Status'),
