@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { decryptNric } from '@/lib/nricCrypto';
+import * as sbClients from '@/lib/repos/clients';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const config = await getAdvisorConfig(advisorId);
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (config.notionApiKey === 'DEMO_MODE') return NextResponse.json({ error: 'Not available in demo.' }, { status: 403 });
+
+  if (process.env.DATA_SOURCE_CLIENTS === 'supabase') {
+    const client = await sbClients.getClientById(id);
+    if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    if (config.role !== 'Admin' && client.advisorName !== config.name) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    try {
+      return NextResponse.json({ nric: decryptNric(client.nricRegNo) });
+    } catch (e) {
+      console.error('nric reveal (supabase) failed:', e);
+      return NextResponse.json({ error: 'Failed to retrieve NRIC' }, { status: 500 });
+    }
+  }
 
   const notion = new Client({ auth: config.notionApiKey });
 

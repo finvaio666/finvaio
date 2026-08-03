@@ -44,6 +44,7 @@ export interface ClientRecord {
   financialGoals: string[];
   phone:          string;
   email:          string;
+  nricRegNo:      string;   // RAW stored NRIC (enc:v1: or plaintext); decrypt only at the masked-list + reveal consumers. NEVER serialize raw to the browser.
   lastEdited:     string;   // Notion page last_edited_time; '' from Supabase (no such column yet)
 }
 
@@ -142,6 +143,7 @@ function mapClientPage(cp: PageObjectResponse): ClientRecord {
     financialGoals: ms(p, 'Financial goals'),
     phone:          phone(p, 'Phone'),
     email:          email(p, 'Email'),
+    nricRegNo:      rt(p, 'NRIC / Reg No'),
     lastEdited:     cp.last_edited_time,
   };
 }

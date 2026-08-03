@@ -36,6 +36,7 @@ interface Row {
   onboarding_date: string | null;
   date_of_birth: string | null;
   advisor: string | null;
+  nric_reg_no: string | null;
 }
 
 function toClient(r: Row): ClientRecord {
@@ -56,11 +57,12 @@ function toClient(r: Row): ClientRecord {
     financialGoals: r.financial_goals ?? [],
     phone:          r.phone ?? '',
     email:          r.email ?? '',
+    nricRegNo:      r.nric_reg_no ?? '',
     lastEdited:     '',   // no last_edited column in Supabase clients yet
   };
 }
 
-const CLIENT_COLS = 'id, notion_id, client_name, phone, email, client_segment, risk_profile, aum_myr, monthly_income_myr, financial_goals, status, next_review_date, last_review_date, onboarding_date, date_of_birth, advisor';
+const CLIENT_COLS = 'id, notion_id, client_name, phone, email, client_segment, risk_profile, aum_myr, monthly_income_myr, financial_goals, status, next_review_date, last_review_date, onboarding_date, date_of_birth, advisor, nric_reg_no';
 
 /** List clients. Admin sees all (optionally filtered to one FA); others see own. */
 export async function listClients(

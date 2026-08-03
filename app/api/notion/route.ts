@@ -7,8 +7,15 @@ import { listAssets } from '@/lib/assets';
 import { listCashflow } from '@/lib/cashflow';
 import { listPlans, listFunds } from '@/lib/products';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE, DEMO_CASHFLOW, DEMO_INSURANCE_PLANS, DEMO_FUNDS } from '@/lib/demoData';
+import { decryptNric, maskNric } from '@/lib/nricCrypto';
 
 export const dynamic = 'force-dynamic';
+
+// NRIC is stored encrypted-or-plaintext; only a masked form leaves this route.
+// Missing key / bad ciphertext must not fail the whole client list.
+function safeMaskNric(raw: string): string {
+  try { return maskNric(decryptNric(raw)); } catch { return ''; }
+}
 
 // Short server-side cache per advisor+type. Pages (Clients, Investment,
 // Insurance, Net Worth, Cashflow) re-fetch from Notion on every load — this
@@ -99,6 +106,7 @@ export async function GET(req: NextRequest) {
           phone:      c.phone,
           email:      c.email,
           dob:        c.dob,
+          nricMasked: safeMaskNric(c.nricRegNo),
         }));
       return json({ data });
     }
