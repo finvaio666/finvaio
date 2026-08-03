@@ -51,6 +51,8 @@ next-env.d.ts
 # NRIC migration plaintext backup — never commit
 scripts/.nric-backup.csv
 scripts/.nric-supabase-backup.csv
+.nric-supabase-backup.csv
+.nric*.csv
 # migration planning docs — local only, not part of the app repo
 /MIGRATION.md
 /NOTION_CLEANUP.md
