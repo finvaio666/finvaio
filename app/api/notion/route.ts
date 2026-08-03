@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { queryAllPages } from '@/lib/notionQueryAll';
-import { decryptNric, maskNric } from '@/lib/nricCrypto';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { listPolicies } from '@/lib/insurance';
@@ -83,39 +81,6 @@ export async function GET(req: NextRequest) {
 
   try {
     if (type === 'clients') {
-      if (!DB.clients) return NextResponse.json({ data: [] });
-      const pages = await queryAllPages(notion, {
-        database_id: DB.clients,
-        ...scoped(),
-        sorts: [{ property: 'Client Name', direction: 'ascending' }],
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        // NRIC is stored encrypted (enc:v1:…) in Notion; only a masked form ever
-        // leaves this route. Full value is served by /api/clients/[id]/nric.
-        let nricMasked = '';
-        try {
-          const nricRaw = p['NRIC / Reg No']?.type === 'rich_text' ? p['NRIC / Reg No'].rich_text[0]?.plain_text ?? '' : '';
-          nricMasked = maskNric(decryptNric(nricRaw));
-        } catch { /* missing key or corrupt ciphertext — omit rather than fail the list */ }
-        return {
-          id: page.id,
-          nricMasked,
-          name:        p['Client Name']?.type === 'title'           ? p['Client Name'].title[0]?.plain_text ?? ''            : '',
-          status:      p['Status']?.type === 'select'               ? p['Status'].select?.name ?? ''                         : '',
-          segment:     p['Client Segment']?.type === 'select'       ? p['Client Segment'].select?.name ?? ''                 : '',
-          aum:         p['AUM (MYR)']?.type === 'number'            ? p['AUM (MYR)'].number ?? 0                             : 0,
-          income:      p['Monthly income (MYR)']?.type === 'number' ? p['Monthly income (MYR)'].number ?? 0                  : 0,
-          risk:        p['Risk Profile']?.type === 'select'         ? p['Risk Profile'].select?.name ?? ''                   : '',
-          nextReview:  p['Next review date']?.type === 'date'       ? p['Next review date'].date?.start ?? ''                : '',
-          lastReview:  p['Last review date']?.type === 'date'       ? p['Last review date'].date?.start ?? ''                : '',
-          onboarding:  p['Onboarding date']?.type === 'date'        ? p['Onboarding date'].date?.start ?? ''                 : '',
-          goals:       p['Financial goals']?.type === 'multi_select'? p['Financial goals'].multi_select.map(g => g.name)    : [],
-          phone:       p['Phone']?.type === 'phone_number'          ? p['Phone'].phone_number ?? ''                          : '',
-          email:       p['Email']?.type === 'email'                 ? p['Email'].email ?? ''                                 : '',
-          dob:         p['Date of Birth']?.type === 'date'          ? p['Date of Birth'].date?.start ?? ''                   : '',
-        };
-      });
       // Clients via the data-source abstraction (Notion or Supabase per flag).
       const data = (await listClients(config))
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -179,63 +144,6 @@ export async function GET(req: NextRequest) {
             returnPct:     purchase > 0 ? Math.round((gain / purchase) * 100) : 0,
           };
         });
-      const [clientPages, pages] = await Promise.all([
-        queryAllPages(notion, { database_id: DB.clients, ...scoped() }),
-        queryAllPages(notion, {
-          database_id: DB.portfolio,
-          ...scoped(),
-          sorts: [{ property: 'Holding Name', direction: 'ascending' }],
-        }),
-      ]);
-      const clientMap: Record<string, string> = {};
-      clientPages.forEach(page => {
-        const name = page.properties['Client Name']?.type === 'title'
-          ? page.properties['Client Name'].title[0]?.plain_text ?? '' : '';
-        if (name) clientMap[page.id] = name;
-      });
-      const data = pages.map(page => {
-        const p = page.properties;
-        const currency      = p['Currency']?.type === 'select'  ? p['Currency'].select?.name ?? 'MYR'  : 'MYR';
-        const valueOrig     = p['Value (Original Currency)']?.type === 'number' ? p['Value (Original Currency)'].number ?? 0 : 0;
-        const purchaseOrig  = p['Purchase price (original currency)']?.type === 'number' ? p['Purchase price (original currency)'].number ?? 0 : 0;
-        const fxRate        = p['FX Rate to MYR']?.type === 'number' ? p['FX Rate to MYR'].number ?? 1 : 1;
-        const value    = p['Value (MYR)']?.type === 'number'          ? p['Value (MYR)'].number ?? (valueOrig * fxRate)           : (valueOrig * fxRate);
-        const purchase = p['Purchase price (MYR)']?.type === 'number' ? p['Purchase price (MYR)'].number ?? (purchaseOrig * fxRate) : (purchaseOrig * fxRate);
-        const gain     = value - purchase;
-        const ret      = purchase > 0 ? Math.round((gain / purchase) * 100) : 0;
-
-        const clientRelIds = p['👥 Clients']?.type === 'relation' ? p['👥 Clients'].relation.map(r => r.id) : [];
-        const clientName   = clientRelIds.map(id => clientMap[id] ?? '').filter(Boolean).join(', ');
-        const clientId     = clientRelIds[0] ?? '';
-        const units        = p['Units']?.type === 'number' ? p['Units'].number ?? 0 : 0;
-
-        return {
-          id: page.id,
-          clientId,
-          units,
-          name:          p['Holding Name']?.type === 'title'     ? p['Holding Name'].title[0]?.plain_text ?? ''        : '',
-          clientName,
-          assetClass:    p['Asset class']?.type === 'select'     ? p['Asset class'].select?.name ?? ''                 : '',
-          institution:   p['Institution']?.type === 'rich_text'  ? p['Institution'].rich_text[0]?.plain_text ?? ''     : '',
-          fameAccountNo: p['FAME Account No']?.type === 'rich_text' ? p['FAME Account No'].rich_text[0]?.plain_text ?? '' : '',
-          fundSource:    p['Fund Source']?.type === 'rich_text'  ? p['Fund Source'].rich_text[0]?.plain_text ?? ''     : '',
-          // Custodian/venue the holding sits on. Falls back to the pre-Platform
-          // rule so rows the backfill hasn't reached still resolve.
-          platform:      p['Platform']?.type === 'select' && p['Platform'].select?.name
-                           ? p['Platform'].select.name
-                           : (p['FAME Account No']?.type === 'rich_text' && p['FAME Account No'].rich_text[0]?.plain_text ? 'Phillip' : ''),
-          status:      p['Status']?.type === 'select'          ? p['Status'].select?.name ?? ''                      : '',
-          maturity:    p['Maturity date']?.type === 'date'     ? p['Maturity date'].date?.start ?? ''                 : '',
-          currency,
-          valueOrig,
-          purchaseOrig,
-          fxRate,
-          value,
-          purchase,
-          gain,
-          returnPct: ret,
-        };
-      });
       return json({ data });
     }
 

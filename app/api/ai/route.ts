@@ -95,55 +95,36 @@ async function buildClientContext(
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.context;
 
   if (!config.notionApiKey || !config.clientsDbId) return '';
-  const notion = new Client({ auth: config.notionApiKey });
-  const af = advisorFilter(config);
+  // ── 1. Resolve the client (via the clients abstraction; advisor-scoped) ─────
+  // Prefer the exact client id the picker passes — the only reliable way to
+  // disambiguate clients who share a surname (Lim, Tan, Wong, Ng, ...). Because
+  // listClients is already advisor-scoped, an id belonging to another advisor
+  // simply won't be found (correct access control). Name-based lookup is a
+  // fallback for callers that don't pass an id; if several clients share that
+  // name we refuse rather than guess the wrong one.
+  const allClients = await listClients(config).catch(() => []);
 
-  // ── 1. Resolve the client page ───────────────────────────────────────────
-  // Prefer the exact Notion page ID the frontend already has from the client
-  // picker — this is the only way to avoid mismatches when multiple clients
-  // share a surname (very common: Lim, Tan, Wong, Ng, ...). Name-based lookup
-  // is kept only as a fallback for older callers that don't pass an ID; it
-  // now requires an EXACT (not "contains") name match to stay safe.
-  let clientPage: Awaited<ReturnType<typeof notion.pages.retrieve>> | undefined;
-
+  let client;
   if (clientId) {
-    try {
-      const pg = await notion.pages.retrieve({ page_id: clientId });
-      if (isFullPage(pg)) {
-        const owner = (pg.properties['Advisor'] as { type: string; select?: { name: string } } | undefined)?.select?.name ?? '';
-        const isAdmin = config.role === 'Admin';
-        if (isAdmin || owner === config.name) clientPage = pg;
-      }
-    } catch (e) { console.error('Client page retrieve failed:', e); }
-
-    if (!clientPage) {
+    client = allClients.find(c => c.id === clientId);
+    if (!client) {
       return `Client not found or not accessible. Please re-select the client.`;
     }
   } else {
-    const clientRes = await notion.databases.query({
-      database_id: config.clientsDbId,
-      filter: af ? { and: [af, { property: 'Client Name', title: { equals: clientName } }] } : { property: 'Client Name', title: { equals: clientName } },
-    });
-    const clientPages = clientRes.results.filter(isFullPage);
-    if (clientPages.length > 1) {
+    const exact = allClients.filter(c => c.name.toLowerCase() === clientName.toLowerCase());
+    if (exact.length > 1) {
       return `Multiple clients are named "${clientName}" — please select the specific client from the picker instead of typing the name.`;
     }
-    clientPage = clientPages[0];
-  }
+    const first       = clientName.split(' ')[0].toLowerCase();
+    const nameMatches = allClients.filter(c => c.name.toLowerCase().includes(first));
+    client = exact[0] ?? nameMatches.find(c =>
+      c.name.toLowerCase().includes(clientName.toLowerCase()) ||
+      clientName.toLowerCase().includes(c.name.split(' ')[0].toLowerCase())
+    ) ?? nameMatches[0];
 
-  if (!clientPage || !isFullPage(clientPage)) {
-
-  // ── 1. Find client by name (via the clients abstraction; advisor-scoped) ────
-  const first       = clientName.split(' ')[0].toLowerCase();
-  const allClients  = await listClients(config).catch(() => []);
-  const nameMatches = allClients.filter(c => c.name.toLowerCase().includes(first));
-  const client      = nameMatches.find(c =>
-    c.name.toLowerCase().includes(clientName.toLowerCase()) ||
-    clientName.toLowerCase().includes(c.name.split(' ')[0].toLowerCase())
-  ) ?? nameMatches[0];
-
-  if (!client) {
-    return `Client "${clientName}" not found in Notion. Please verify the name.`;
+    if (!client) {
+      return `Client "${clientName}" not found. Please verify the name.`;
+    }
   }
 
   const name      = client.name || clientName;
