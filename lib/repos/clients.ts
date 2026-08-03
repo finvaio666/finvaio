@@ -86,6 +86,30 @@ export async function listClients(
   return rows.map(toClient);
 }
 
+/** Quick-create a client (native row: no notion_id). Returns the new uuid.
+ *  `segment` is nullable — 'Prospect' is not a valid client_segment CHECK value,
+ *  so the route passes null for prospects (see the route's mapping). */
+export async function createClient(input: {
+  name: string;
+  email?: string;
+  phone?: string;
+  status: string;
+  segment: string | null;
+  advisor: string;
+}): Promise<{ id: string }> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).insert({
+    client_name:    input.name,
+    email:          input.email || null,
+    phone:          input.phone || null,
+    status:         input.status,
+    client_segment: input.segment,
+    advisor:        input.advisor,
+  }).select('id').single();
+  if (error) throw new Error(`clients insert failed: ${error.message}`);
+  return { id: (data as { id: string }).id };
+}
+
 /** A single client by uuid, or null. Unscoped — callers enforce ownership. */
 export async function getClientById(clientId: string): Promise<ClientRecord | null> {
   const sb = getSupabase();
