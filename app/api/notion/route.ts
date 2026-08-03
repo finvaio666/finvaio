@@ -167,8 +167,8 @@ export async function GET(req: NextRequest) {
 
       // Clients + policies via the data-source abstraction; join on notion_id.
       const [clients, policies] = await Promise.all([listClients(config), listPolicies(config)]);
-      const clientMap: Record<string, { name: string; income: number }> = {};
-      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { name: c.name, income: c.monthlyIncome };
+      const clientMap: Record<string, { id: string; name: string; income: number }> = {};
+      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { id: c.id, name: c.name, income: c.monthlyIncome };
 
       const data = policies
         .slice()
@@ -178,6 +178,7 @@ export async function GET(req: NextRequest) {
           return {
             id:               pol.id,
             policyName:       pol.policyName,
+            clientId:         client?.id ?? '',
             clientName:       client?.name ?? '',
             clientIncome:     client?.income ?? 0,
             insuranceType:    pol.insuranceType,

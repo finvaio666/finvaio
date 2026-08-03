@@ -90,8 +90,8 @@ function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Ho
   return groups;
 }
 
-export default function PortfolioPage() {
-  const [holdings,     setHoldings]    = useState<Holding[]>([]);
+export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}) {
+  const [allHoldings,  setHoldings]    = useState<Holding[]>([]);
   const [loading,      setLoading]     = useState(true);
   const [activeTabId,  setTabId]       = useState<string>('');  // '' | 'All' | clientId
   const [showSwitch,   setShowSwitch]  = useState(false);
@@ -129,12 +129,22 @@ export default function PortfolioPage() {
       .catch(() => { /* breakdown just falls back to "Ungrouped" */ });
   }, []);
 
+  // On a sub-menu page (/portfolio/local-ut) everything below is scoped to that
+  // group's platforms; on /portfolio it's the whole book.
+  const activeGroup = groupSlug ? platformGroups.find(g => g.id === groupSlug) ?? null : null;
+  const holdings = activeGroup
+    ? allHoldings.filter(h => activeGroup.platforms.some(p => p.toLowerCase() === (h.platform ?? '').toLowerCase()))
+    : allHoldings;
+
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
 
-  // Build unique clients list from holdings for the combobox (no separate clients fetch)
-  const uniqueClients = Array.from(
-    new Map(holdings.map(h => [h.clientId, { id: h.clientId, name: h.clientName || 'Unknown' }])).values()
-  ).sort((a, b) => a.name.localeCompare(b.name));
+  // Only clients holding investments belong in the picker, so it stays driven by
+  // the holdings. Each one is swapped for its full client record where available —
+  // the stub carries no email/phone/segment, which the combobox searches on.
+  const clientById = new Map(allClients.map(c => [c.id, c]));
+  const uniqueClients = Array.from(new Map(holdings.map(h => [h.clientId, h])).values())
+    .map(h => clientById.get(h.clientId) ?? { id: h.clientId, name: h.clientName || 'Unknown' })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Derive activeTab (name string) from id — preserves all existing filtering logic
   const activeTab: string | null = activeTabId === ''
@@ -154,10 +164,20 @@ export default function PortfolioPage() {
   const foreignCount  = visible.filter(h => h.currency && h.currency !== 'MYR').length;
   const currencies    = [...new Set(visible.map(h => h.currency || 'MYR'))];
 
-  // AUM split by admin-defined platform group (Local UT / Local EAM / …).
-  // Anything whose platform isn't in a group yet is surfaced as "Ungrouped"
-  // rather than silently dropped, so it can be fixed in Admin → Platforms.
-  const groupTotals = (() => {
+  // Breakdown cards drill down one level: the top-level page splits AUM by
+  // group (Local UT / Local EAM / …), a group page splits it by the platforms
+  // inside that group (Phillip / iFAST). Anything whose platform isn't in a
+  // group shows as "Ungrouped" rather than silently vanishing — fix it in
+  // Admin → Platforms.
+  const breakdown = (() => {
+    if (activeGroup) {
+      const totals = activeGroup.platforms.map(p => ({ name: p, value: 0 }));
+      for (const h of visible) {
+        const idx = activeGroup.platforms.findIndex(p => p.toLowerCase() === (h.platform ?? '').toLowerCase());
+        if (idx >= 0) totals[idx].value += h.value;
+      }
+      return totals.filter(t => t.value > 0);
+    }
     const totals = platformGroups.map(g => ({ name: g.name, value: 0 }));
     let ungrouped = 0;
     for (const h of visible) {
@@ -252,8 +272,14 @@ export default function PortfolioPage() {
       {!activeTab && (
         <div className="section" style={{ padding: '64px 32px', textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>📈</div>
-          <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>Select a client to view their portfolio</div>
-          <div style={{ fontSize: 13, color: 'var(--text3)' }}>Choose a client from the dropdown above to see their holdings, gains, and asset allocation.</div>
+          <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>
+            {activeGroup ? `Select a client to view their ${activeGroup.name} holdings` : 'Select a client to view their portfolio'}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>
+            {activeGroup
+              ? `Showing ${activeGroup.platforms.join(' and ')} only. Choose a client above, or use “All Clients”.`
+              : 'Choose a client from the dropdown above to see their holdings, gains, and asset allocation.'}
+          </div>
         </div>
       )}
 
@@ -266,7 +292,7 @@ export default function PortfolioPage() {
           <div className="stat-value">{loading ? '…' : fmtK(totalValue)}</div>
           <div className="stat-sub">{visible.length} holdings · MYR equiv.</div>
         </div>
-        {groupTotals.map((g, i) => {
+        {breakdown.map((g, i) => {
           const color = GROUP_CARD_COLORS[i % GROUP_CARD_COLORS.length];
           return (
             <div key={g.name} className={`stat-card ${color}`}>

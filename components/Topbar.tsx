@@ -29,7 +29,17 @@ interface TopbarProps {
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname();
   const [dateStr, setDateStr] = useState('');
-  const title = pageTitles[pathname] || 'Dashboard';
+  // Investment sub-pages (/portfolio/local-ut) are titled with their group name,
+  // read from the same cache the sidebar populates.
+  const groupTitle = (() => {
+    const slug = pathname.startsWith('/portfolio/') ? pathname.slice('/portfolio/'.length) : '';
+    if (!slug || typeof window === 'undefined') return '';
+    try {
+      const groups = JSON.parse(sessionStorage.getItem('aria-platform-groups') ?? '[]') as { id: string; name: string }[];
+      return groups.find(g => g.id === slug)?.name ?? '';
+    } catch { return ''; }
+  })();
+  const title = groupTitle || pageTitles[pathname] || (pathname.startsWith('/portfolio') ? 'Investment' : 'Dashboard');
 
   useEffect(() => {
     setDateStr(new Date().toLocaleDateString('en-MY', {

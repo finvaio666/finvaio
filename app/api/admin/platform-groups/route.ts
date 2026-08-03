@@ -44,13 +44,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'groups must be an array' }, { status: 400 });
   }
 
-  const clean: PlatformGroup[] = body.groups.map((g, i) => ({
-    id:   String(g.id ?? `group-${i}`).slice(0, 64),
-    name: String(g.name ?? '').trim().slice(0, 80),
-    platforms: Array.isArray(g.platforms)
-      ? [...new Set(g.platforms.map(p => String(p).trim()).filter(Boolean))].slice(0, 50)
-      : [],
-  })).filter(g => g.name);
+  // Ids double as URL slugs (/portfolio/local-ut), so give newly-created groups
+  // a readable one derived from the name. Existing ids are left alone — they're
+  // already linked from the nav and shouldn't move under a rename.
+  const usedIds = new Set<string>();
+  const slugify = (name: string) => {
+    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'group';
+    let slug = base, n = 2;
+    while (usedIds.has(slug)) slug = `${base}-${n++}`;
+    return slug;
+  };
+
+  const clean: PlatformGroup[] = body.groups.map((g, i) => {
+    const name = String(g.name ?? '').trim().slice(0, 80);
+    const rawId = String(g.id ?? '').slice(0, 64);
+    const id = !rawId || /^group-\d+$/.test(rawId) ? slugify(name || `group-${i}`) : rawId;
+    usedIds.add(id);
+    return {
+      id,
+      name,
+      platforms: Array.isArray(g.platforms)
+        ? [...new Set(g.platforms.map(p => String(p).trim()).filter(Boolean))].slice(0, 50)
+        : [],
+    };
+  }).filter(g => g.name);
 
   // A platform in two groups would double-count AUM, so reject rather than
   // silently pick one.

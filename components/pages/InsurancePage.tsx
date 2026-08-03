@@ -8,6 +8,7 @@ import { MedicalDetail } from '@/components/MedicalDetail';
 interface Policy {
   id: string;
   policyName: string;
+  clientId: string;
   clientName: string;
   clientIncome: number;
   insuranceType: string;
@@ -36,6 +37,9 @@ interface ClientData {
   name: string;
   income: number;
   aum: number;
+  segment?: string;
+  email?: string;
+  phone?: string;
 }
 
 // ── Colors ──────────────────────────────────────────────────────────────────
@@ -266,6 +270,13 @@ export default function InsurancePage() {
 
   const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
 
+  // Only offer clients this page can actually show policies for. Names are matched
+  // alongside ids because a policy can be attributed to its Policy Owner instead of
+  // the linked client (see ownerOf below).
+  const insuredIds   = new Set(policies.map(p => p.clientId).filter(Boolean));
+  const insuredNames = new Set(policies.flatMap(p => [p.clientName, (p.policyOwner || '').trim()]).filter(Boolean));
+  const pickerClients = clients.filter(c => insuredIds.has(c.id) || insuredNames.has(c.name));
+
   // Derive name from id for filtering (policies only have clientName)
   const filterClient: string | null = filterClientId === ''
     ? null
@@ -323,7 +334,7 @@ export default function InsurancePage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <div style={{ width: 300 }}>
           <ClientSearchCombobox
-            clients={clients}
+            clients={pickerClients}
             value={filterClientId === 'All' ? '' : filterClientId}
             onChange={c => { setFilterId(c?.id ?? ''); setSearch(''); }}
             placeholder="Search client…"

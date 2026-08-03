@@ -55,6 +55,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     return { name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' };
   });
   const [features, setFeatures] = useState<string[]>([]);
+  // Investment sub-menu — one entry per admin-defined platform group. Seeded
+  // from cache so the sub-items don't pop in on every navigation.
+  const [platformGroups, setPlatformGroups] = useState<{ id: string; name: string }[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(sessionStorage.getItem('aria-platform-groups') ?? '[]'); } catch { return []; }
+  });
   // Seed from the last known role (cached client-side) so the nav doesn't
   // flash Advisor → Admin on every page load while /api/auth/me resolves.
   const [isAdmin,  setIsAdmin]  = useState(() =>
@@ -79,6 +85,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         sessionStorage.setItem('aria-role', d.role === 'Admin' ? 'Admin' : 'Advisor');
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/platform-groups')
+      .then(r => r.json())
+      .then(d => {
+        if (!Array.isArray(d.groups)) return;
+        const slim = d.groups.map((g: { id: string; name: string }) => ({ id: g.id, name: g.name }));
+        setPlatformGroups(slim);
+        sessionStorage.setItem('aria-platform-groups', JSON.stringify(slim));
+      })
+      .catch(() => { /* nav just falls back to a flat Investment link */ });
   }, []);
 
   async function handleLogout() {
@@ -161,15 +179,34 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <div key={group.group}>
                     <div className="nav-label">{group.group}</div>
                     {visibleItems.map((item) => (
-                      <Link
-                        key={item.id}
-                        href={item.href}
-                        className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
-                        onClick={onClose}
-                      >
-                        {item.icon}
-                        {item.label}
-                      </Link>
+                      <div key={item.id}>
+                        <Link
+                          href={item.href}
+                          className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
+                          onClick={onClose}
+                        >
+                          {item.icon}
+                          {item.label}
+                        </Link>
+                        {/* Investment splits into its platform groups (Local UT,
+                            Local EAM, …). Shown only while somewhere under
+                            /portfolio so the nav stays compact elsewhere. */}
+                        {item.id === 'portfolio' && platformGroups.length > 0 && isActive('/portfolio') && (
+                          <div style={{ marginLeft: 30, borderLeft: '1px solid var(--border)', paddingLeft: 4, marginTop: 2, marginBottom: 4 }}>
+                            {platformGroups.map(g => (
+                              <Link
+                                key={g.id}
+                                href={`/portfolio/${g.id}`}
+                                onClick={onClose}
+                                className={`nav-item ${pathname === `/portfolio/${g.id}` ? 'active' : ''}`}
+                                style={{ fontSize: 12, padding: '6px 10px' }}
+                              >
+                                {g.name}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 );
