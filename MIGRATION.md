@@ -377,7 +377,7 @@ Supabase 2026-07-20 邮件告警 + Security Advisor 报 2 条 ERROR（`rls_disab
 **结论**：cutover 当天需**跑一次全量 `reconcile --apply`**（pre-cutover、有人在场、防呆此时未触发）把这 ~252 条灌进 Supabase——§5.1 已证明该工具能收敛到 0/0/0。**这正是原计划里「cutover 日重跑 reconcile」那一步。**
 
 **🚨 cutover 前必须先修：`reconcile-clients --apply` 会把 NRIC 加密覆盖回明文**
-`reconcile-clients` 逐字段比对，`nric_reg_no` 在其比对列内（脚本第 45 行）。加密后 Supabase 是 `enc:v1:`、Notion 多是明文 → dry-run 把 854 行记成「字段改」。若此时直接 `--apply`，它会 `update clients set nric_reg_no = <Notion 明文>`——**把刚加密的 854 行还原成明文**。cutover 日重跑前，三选一：
+`reconcile-clients` 逐字段比对，`nric_reg_no` 在其比对列内（脚本第 45 行），且 **insert（第 138 行）和 update（第 143 行）两条写路径都直接写 Notion 明文**。加密后 Supabase 是 `enc:v1:`、Notion 多是明文 → dry-run 把 854 行记成「字段改」。若此时直接 `--apply`：update 会**把刚加密的 854 行还原成明文**，insert 会把那 4 个缺失客户也以**明文**灌进来。cutover 日重跑前，三选一：
 1. 让 `reconcile-clients` 写入前对 `nric_reg_no` 调 `encryptNric`（与 App 一致）；或
 2. 从 reconcile 的更新列里**排除** `nric_reg_no`（灌行数据、不动 NRIC）；或
 3. reconcile 之后**再跑一次** `scripts/encrypt-nric-supabase.ts --apply`（幂等，会把新灌进来的明文重新加密）。
