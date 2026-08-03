@@ -188,7 +188,7 @@ export async function getStoredHash(advisorId: string): Promise<string | null> {
  * non-empty" is deterministic. It does NOT reflect insertion order: all 8 rows
  * share one bulk-seed created_at, so notion_id is the effective tiebreaker.
  */
-export type CompanyJsonCol = 'institutions_json' | 'email_themes_json' | 'market_digest_json';
+export type CompanyJsonCol = 'institutions_json' | 'email_themes_json' | 'market_digest_json' | 'platform_groups_json';
 
 /** Every non-empty value of a company JSON column, oldest row first. */
 export async function listCompanyJson(col: CompanyJsonCol): Promise<string[]> {
