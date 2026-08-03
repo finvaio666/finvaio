@@ -385,6 +385,31 @@ Supabase 2026-07-20 邮件告警 + Security Advisor 报 2 条 ERROR（`rls_disab
 
 
 
+### §5.6 安全表对齐已执行 + portfolio 暂缓（2026-08-03）
+用户授权「跑 Data aligned」。执行前**先验证**——发现两处与 §5.5 假设相悖，遂只同步无删除的表，portfolio 暂缓：
+
+**🚫 portfolio 暂缓（未跑）**：211 个「孤儿」经抽查**是真实持仓**（Kenanga Growth Fund / Manulife / Principal PRS Plus / TERNIUM SA-ADR / SSR MINING…），**不是** §5.1 那种可弃的 `CASH BAL`/`AMT DUE` 对账单行。`reconcile-portfolio --apply` 会**硬删**这 211 行。209 缺 + 211 孤儿的形态疑似 **Notion 侧重新 key**（同持仓换新 page-id：旧 id→孤儿，新 id→缺失）。删前必须查清，且当前**无新鲜备份**。
+
+**🚨 备份管道已坏**：`~/finvaio-backups` 日备份自 7-28 起每天 `pg_dump rc=1` 失败，**最后一次成功是 7-27**（7 天前）；本机 `pg_dump` 不在 PATH。**任何带删除的 --apply 前必须先修好备份。**
+
+**✅ 已同步的表**（0 孤儿→只 insert/update，无删除；跑前先把 clients 全表快照到 scratchpad）：
+| 表 | 结果 |
+|---|---|
+| insurance | +1 → 1081 = Notion 1081 ✅ |
+| meeting_notes | +7 → 18 = 18 ✅ |
+| tasks | +14 → 40 notion + 2 native ✅ |
+| ai_usage | +17 → 105 notion + 1 native ✅ |
+| clients | +4 → **900 = Notion 900** ✅（含修 CHECK，见下） |
+| assets / cashflow / forms_library / users | 本就 0/0/0 ✅ |
+
+**clients 的 CHECK 崩溃（第 5 次同类缺陷）**：`reconcile-clients --apply` 插到 `TEH KAH YEE`（Notion `Client Segment='Prospect'`）时撞 `clients_client_segment_check`（只允许 HNW/Affluent/Mass Market/Mass Affluent）→ insert 循环中断（已插 3、崩在第 4；update 循环没跑——副作用是 **NRIC 没被 update 循环还原**）。修（commit `0f836fc`）：`reconcile-clients` 加 `selDom()`，越域 segment/risk → null（沿用 §5.4 T4「Prospect→null、不删约束」的决定）。重跑 → 900=900、0 孤儿。
+
+**NRIC 落地补丁（§5.5 的 option 3）**：每次 `reconcile-clients --apply` 后立即 `encrypt-nric-supabase.ts --apply` 重加密（reconcile 把 NRIC 写回 Notion 明文 → backfill 再加密）。本轮末态：**854 加密 / 0 明文 / 0 解密失败**。
+- **4 位客户 NRIC 需人工重录**（旧死钥不可逆，已 blank）：`Wong Yoke Ling`、`Wu Ya Huey`、`Lim Kai Liang`、`Chan Chee Keng`。
+
+**剩余（给 cutover）**：① 修 `pg_dump` 备份；② 查清 portfolio 重-key 再决定其同步；③ cutover 日重跑全量（reconcile-clients 现已 CHECK-safe，NRIC 补丁流程已固化）。
+
+### Phase 4 — 清理（暂缓执行）  ⏸
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
 > 等系统在 Supabase 上稳定运行一段时间后，再按那份清单统一清理。
 - [ ] 所有 Notion 旧路径用 `// [NOTION-LEGACY]` 标记 + 注释
