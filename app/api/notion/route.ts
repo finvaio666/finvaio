@@ -239,6 +239,7 @@ export async function GET(req: NextRequest) {
         return {
           id:               page.id,
           policyName:       p['Policy Name']?.type === 'title'          ? p['Policy Name'].title[0]?.plain_text ?? ''          : '',
+          clientId:         clientRelIds[0] ?? '',
           clientName:       clientInfo?.name ?? '',
           clientIncome:     clientInfo?.income ?? 0,
           insuranceType:    p['Insurance Type']?.type === 'select'       ? p['Insurance Type'].select?.name ?? ''               : '',
