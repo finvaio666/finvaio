@@ -344,7 +344,45 @@ Supabase 2026-07-20 邮件告警 + Security Advisor 报 2 条 ERROR（`rls_disab
 
 **已知遗留（本轮不做）**：App 无 NRIC **写/改**入口（只在 Notion 里录）——cutover 后新客户 NRIC 无处录入，属既有缺口，另行处理。
 
-### §5.5 终验 —— 全连 Supabase + 与 Notion 数据对齐  🔬 见下节结果
+### §5.5 终验 —— 全连 Supabase + 与 Notion 数据对齐（2026-08-03）
+
+**8.1 代码已全连 Supabase —— ✅ 通过**
+- `npm run audit:notion` → **0 UNGATED**（37 gated / 10 allowlisted）。所有数据路径都门控在 `DATA_SOURCE_*`，无任何静默直连 Notion。
+- `npx tsc --noEmit` 干净。
+- （更强的「断-Notion」运行时验收已于 §5（3.5b 收尾）做过；本轮新增的 3 个面 platformGroups / NRIC / 快速建客户 全部走抽象或按 flag 分支。）
+
+**8.2 与 Notion 数据对齐 —— ⚠️ 当前未对齐（自 7-21 起 Notion 已漂移在前）**
+
+全部 10 张表 reconcile **dry-run**（无写）。关键指标 = **缺失（Notion 有、Supabase 无）**：
+
+| 表 | Notion | Supabase | 缺失 | 孤儿 | 字段改 | 判定 |
+|---|---|---|---|---|---|---|
+| clients | 900 | 896 | **4** | 0 | 856 | 漂移 |
+| portfolio | 1232 | 1234 | **209** | 211 | 973 | 漂移 |
+| insurance | 1081 | 1080 | **1** | 0 | 350 | 漂移 |
+| assets | 8 | 8 | 0 | 0 | 0 | ✅ |
+| cashflow | 2 | 2 | 0 | 0 | 0 | ✅ |
+| meeting_notes | 18 | 11 | **7** | 0 | 0 | 漂移 |
+| tasks | 40 | 28 | **14** | 0 | 3 | 漂移 |
+| ai_usage | 105 | 89 | **17** | 0 | 0 | 漂移 |
+| forms_library | 0 | 0 | 0 | 0 | 0 | ✅ |
+| users | 8 | 8 | 0 | 0 | 0 | ✅ |
+
+**解读**：这**不是代码问题，也不是数据丢失**——是「reconcile 是时点快照，cutover 前 deltas 会持续累积」的既定现象。
+- Supabase 的 **null notion_id 原生行几乎为 0**（tasks 2 / ai_usage 1），说明团队（尤其 Sky Siew）**这 13 天仍在 Notion 里干活**，App 尚未真正切到 Supabase。于是 Notion 累积了约 **252 条** Supabase 没有的新记录（clients 4 / portfolio 209 / insurance 1 / meetings 7 / tasks 14 / ai_usage 17）。
+- portfolio 的 209 缺失 + 211 孤儿 = `CASH BAL` / `AMT DUE` 对账单行项的**周期性替换**（与 §5.1 同源，旧快照被换掉）。
+- 字段改（clients 856 / portfolio 973 / insurance 350）含三源：**NRIC 加密**（clients 854）、Notion 侧 7-21 后的编辑、reconcile 的字段归一化——都不是丢数据。
+- **4 张表已完全对齐**（assets / cashflow / forms_library / users）。
+
+**结论**：cutover 当天需**跑一次全量 `reconcile --apply`**（pre-cutover、有人在场、防呆此时未触发）把这 ~252 条灌进 Supabase——§5.1 已证明该工具能收敛到 0/0/0。**这正是原计划里「cutover 日重跑 reconcile」那一步。**
+
+**🚨 cutover 前必须先修：`reconcile-clients --apply` 会把 NRIC 加密覆盖回明文**
+`reconcile-clients` 逐字段比对，`nric_reg_no` 在其比对列内（脚本第 45 行）。加密后 Supabase 是 `enc:v1:`、Notion 多是明文 → dry-run 把 854 行记成「字段改」。若此时直接 `--apply`，它会 `update clients set nric_reg_no = <Notion 明文>`——**把刚加密的 854 行还原成明文**。cutover 日重跑前，三选一：
+1. 让 `reconcile-clients` 写入前对 `nric_reg_no` 调 `encryptNric`（与 App 一致）；或
+2. 从 reconcile 的更新列里**排除** `nric_reg_no`（灌行数据、不动 NRIC）；或
+3. reconcile 之后**再跑一次** `scripts/encrypt-nric-supabase.ts --apply`（幂等，会把新灌进来的明文重新加密）。
+> 推荐 (1) 或 (3)。(2) 会让 Notion 侧新客户的 NRIC 永不进 Supabase。**未修之前不要在 cutover 跑 `reconcile-clients --apply`。**
+
 
 
 > **本轮不删代码。** 改为：把 Notion 相关调用注释掉并加标记，逐条登记到 `NOTION_CLEANUP.md`。
