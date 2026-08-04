@@ -321,7 +321,8 @@ export default function LsaCalculator() {
             Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured
             using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA, Prudential; AIA &amp; GE
             scale linearly pending high-SA quotes) — not official quotations; confirm against the insurer system before issue.
-            GE uses a stepped premium and has no male rates. Death-benefit basis and free riders differ materially — see comparison.
+            GE uses a stepped premium — its low year-1 figure escalates and can end up the highest lifetime cost. Death-benefit
+            basis and free riders differ materially — see comparison.
             For advisory discussion only.
           </FinePrint>
         </Section>
