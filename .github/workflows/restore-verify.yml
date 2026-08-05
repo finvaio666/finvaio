@@ -10,17 +10,19 @@ name: Backup restore-verify
 # It restores into a throwaway postgres:17 service container — production and
 # Supabase are never touched.
 #
-# Run on demand (workflow_dispatch) or quarterly (schedule below).
+# MANUAL ONLY (workflow_dispatch). No schedule: the B2 Application Key lacks the
+# List capability, so auto-finding the latest backup is unavailable — pass an
+# explicit `key` input to restore a specific object. To make this fully
+# automatic later: add `listFiles` to the B2 key (create a new key + swap the
+# B2_KEY_ID/B2_APP_KEY secrets), then re-add a `schedule:` cron here.
 
 on:
   workflow_dispatch:
     inputs:
       key:
-        description: 'B2 object key to restore (blank = latest under daily/, needs List capability)'
+        description: 'B2 object key to restore (REQUIRED — the key lacks List, so blank/auto-latest will fail)'
         required: false
         default: ''
-  schedule:
-    - cron: '0 17 1 1,4,7,10 *'   # 01:00 KL (UTC+8) on the 1st of Jan/Apr/Jul/Oct
 
 concurrency:
   group: backup-restore-verify
