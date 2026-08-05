@@ -1,45 +1,39 @@
 name: Supabase backup
 
-# Daily encrypted pg_dump of the Supabase Postgres DB (MIGRATION.md §7).
+# Daily encrypted pg_dump of the Supabase `public` schema → private Backblaze B2.
+# Spec: docs/superpowers/specs/2026-08-05-offsite-backup-design.md
 #
-# WHY CLOUD: the local launchd agent only runs while the Mac is awake. This runs
-# regardless. Supabase free tier has no PITR/daily backups and the migrated code
-# hard-DELETEs, so this is the recovery path of last resort.
+# WHY CLOUD: the local launchd agent only runs while the Mac is awake; this runs
+# regardless. Supabase free tier has no PITR and the migrated code hard-DELETEs,
+# so this is the recovery path of last resort.
 #
-# ── REQUIRED REPO SECRETS (add via GitHub → Settings → Secrets → Actions) ──
-#   SUPABASE_DB_URL          Session-pooler connection string, e.g.
-#                            postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
-#                            ⚠️ MUST be the SESSION pooler (port 5432), NOT the
-#                            transaction pooler (6543) — the latter cannot pg_dump.
-#                            ⚠️ The direct host (db.<ref>.supabase.co) is IPv6-ONLY
-#                            and GitHub runners are IPv4-only, so it will NOT work.
-#                            Copy from Supabase Dashboard → Connect → Session pooler.
-#   BACKUP_GPG_PASSPHRASE    Passphrase used to symmetrically encrypt the dump.
-#                            Store it somewhere you will still have if GitHub is
-#                            gone — without it the backups are unreadable.
+# ── REQUIRED REPO SECRETS (GitHub → Settings → Secrets → Actions) ──
+#   SUPABASE_DB_URL       Session-pooler conn string:
+#                         postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#                         ⚠️ SESSION pooler (5432), NOT transaction (6543 can't pg_dump).
+#                         ⚠️ Direct host db.<ref>.supabase.co is IPv6-only → fails on runners.
+#   BACKUP_GPG_PASSPHRASE Symmetric passphrase. STORE A COPY OUTSIDE GITHUB —
+#                         without it every backup is unreadable.
+#   B2_S3_ENDPOINT        e.g. https://s3.us-west-004.backblazeb2.com
+#   B2_KEY_ID             B2 Application Key ID (scoped to the one bucket)
+#   B2_APP_KEY            B2 Application Key secret
+#   B2_BUCKET             B2 bucket name
 #
-# ── RESTORE ──
-#   1. Download the artifact from the workflow run, unzip it.
-#   2. gpg --batch --decrypt --passphrase '<BACKUP_GPG_PASSPHRASE>' \
-#          -o finvaio.dump finvaio-<stamp>.dump.gpg
-#   3. pg_restore --no-owner --no-privileges -d "<target-connection>" finvaio.dump
-#      (pg_restore --list finvaio.dump  → inspect / selectively restore)
+# ── RESTORE ── see .github/BACKUP-RESTORE.md
 #
 # ── NOTES ──
 #   • `schedule` only fires from the DEFAULT branch (main). On a feature branch
-#     this workflow will never run on cron — use "Run workflow" (workflow_dispatch).
-#   • A failed run emails the repo owner — that is the "fail loudly" guarantee.
-#     Silent failure is the worst outcome for a backup, so every step is fatal.
+#     use "Run workflow" (workflow_dispatch).
+#   • Every step is fatal; a failed run emails the repo owner ("fail loudly").
 #   • GitHub disables scheduled workflows after 60 days of repo inactivity.
-#   • Artifact retention caps at 90 days. Longer retention / a second provider
-#     (e.g. Google Drive) is tracked as future work in MIGRATION.md §7.
+#   • Retention (30 days) + immutability (Object Lock) are configured ON THE
+#     BUCKET in Backblaze, not here.
 
 on:
   schedule:
-    - cron: '0 16 * * *'   # 16:00 UTC = 02:00 AEST (UTC+10)
+    - cron: '0 19 * * *'   # 19:00 UTC = 03:00 local (Kuala Lumpur, UTC+8)
   workflow_dispatch:        # manual run — use this to verify the setup
 
-# Never run two dumps at once.
 concurrency:
   group: supabase-backup
   cancel-in-progress: false
@@ -50,7 +44,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Install pg_dump 17 (server is 17.x; pg_dump must be >= server major)
+      - name: Install pg_dump 18 (server is 18.x; pg_dump must be >= server major)
         run: |
           set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -60,10 +54,10 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-17
+          sudo apt-get install -y -qq postgresql-client-18
           pg_dump --version
 
-      - name: Dump database
+      - name: Dump public schema
         env:
           PGSSLMODE: require
           PGCONNECT_TIMEOUT: '30'
@@ -75,8 +69,8 @@ jobs:
           fi
           STAMP="$(date -u +%Y%m%d-%H%M%S)"
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
-          # --no-owner/--no-privileges → restorable into a fresh DB without role juggling
           pg_dump "$DB_URL" \
+            --schema=public \
             --no-owner --no-privileges \
             --format=custom --compress=9 \
             --file="finvaio-$STAMP.dump"
@@ -86,14 +80,11 @@ jobs:
         run: |
           set -euo pipefail
           F="finvaio-$STAMP.dump"
-          # Must be a readable archive
           pg_restore --list "$F" > toc.txt
-          # Must actually contain data for the tables that matter
           for t in clients portfolio_holdings insurance_policies tasks; do
             grep -q "TABLE DATA public $t" toc.txt \
               || { echo "::error::dump is missing TABLE DATA for '$t'"; exit 1; }
           done
-          # Sanity floor — a real dump is far bigger than this
           SIZE=$(stat -c%s "$F")
           [ "$SIZE" -gt 10240 ] || { echo "::error::dump suspiciously small ($SIZE bytes)"; exit 1; }
           echo "dump OK: $SIZE bytes, $(grep -c 'TABLE DATA' toc.txt) tables with data"
@@ -110,14 +101,22 @@ jobs:
               --passphrase "$GPG_PASSPHRASE" \
               --output "finvaio-$STAMP.dump.gpg" \
               "finvaio-$STAMP.dump"
-          # Never let the plaintext reach the artifact
-          rm -f "finvaio-$STAMP.dump" toc.txt
+          rm -f "finvaio-$STAMP.dump" toc.txt   # never let plaintext leave the runner
           ls -lh "finvaio-$STAMP.dump.gpg"
 
-      - name: Upload encrypted dump
-        uses: actions/upload-artifact@v4
-        with:
-          name: finvaio-backup-${{ env.STAMP }}
-          path: finvaio-*.dump.gpg
-          retention-days: 90
-          if-no-files-found: error
+      - name: Upload to Backblaze B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: |
+          set -euo pipefail
+          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY B2_S3_ENDPOINT B2_BUCKET; do
+            [ -n "${!v:-}" ] || { echo "::error::$v secret is not set"; exit 1; }
+          done
+          aws s3 cp "finvaio-$STAMP.dump.gpg" \
+            "s3://$B2_BUCKET/daily/finvaio-$STAMP.dump.gpg" \
+            --endpoint-url "$B2_S3_ENDPOINT" \
+            --only-show-errors
+          echo "uploaded s3://$B2_BUCKET/daily/finvaio-$STAMP.dump.gpg"
