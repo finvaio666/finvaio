@@ -1,0 +1,134 @@
+name: Backup restore-verify
+
+# Automated restore drill: proves the LATEST encrypted dump in B2 actually
+# restores into a clean PostgreSQL and contains the expected data.
+# "An un-restored backup is unverified" — this is the real acceptance test.
+# Spec: docs/superpowers/specs/2026-08-05-offsite-backup-design.md
+#
+# Reuses the SAME secrets as supabase-backup.yml (no new secrets, no manual
+# credential handling): B2_* to download, BACKUP_GPG_PASSPHRASE to decrypt.
+# It restores into a throwaway postgres:17 service container — production and
+# Supabase are never touched.
+#
+# Run on demand (workflow_dispatch) or quarterly (schedule below).
+
+on:
+  workflow_dispatch:
+    inputs:
+      key:
+        description: 'B2 object key to restore (blank = latest under daily/, needs List capability)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 17 1 1,4,7,10 *'   # 01:00 KL (UTC+8) on the 1st of Jan/Apr/Jul/Oct
+
+concurrency:
+  group: backup-restore-verify
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Install postgresql-client 18 (>= server major; reads pg_dump-18 archives)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_restore --version
+
+      - name: Download the latest encrypted dump from B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          INPUT_KEY: ${{ inputs.key }}
+        run: |
+          set -euo pipefail
+          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY B2_S3_ENDPOINT B2_BUCKET; do
+            [ -n "${!v:-}" ] || { echo "::error::$v secret is not set"; exit 1; }
+          done
+          if [ -n "${INPUT_KEY:-}" ]; then
+            # Explicit key: download by GetObject only (no List capability needed).
+            KEY="$INPUT_KEY"
+          else
+            # Auto-latest: needs the Application Key to have the "List" capability.
+            # (B2 returns NoSuchKey on list ops when the key lacks listFiles.)
+            KEY="$(aws s3api list-objects-v2 \
+                     --bucket "$B2_BUCKET" --prefix 'daily/' \
+                     --endpoint-url "$B2_S3_ENDPOINT" \
+                     --query 'sort_by(Contents, &Key)[-1].Key' --output text)"
+            if [ -z "$KEY" ] || [ "$KEY" = "None" ]; then
+              echo "::error::no objects found under daily/ (or key lacks List capability)"; exit 1
+            fi
+          fi
+          echo "restoring key = $KEY"
+          aws s3 cp "s3://$B2_BUCKET/$KEY" latest.dump.gpg \
+            --endpoint-url "$B2_S3_ENDPOINT" --only-show-errors
+          ls -lh latest.dump.gpg
+
+      - name: Decrypt
+        env:
+          GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [ -n "${GPG_PASSPHRASE:-}" ] || { echo "::error::BACKUP_GPG_PASSPHRASE secret is not set"; exit 1; }
+          gpg --batch --yes --decrypt --passphrase "$GPG_PASSPHRASE" \
+              --output latest.dump latest.dump.gpg
+          ls -lh latest.dump
+
+      - name: Restore into throwaway postgres:17
+        env:
+          PGPASSWORD: verify
+        run: |
+          set -euo pipefail
+          # The fresh postgres image already has a `public` schema, but the dump
+          # contains `CREATE SCHEMA public` → a single benign "already exists" error
+          # that makes pg_restore exit non-zero. Drop it first so the restore is clean.
+          psql -h localhost -p 5432 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE;"
+          pg_restore --no-owner --no-privileges \
+            -h localhost -p 5432 -U postgres -d postgres \
+            latest.dump
+          echo "restore completed"
+
+      - name: Verify restored row counts
+        env:
+          PGPASSWORD: verify
+        run: |
+          set -euo pipefail
+          read C P I < <(psql -h localhost -p 5432 -U postgres -d postgres -At -F' ' -c \
+            "select
+               (select count(*) from clients),
+               (select count(*) from portfolio_holdings),
+               (select count(*) from insurance_policies);")
+          echo "restored counts → clients=$C portfolio=$P insurance=$I"
+          # Sanity floors (as of 2026-08-05: 900 / 1232 / 1081) — tolerant of growth,
+          # strict enough to catch an empty or truncated restore.
+          [ "$C" -ge 800 ]  || { echo "::error::clients too low ($C)"; exit 1; }
+          [ "$P" -ge 1000 ] || { echo "::error::portfolio_holdings too low ($P)"; exit 1; }
+          [ "$I" -ge 1000 ] || { echo "::error::insurance_policies too low ($I)"; exit 1; }
+          echo "restore-verify PASSED — the B2 backup restores to a real, populated DB."

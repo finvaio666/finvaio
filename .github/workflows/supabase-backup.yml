@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Install pg_dump 18 (server is 18.x; pg_dump must be >= server major)
+      - name: Install pg_dump 18 (server is 17.x; pg_dump must be >= server major)
         run: |
           set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -55,7 +55,11 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-18
-          pg_dump --version
+          # The runner preinstalls pg16 at /usr/bin/pg_dump; the pgdg package lands in
+          # /usr/lib/postgresql/18/bin. Prepend it so pg_dump/pg_restore resolve to 18
+          # in every later step (else the stale /usr/bin/pg_dump 16 wins → version mismatch).
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_dump --version
 
       - name: Dump public schema
         env:
