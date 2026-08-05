@@ -105,6 +105,11 @@ jobs:
           PGPASSWORD: verify
         run: |
           set -euo pipefail
+          # The fresh postgres image already has a `public` schema, but the dump
+          # contains `CREATE SCHEMA public` → a single benign "already exists" error
+          # that makes pg_restore exit non-zero. Drop it first so the restore is clean.
+          psql -h localhost -p 5432 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE;"
           pg_restore --no-owner --no-privileges \
             -h localhost -p 5432 -U postgres -d postgres \
             latest.dump
