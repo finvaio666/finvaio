@@ -31,7 +31,9 @@ export async function logAiUsage(opts: {
   const output = opts.usage?.candidatesTokenCount ?? 0;
   const total  = opts.usage?.totalTokenCount ?? (input + output);
   const now    = new Date();
-  const stamp  = now.toLocaleString('en-MY', { dateStyle: 'short', timeStyle: 'short' });
+  // Explicit KL tz — Vercel runs functions in UTC and reserves the TZ env var,
+  // so ambient formatting would render UTC. Pin it here for a deterministic stamp.
+  const stamp  = now.toLocaleString('en-MY', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const entry  = `${opts.advisorName} · ${opts.feature} · ${stamp}`;
 
   try {

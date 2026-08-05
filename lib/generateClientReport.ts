@@ -55,7 +55,7 @@ const FMT = {
     : n >= 1_000     ? `RM ${(n / 1_000).toFixed(1)}K`
     : `RM ${Math.round(n).toLocaleString()}`,
   date: (s: string) =>
-    s ? new Date(s).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : '—',
+    s ? new Date(s).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' }) : '—',
 };
 
 async function loadLogo(): Promise<string | null> {
@@ -265,7 +265,7 @@ type ReportData = {
 export async function generateClientReport(data: ReportData): Promise<void> {
   const logo  = await loadLogo();
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const today = new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' });
+  const today = new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
   const clientName = safeText(data.client.name);
   const H = 297;
 
