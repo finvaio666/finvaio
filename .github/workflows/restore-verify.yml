@@ -65,12 +65,19 @@ jobs:
           for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY B2_S3_ENDPOINT B2_BUCKET; do
             [ -n "${!v:-}" ] || { echo "::error::$v secret is not set"; exit 1; }
           done
-          # Newest key under daily/ (aws ls prints "date time size key"; keys sort lexically by stamp)
-          KEY="$(aws s3 ls "s3://$B2_BUCKET/daily/" --endpoint-url "$B2_S3_ENDPOINT" \
-                 | awk '{print $4}' | grep '\.dump\.gpg$' | sort | tail -1)"
-          [ -n "$KEY" ] || { echo "::error::no .dump.gpg objects found under daily/"; exit 1; }
+          # NB: the high-level `aws s3 ls s3://bucket/prefix/` throws NoSuchKey on
+          # Backblaze B2. Use the low-level list-objects-v2 API, which B2 handles.
+          # KEY is the full object key (already includes the daily/ prefix); stamps
+          # sort chronologically, so the lexically-last key is the newest backup.
+          KEY="$(aws s3api list-objects-v2 \
+                   --bucket "$B2_BUCKET" --prefix 'daily/' \
+                   --endpoint-url "$B2_S3_ENDPOINT" \
+                   --query 'sort_by(Contents, &Key)[-1].Key' --output text)"
+          if [ -z "$KEY" ] || [ "$KEY" = "None" ]; then
+            echo "::error::no objects found under daily/"; exit 1
+          fi
           echo "latest = $KEY"
-          aws s3 cp "s3://$B2_BUCKET/daily/$KEY" latest.dump.gpg \
+          aws s3 cp "s3://$B2_BUCKET/$KEY" latest.dump.gpg \
             --endpoint-url "$B2_S3_ENDPOINT" --only-show-errors
           ls -lh latest.dump.gpg
 
