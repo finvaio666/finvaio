@@ -14,6 +14,11 @@ name: Backup restore-verify
 
 on:
   workflow_dispatch:
+    inputs:
+      key:
+        description: 'B2 object key to restore (blank = latest under daily/, needs List capability)'
+        required: false
+        default: ''
   schedule:
     - cron: '0 17 1 1,4,7,10 *'   # 01:00 KL (UTC+8) on the 1st of Jan/Apr/Jul/Oct
 
@@ -60,23 +65,27 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
           B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          INPUT_KEY: ${{ inputs.key }}
         run: |
           set -euo pipefail
           for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY B2_S3_ENDPOINT B2_BUCKET; do
             [ -n "${!v:-}" ] || { echo "::error::$v secret is not set"; exit 1; }
           done
-          # NB: the high-level `aws s3 ls s3://bucket/prefix/` throws NoSuchKey on
-          # Backblaze B2. Use the low-level list-objects-v2 API, which B2 handles.
-          # KEY is the full object key (already includes the daily/ prefix); stamps
-          # sort chronologically, so the lexically-last key is the newest backup.
-          KEY="$(aws s3api list-objects-v2 \
-                   --bucket "$B2_BUCKET" --prefix 'daily/' \
-                   --endpoint-url "$B2_S3_ENDPOINT" \
-                   --query 'sort_by(Contents, &Key)[-1].Key' --output text)"
-          if [ -z "$KEY" ] || [ "$KEY" = "None" ]; then
-            echo "::error::no objects found under daily/"; exit 1
+          if [ -n "${INPUT_KEY:-}" ]; then
+            # Explicit key: download by GetObject only (no List capability needed).
+            KEY="$INPUT_KEY"
+          else
+            # Auto-latest: needs the Application Key to have the "List" capability.
+            # (B2 returns NoSuchKey on list ops when the key lacks listFiles.)
+            KEY="$(aws s3api list-objects-v2 \
+                     --bucket "$B2_BUCKET" --prefix 'daily/' \
+                     --endpoint-url "$B2_S3_ENDPOINT" \
+                     --query 'sort_by(Contents, &Key)[-1].Key' --output text)"
+            if [ -z "$KEY" ] || [ "$KEY" = "None" ]; then
+              echo "::error::no objects found under daily/ (or key lacks List capability)"; exit 1
+            fi
           fi
-          echo "latest = $KEY"
+          echo "restoring key = $KEY"
           aws s3 cp "s3://$B2_BUCKET/$KEY" latest.dump.gpg \
             --endpoint-url "$B2_S3_ENDPOINT" --only-show-errors
           ls -lh latest.dump.gpg
