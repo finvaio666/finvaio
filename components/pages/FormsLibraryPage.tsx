@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { Overlay, Grid, Field, Select, Footer, fieldInput as inp } from '@/components/PortfolioFormModal';
 import { CLIENT_DATA_KEYS, FORM_CATEGORIES, FormRecord } from '@/lib/formsLibrary';
@@ -9,14 +9,12 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 7
 
 function FormsLibraryInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [allowed, setAllowed]   = useState<boolean | null>(null);
   const [forms, setForms]       = useState<FormRecord[]>([]);
-  const [driveConnected, setDriveConnected] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
   const [loading, setLoading]   = useState(true);
   const [showAdd, setShowAdd]   = useState(false);
   const [mappingForm, setMappingForm] = useState<FormRecord | null>(null);
-  const [notice, setNotice]     = useState('');
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
@@ -31,27 +29,13 @@ function FormsLibraryInner() {
       .then(r => r.json())
       .then(d => {
         if (d.forms) setForms(d.forms);
-        if (d.driveConnected !== undefined) setDriveConnected(d.driveConnected);
+        if (d.storageReady !== undefined) setStorageReady(d.storageReady);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { if (allowed) load(); }, [allowed, load]);
-
-  const connectedParam = searchParams.get('connected');
-  const errorParam = searchParams.get('error');
-  useEffect(() => {
-    if (connectedParam) setNotice('Google Drive connected.');
-    if (errorParam) setNotice(`Error: ${errorParam}`);
-  }, [connectedParam, errorParam]);
-
-  async function connectDrive() {
-    const res = await fetch('/api/admin/drive-auth');
-    const d = await res.json();
-    if (d.url) window.location.href = d.url;
-    else setNotice(d.error ?? 'Failed to start Drive connection');
-  }
 
   async function toggleActive(f: FormRecord) {
     await fetch(`/api/admin/forms-library/${f.id}`, {
@@ -81,18 +65,14 @@ function FormsLibraryInner() {
             Forms Library — Admin
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {!driveConnected && (
-              <button className="section-action" onClick={connectDrive}>Connect Google Drive</button>
-            )}
-            <button className="section-action" onClick={() => setShowAdd(true)} disabled={!driveConnected}>+ Add Form</button>
+            <button className="section-action" onClick={() => setShowAdd(true)} disabled={!storageReady}>+ Add Form</button>
           </div>
         </div>
 
-        {notice && <div style={{ padding: '8px 20px', fontSize: 12.5, color: 'var(--text3)' }}>{notice}</div>}
 
-        {!driveConnected && (
+        {!storageReady && (
           <div style={{ padding: '16px 20px', fontSize: 13, color: 'var(--text3)' }}>
-            Connect Google Drive to start uploading provider forms (PDFs are stored in a folder called &quot;FINVA Forms Library&quot; in your Drive).
+            File storage (Cloudflare R2) is not configured. Set the R2 environment variables before uploading forms.
           </div>
         )}
 
@@ -116,9 +96,7 @@ function FormsLibraryInner() {
               <tbody>
                 {forms.map(f => (
                   <tr key={f.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '8px 6px', fontWeight: 600 }}>
-                      <a href={f.pdfUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>{f.name}</a>
-                    </td>
+                    <td style={{ padding: '8px 6px', fontWeight: 600 }}>{f.name}</td>
                     <td style={{ padding: '8px 6px' }}>{f.provider}</td>
                     <td style={{ padding: '8px 6px' }}>{f.category}</td>
                     <td style={{ padding: '8px 6px' }}>{f.formType}</td>

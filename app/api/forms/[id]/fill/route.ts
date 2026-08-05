@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { PDFDocument } from 'pdf-lib';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { downloadPdfFromDrive } from '@/lib/drive';
-import { driveFileIdFromUrl, getForm } from '@/lib/formsLibrary';
+import { downloadPdf, storageReady } from '@/lib/storage';
+import { getForm } from '@/lib/formsLibrary';
 
 export const dynamic = 'force-dynamic';
 
-const useSupabaseForms = () => process.env.DATA_SOURCE_FORMS === 'supabase';
+const isSupabaseForms = () => process.env.DATA_SOURCE_FORMS === 'supabase';
 
 function rt(props: Record<string, unknown>, key: string): string {
   const p = props[key] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
@@ -28,20 +28,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const config = await getAdvisorConfig(advisorId);
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!config.driveRefreshToken) {
-    return NextResponse.json({ error: 'Company Drive is not connected.' }, { status: 500 });
+  if (!storageReady()) {
+    return NextResponse.json({ error: 'File storage (R2) is not configured.' }, { status: 500 });
   }
 
   const { fieldValues } = (await req.json()) as Body;
 
-  // ── Resolve the form's source PDF + name (Notion or Supabase per flag) ────────
-  let pdfUrl: string;
+  // ── Resolve the form's source PDF key + name (Notion or Supabase per flag) ────
+  let pdfKey: string;
   let formName: string;
-  if (useSupabaseForms()) {
+  if (isSupabaseForms()) {
     const form = await getForm(config, id);
     if (!form)        return NextResponse.json({ error: 'Form not found' }, { status: 404 });
     if (!form.active) return NextResponse.json({ error: 'Form not available' }, { status: 404 });
-    pdfUrl   = form.pdfUrl;
+    pdfKey   = form.pdfUrl;
     formName = form.name || 'form';
   } else {
     const notion = new Client({ auth: config.notionApiKey });
@@ -50,15 +50,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const props = page.properties as Record<string, unknown>;
     const active = (props['Active'] as { checkbox?: boolean } | undefined)?.checkbox ?? false;
     if (!active) return NextResponse.json({ error: 'Form not available' }, { status: 404 });
-    pdfUrl   = rt(props, 'PDF URL');
+    pdfKey   = rt(props, 'PDF URL');
     formName = (props['Name'] as { title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? 'form';
   }
 
-  const fileId = driveFileIdFromUrl(pdfUrl);
-  if (!fileId) return NextResponse.json({ error: 'Form PDF not found' }, { status: 404 });
+  if (!pdfKey) return NextResponse.json({ error: 'Form PDF not found' }, { status: 404 });
 
   // ── Fill the AcroForm fields (do NOT flatten — keep editable) ─────────────────
-  const source = await downloadPdfFromDrive(config.driveRefreshToken, fileId);
+  const source = await downloadPdf(pdfKey);
   const pdfDoc = await PDFDocument.load(source);
   const form = pdfDoc.getForm();
 

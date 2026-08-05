@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { PDFDocument } from 'pdf-lib';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { uploadPdfToDrive } from '@/lib/drive';
+import { uploadPdf, makeFormKey, storageReady } from '@/lib/storage';
 import { FieldMapping, listForms } from '@/lib/formsLibrary';
 import * as sbForms from '@/lib/repos/formsLibrary';
 
 export const dynamic = 'force-dynamic';
 
-const useSupabaseForms = () => process.env.DATA_SOURCE_FORMS === 'supabase';
+const isSupabaseForms = () => process.env.DATA_SOURCE_FORMS === 'supabase';
 
 // ── GET — list all forms (Admin only) ─────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   // Admin list via the data-source abstraction (Notion or Supabase per flag).
   const forms = await listForms(config);
 
-  return NextResponse.json({ forms, driveConnected: !!config.driveRefreshToken });
+  return NextResponse.json({ forms, storageReady: storageReady() });
 }
 
 // ── POST — upload a new form (Admin only) ─────────────────────────────────────
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
   const dbId = process.env.COMPANY_FORMS_DB_ID;
   if (!config.notionApiKey || !dbId) return NextResponse.json({ error: 'Server config error' }, { status: 500 });
 
-  if (!config.driveRefreshToken) {
-    return NextResponse.json({ error: 'Connect Google Drive first (Forms Library page).' }, { status: 400 });
+  if (!storageReady()) {
+    return NextResponse.json({ error: 'File storage (R2) is not configured.' }, { status: 500 });
   }
 
   const form = await req.formData();
@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Upload to Drive
-  const { url } = await uploadPdfToDrive(config.driveRefreshToken, `${provider} - ${name}.pdf`, buffer);
+  // Upload to R2 (private bucket). We store the object KEY as `pdf_url`.
+  const url = await uploadPdf(makeFormKey(provider, name), buffer);
 
   // For fillable PDFs, extract AcroForm field names so the admin can map them.
   let detectedFields: string[] = [];
@@ -74,9 +74,9 @@ export async function POST(req: NextRequest) {
     fieldMapping = { type: 'scanned', fields: [] };
   }
 
-  // ── Supabase write path (Phase 2.11) — Drive upload above is shared; only the
+  // ── Supabase write path (Phase 2.11) — R2 upload above is shared; only the
   // metadata record differs. field_mapping persisted as a JSON string.
-  if (useSupabaseForms()) {
+  if (isSupabaseForms()) {
     const { id } = await sbForms.createForm({ name, provider, category, formType, pdfUrl: url, fieldMapping, tags, active: true });
     return NextResponse.json({ id, pdfUrl: url, detectedFields, fieldMapping });
   }
