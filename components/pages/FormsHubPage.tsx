@@ -17,6 +17,7 @@ export default function FormsHubPage() {
   const [q, setQ]             = useState('');
   const [provider, setProvider] = useState('');
   const [fillForm, setFillForm] = useState<HubForm | null>(null);
+  const [showMatch, setShowMatch] = useState(false);
 
   useEffect(() => {
     fetch('/api/forms')
@@ -43,6 +44,7 @@ export default function FormsHubPage() {
             <span className="section-dot" style={{ background: 'var(--gold)' }} />
             Forms
           </div>
+          <button className="section-action" onClick={() => setShowMatch(true)}>Match from letter</button>
         </div>
 
         <div style={{ display: 'flex', gap: 10, padding: '10px 20px', flexWrap: 'wrap' }}>
@@ -89,7 +91,96 @@ export default function FormsHubPage() {
       </div>
 
       {fillForm && <FillModal form={fillForm} onClose={() => setFillForm(null)} />}
+      {showMatch && (
+        <MatchModal
+          providers={providers}
+          onClose={() => setShowMatch(false)}
+          onFill={(f) => { setShowMatch(false); setFillForm(f); }}
+        />
+      )}
     </div>
+  );
+}
+
+function MatchModal({ providers, onClose, onFill }: {
+  providers: string[];
+  onClose: () => void;
+  onFill: (f: HubForm) => void;
+}) {
+  const [letterText, setLetterText] = useState('');
+  const [provider, setProvider] = useState('');
+  const [matching, setMatching] = useState(false);
+  const [matches, setMatches] = useState<HubForm[] | null>(null);
+  const [usedAI, setUsedAI] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function run() {
+    if (letterText.trim().length < 10) { setErr('Paste the letter text first.'); return; }
+    setMatching(true); setErr(''); setMatches(null);
+    try {
+      const res = await fetch('/api/forms/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ letterText, provider: provider || undefined }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setErr(d.error ?? 'Match failed'); setMatching(false); return; }
+      setMatches(d.matches ?? []);
+      setUsedAI(!!d.usedAI);
+    } catch {
+      setErr('Match failed');
+    }
+    setMatching(false);
+  }
+
+  return (
+    <Overlay onClose={onClose} title="Find forms from a deferment / requirements letter">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Provider (optional — narrows the search)">
+          <select style={inp} value={provider} onChange={e => setProvider(e.target.value)}>
+            <option value="">All providers</option>
+            {providers.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </Field>
+        <Field label="Paste the letter text">
+          <textarea
+            style={{ ...inp, minHeight: 140, resize: 'vertical', fontFamily: 'inherit' }}
+            placeholder="Paste the insurer's deferment / requirements letter here…"
+            value={letterText}
+            onChange={e => setLetterText(e.target.value)}
+          />
+        </Field>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {err && <span style={{ color: 'var(--red)', fontSize: 12 }}>{err}</span>}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text3)', cursor: 'pointer' }}>Close</button>
+            <button onClick={run} disabled={matching} style={{ padding: '9px 22px', fontSize: 13, fontWeight: 700, background: '#F37338', color: '#fff', border: 'none', borderRadius: 99, cursor: 'pointer', opacity: matching ? 0.5 : 1 }}>
+              {matching ? 'Finding…' : 'Find forms'}
+            </button>
+          </div>
+        </div>
+
+        {matches !== null && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+              {matches.length === 0
+                ? 'No matching forms found. Try removing the provider filter or search manually.'
+                : `${matches.length} matching form${matches.length > 1 ? 's' : ''}${usedAI ? ' (AI-matched)' : ''}:`}
+            </div>
+            {matches.map(f => (
+              <div key={f.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{[f.provider, f.category].filter(Boolean).join(' · ')}</div>
+                </div>
+                <button className="section-action" onClick={() => onFill(f)}>Fill &amp; Download</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Overlay>
   );
 }
 
