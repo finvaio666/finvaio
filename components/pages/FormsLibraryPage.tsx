@@ -72,7 +72,7 @@ function FormsLibraryInner() {
 
         {!storageReady && (
           <div style={{ padding: '16px 20px', fontSize: 13, color: 'var(--text3)' }}>
-            File storage (Cloudflare R2) is not configured. Set the R2 environment variables before uploading forms.
+            File storage is not configured. Set the storage environment variables before uploading forms.
           </div>
         )}
 

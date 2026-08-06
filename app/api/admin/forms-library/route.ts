@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { PDFDocument } from 'pdf-lib';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { uploadPdf, makeFormKey, storageReady } from '@/lib/storage';
+import { uploadPdf, storageReady } from '@/lib/storage';
 import { FieldMapping, listForms } from '@/lib/formsLibrary';
 import * as sbForms from '@/lib/repos/formsLibrary';
 
@@ -56,8 +56,9 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Upload to R2 (private bucket). We store the object KEY as `pdf_url`.
-  const url = await uploadPdf(makeFormKey(provider, name), buffer);
+  // Upload via the active storage backend (Drive or R2). We store the returned
+  // reference (Drive URL or R2 key) as `pdf_url`.
+  const url = await uploadPdf(provider, name, buffer);
 
   // For fillable PDFs, extract AcroForm field names so the admin can map them.
   let detectedFields: string[] = [];
