@@ -11,6 +11,15 @@ interface HubForm {
 
 const keyLabel: Record<string, string> = Object.fromEntries(CLIENT_DATA_KEYS.map(k => [k.key, k.label]));
 
+/** Trigger a browser download of a form's blank PDF (same-origin, cookies sent). */
+function downloadBlank(id: string) {
+  const a = document.createElement('a');
+  a.href = `/api/forms/${id}/download`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export default function FormsHubPage() {
   const [forms, setForms]     = useState<HubForm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,8 +89,11 @@ export default function FormsHubPage() {
                       ))}
                     </div>
                   )}
-                  <div style={{ marginTop: 'auto', paddingTop: 6 }}>
-                    <button className="section-action" onClick={() => setFillForm(f)}>Fill &amp; Download</button>
+                  <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', gap: 8 }}>
+                    <button className="section-action" onClick={() => downloadBlank(f.id)}>Download</button>
+                    {f.formType === 'Fillable PDF' && (
+                      <button className="section-action" onClick={() => setFillForm(f)}>Fill &amp; Download</button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -174,7 +186,10 @@ function MatchModal({ providers, onClose, onFill }: {
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{f.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text3)' }}>{[f.provider, f.category].filter(Boolean).join(' · ')}</div>
                 </div>
-                <button className="section-action" onClick={() => onFill(f)}>Fill &amp; Download</button>
+                <button className="section-action" onClick={() => downloadBlank(f.id)}>Download</button>
+                {f.formType === 'Fillable PDF' && (
+                  <button className="section-action" onClick={() => onFill(f)}>Fill &amp; Download</button>
+                )}
               </div>
             ))}
           </div>
