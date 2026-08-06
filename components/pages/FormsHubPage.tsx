@@ -25,6 +25,7 @@ export default function FormsHubPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ]             = useState('');
   const [provider, setProvider] = useState('');
+  const [category, setCategory] = useState('');
   const [fillForm, setFillForm] = useState<HubForm | null>(null);
   const [showMatch, setShowMatch] = useState(false);
 
@@ -37,9 +38,14 @@ export default function FormsHubPage() {
   }, []);
 
   const providers = useMemo(() => [...new Set(forms.map(f => f.provider).filter(Boolean))].sort(), [forms]);
+  const categories = useMemo(
+    () => [...new Set(forms.filter(f => !provider || f.provider === provider).map(f => f.category).filter(Boolean))].sort(),
+    [forms, provider],
+  );
 
   const visible = forms.filter(f => {
     if (provider && f.provider !== provider) return false;
+    if (category && f.category !== category) return false;
     if (!q) return true;
     const hay = `${f.name} ${f.provider} ${f.category} ${f.tags.join(' ')}`.toLowerCase();
     return hay.includes(q.toLowerCase());
@@ -63,9 +69,13 @@ export default function FormsHubPage() {
             value={q}
             onChange={e => setQ(e.target.value)}
           />
-          <select style={{ ...inp, maxWidth: 200 }} value={provider} onChange={e => setProvider(e.target.value)}>
+          <select style={{ ...inp, maxWidth: 200 }} value={provider} onChange={e => { setProvider(e.target.value); setCategory(''); }}>
             <option value="">All providers</option>
             {providers.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select style={{ ...inp, maxWidth: 220 }} value={category} onChange={e => setCategory(e.target.value)}>
+            <option value="">All categories</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
