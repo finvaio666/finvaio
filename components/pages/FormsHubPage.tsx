@@ -38,6 +38,11 @@ export default function FormsHubPage() {
   }, []);
 
   const providers = useMemo(() => [...new Set(forms.map(f => f.provider).filter(Boolean))].sort(), [forms]);
+  const providerCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const f of forms) if (f.provider) m[f.provider] = (m[f.provider] || 0) + 1;
+    return m;
+  }, [forms]);
   const categories = useMemo(
     () => [...new Set(forms.filter(f => !provider || f.provider === provider).map(f => f.category).filter(Boolean))].sort(),
     [forms, provider],
@@ -62,17 +67,42 @@ export default function FormsHubPage() {
           <button className="section-action" onClick={() => setShowMatch(true)}>Match from letter</button>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, padding: '10px 20px', flexWrap: 'wrap' }}>
+        {/* Step 1 — pick a company (provider) first. */}
+        {!provider ? (
+          <div style={{ padding: '12px 20px' }}>
+            {loading ? (
+              <div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+            ) : providers.length === 0 ? (
+              <div style={{ color: 'var(--text3)', fontSize: 13 }}>No forms available yet.</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 10 }}>Select a company to view its forms:</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                  {providers.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => { setProvider(p); setCategory(''); setQ(''); }}
+                      style={{ textAlign: 'left', border: '1px solid var(--border)', borderRadius: 10, padding: 16, background: 'var(--surface)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6 }}
+                    >
+                      <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{p}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>{providerCounts[p]} form{providerCounts[p] > 1 ? 's' : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+        <div style={{ display: 'flex', gap: 10, padding: '10px 20px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="section-action" onClick={() => { setProvider(''); setCategory(''); setQ(''); }}>← All companies</button>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>{provider}</span>
           <input
-            style={{ ...inp, maxWidth: 280 }}
-            placeholder="Search forms, provider, tags…"
+            style={{ ...inp, maxWidth: 260, marginLeft: 'auto' }}
+            placeholder="Search forms, tags…"
             value={q}
             onChange={e => setQ(e.target.value)}
           />
-          <select style={{ ...inp, maxWidth: 200 }} value={provider} onChange={e => { setProvider(e.target.value); setCategory(''); }}>
-            <option value="">All providers</option>
-            {providers.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
           <select style={{ ...inp, maxWidth: 220 }} value={category} onChange={e => setCategory(e.target.value)}>
             <option value="">All categories</option>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -110,6 +140,8 @@ export default function FormsHubPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {fillForm && <FillModal form={fillForm} onClose={() => setFillForm(null)} />}

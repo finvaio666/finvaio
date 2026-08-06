@@ -10,6 +10,7 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 7
 function FormsLibraryInner() {
   const router = useRouter();
   const [allowed, setAllowed]   = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin]   = useState(false);
   const [forms, setForms]       = useState<FormRecord[]>([]);
   const [storageReady, setStorageReady] = useState(false);
   const [loading, setLoading]   = useState(true);
@@ -20,6 +21,7 @@ function FormsLibraryInner() {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.role === 'Admin' || d.name === 'Sky Siew') setAllowed(true);
       else { setAllowed(false); router.replace('/'); }
+      setIsAdmin(d.role === 'Admin');
     }).catch(() => { setAllowed(false); router.replace('/'); });
   }, [router]);
 
@@ -105,8 +107,12 @@ function FormsLibraryInner() {
                       {f.formType === 'Fillable PDF' && (
                         <button className="section-action" style={{ marginRight: 8 }} onClick={() => setMappingForm(f)}>Map fields</button>
                       )}
-                      <button className="section-action" style={{ marginRight: 8 }} onClick={() => toggleActive(f)}>{f.active ? 'Disable' : 'Enable'}</button>
-                      <button className="section-action" onClick={() => deleteForm(f)}>Remove</button>
+                      {isAdmin && (
+                        <>
+                          <button className="section-action" style={{ marginRight: 8 }} onClick={() => toggleActive(f)}>{f.active ? 'Disable' : 'Enable'}</button>
+                          <button className="section-action" onClick={() => deleteForm(f)}>Remove</button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
