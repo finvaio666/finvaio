@@ -2,14 +2,17 @@
  * lib/storage.ts
  * Storage chokepoint for Forms Library PDFs — switchable backend.
  *
- *   STORAGE_BACKEND=drive  (default) → Google Drive (company FINVA Drive)
- *   STORAGE_BACKEND=r2               → Cloudflare R2 (S3-compatible)
+ *   STORAGE_BACKEND=supabase (default) → Supabase Storage (reuses SUPABASE_* creds)
+ *   STORAGE_BACKEND=drive              → Google Drive (company FINVA Drive)
+ *   STORAGE_BACKEND=r2                 → Cloudflare R2 (S3-compatible)
  *
- * Both are hidden behind uploadPdf / downloadPdf / storageReady so routes never
+ * All are hidden behind uploadPdf / downloadPdf / storageReady so routes never
  * care which is active. To migrate later, flip the env var (the library is
- * re-imported, so old references don't need rewriting). downloadPdf also
- * auto-detects a Drive URL vs an R2 key, so a mixed catalogue still resolves.
+ * re-imported, so old references don't need rewriting). downloadPdf auto-detects
+ * a Drive URL vs an object key, so a mixed catalogue still resolves.
  *
+ * Supabase uses the existing service-role client (private bucket, name from
+ * SUPABASE_FORMS_BUCKET, default "forms").
  * Drive uses COMPANY_DRIVE_REFRESH_TOKEN (company-wide, app-created files only).
  * R2 requires R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET.
  */
@@ -17,11 +20,15 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { uploadPdfToDrive, downloadPdfFromDrive } from './drive';
 import { driveFileIdFromUrl } from './formsLibrary';
+import { getSupabase } from './supabase';
 
-type Backend = 'drive' | 'r2';
+type Backend = 'supabase' | 'drive' | 'r2';
 function backend(): Backend {
-  return process.env.STORAGE_BACKEND === 'r2' ? 'r2' : 'drive';
+  const b = process.env.STORAGE_BACKEND;
+  return b === 'drive' || b === 'r2' ? b : 'supabase';
 }
+
+const SB_BUCKET = process.env.SUPABASE_FORMS_BUCKET || 'forms';
 
 function r2Configured(): boolean {
   return !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID
@@ -30,7 +37,11 @@ function r2Configured(): boolean {
 
 /** True when the active backend has what it needs (routes fail cleanly otherwise). */
 export function storageReady(): boolean {
-  return backend() === 'r2' ? r2Configured() : !!process.env.COMPANY_DRIVE_REFRESH_TOKEN;
+  switch (backend()) {
+    case 'r2':    return r2Configured();
+    case 'drive': return !!process.env.COMPANY_DRIVE_REFRESH_TOKEN;
+    default:      return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  }
 }
 
 // ── R2 (Cloudflare) ───────────────────────────────────────────────────────────
@@ -63,20 +74,28 @@ export function makeFormKey(provider: string, name: string): string {
  *   r2    → an object key (e.g. `forms/aia/xyz.pdf`)
  */
 export async function uploadPdf(provider: string, name: string, buffer: Buffer): Promise<string> {
-  if (backend() === 'r2') {
-    const key = makeFormKey(provider, name);
+  const b = backend();
+  if (b === 'drive') {
+    const token = process.env.COMPANY_DRIVE_REFRESH_TOKEN;
+    if (!token) throw new Error('Company Drive is not connected.');
+    const { url } = await uploadPdfToDrive(token, `${provider} - ${name}.pdf`, buffer);
+    return url;
+  }
+  const key = makeFormKey(provider, name);
+  if (b === 'r2') {
     await getClient().send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET!, Key: key, Body: buffer, ContentType: 'application/pdf',
     }));
     return key;
   }
-  const token = process.env.COMPANY_DRIVE_REFRESH_TOKEN;
-  if (!token) throw new Error('Company Drive is not connected.');
-  const { url } = await uploadPdfToDrive(token, `${provider} - ${name}.pdf`, buffer);
-  return url;
+  // supabase
+  const { error } = await getSupabase().storage.from(SB_BUCKET)
+    .upload(key, buffer, { contentType: 'application/pdf', upsert: false });
+  if (error) throw new Error(`Supabase storage upload failed: ${error.message}`);
+  return key;
 }
 
-/** Download a PDF's bytes from its stored reference (auto-detects Drive URL vs R2 key). */
+/** Download a PDF's bytes from its stored reference (auto-detects Drive URL vs object key). */
 export async function downloadPdf(ref: string): Promise<Buffer> {
   const looksLikeDrive = ref.includes('drive.google.com') || /[?&]id=/.test(ref);
   if (looksLikeDrive) {
@@ -86,9 +105,15 @@ export async function downloadPdf(ref: string): Promise<Buffer> {
     if (!fileId) throw new Error('Invalid Drive reference.');
     return downloadPdfFromDrive(token, fileId);
   }
-  const res = await getClient().send(new GetObjectCommand({
-    Bucket: process.env.R2_BUCKET!, Key: ref,
-  }));
-  const bytes = await res.Body!.transformToByteArray();
-  return Buffer.from(bytes);
+  if (backend() === 'r2') {
+    const res = await getClient().send(new GetObjectCommand({
+      Bucket: process.env.R2_BUCKET!, Key: ref,
+    }));
+    const bytes = await res.Body!.transformToByteArray();
+    return Buffer.from(bytes);
+  }
+  // supabase
+  const { data, error } = await getSupabase().storage.from(SB_BUCKET).download(ref);
+  if (error || !data) throw new Error(`Supabase storage download failed: ${error?.message ?? 'no data'}`);
+  return Buffer.from(await data.arrayBuffer());
 }
