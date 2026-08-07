@@ -203,7 +203,10 @@ function FieldMappingModal({ form, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [fields, setFields] = useState(form.fieldMapping?.fields ?? []);
+  // This modal only maps AcroForm (fillable) forms → narrow to fields with pdfField.
+  const [fields, setFields] = useState<{ pdfField: string; dataKey: string }[]>(
+    (form.fieldMapping?.fields ?? []).filter((f): f is { pdfField: string; dataKey: string } => 'pdfField' in f),
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 

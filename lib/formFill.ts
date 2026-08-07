@@ -71,9 +71,16 @@ export function resolvePrefill(
   accountId?: string,
 ): Record<string, string> {
   const out: Record<string, string> = {};
-  if (!mapping || mapping.type !== 'fillable') return out;
-  for (const f of mapping.fields) {
-    out[f.pdfField] = resolveDataKey(f.dataKey, bundle, policyId, accountId);
+  if (!mapping) return out;
+  if (mapping.type === 'fillable') {
+    for (const f of mapping.fields) {
+      if ('pdfField' in f) out[f.pdfField] = resolveDataKey(f.dataKey, bundle, policyId, accountId);
+    }
+  } else if (mapping.type === 'overlay') {
+    // Overlay fields have no AcroForm name — key by index so the editor/fill agree.
+    mapping.fields.forEach((f, i) => {
+      out[String(i)] = resolveDataKey(f.dataKey, bundle, policyId, accountId);
+    });
   }
   return out;
 }

@@ -6,7 +6,7 @@ import { useClients } from '@/components/useClients';
 import { CLIENT_DATA_KEYS, FieldMapping } from '@/lib/formsLibrary';
 
 interface HubForm {
-  id: string; name: string; provider: string; category: string; tags: string[]; formType: string;
+  id: string; name: string; provider: string; category: string; tags: string[]; formType: string; hasFill?: boolean;
 }
 
 const keyLabel: Record<string, string> = Object.fromEntries(CLIENT_DATA_KEYS.map(k => [k.key, k.label]));
@@ -131,7 +131,7 @@ export default function FormsHubPage() {
                   )}
                   <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', gap: 8 }}>
                     <button className="section-action" onClick={() => downloadBlank(f.id)}>Download</button>
-                    {f.formType === 'Fillable PDF' && (
+                    {(f.hasFill ?? f.formType === 'Fillable PDF') && (
                       <button className="section-action" onClick={() => setFillForm(f)}>Fill &amp; Download</button>
                     )}
                   </div>
@@ -229,7 +229,7 @@ function MatchModal({ providers, onClose, onFill }: {
                   <div style={{ fontSize: 11, color: 'var(--text3)' }}>{[f.provider, f.category].filter(Boolean).join(' · ')}</div>
                 </div>
                 <button className="section-action" onClick={() => downloadBlank(f.id)}>Download</button>
-                {f.formType === 'Fillable PDF' && (
+                {(f.hasFill ?? f.formType === 'Fillable PDF') && (
                   <button className="section-action" onClick={() => onFill(f)}>Fill &amp; Download</button>
                 )}
               </div>
@@ -322,7 +322,20 @@ function FillModal({ form, onClose }: { form: HubForm; onClose: () => void }) {
     }
   }
 
-  const fields = mapping?.type === 'fillable' ? mapping.fields : [];
+  // Normalize both mapping types to { key, label } — key aligns with the prefill
+  // response and the fill payload (pdfField for fillable, index for overlay).
+  const fields: { key: string; label: string }[] =
+    mapping?.type === 'fillable'
+      ? mapping.fields.map(f => ({
+          key: 'pdfField' in f ? f.pdfField : '',
+          label: ('pdfField' in f ? f.pdfField : '') + (f.dataKey !== '__manual' ? `  ←  ${keyLabel[f.dataKey] ?? f.dataKey}` : ''),
+        }))
+      : mapping?.type === 'overlay'
+      ? mapping.fields.map((f, i) => ({
+          key: String(i),
+          label: ('label' in f && f.label) ? f.label : (keyLabel[f.dataKey] ?? f.dataKey),
+        }))
+      : [];
 
   return (
     <Overlay onClose={onClose} title={`Fill — ${form.name}`}>
@@ -360,14 +373,11 @@ function FillModal({ form, onClose }: { form: HubForm; onClose: () => void }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '45vh', overflowY: 'auto', paddingRight: 4 }}>
             {fields.map(f => (
-              <div key={f.pdfField}>
+              <div key={f.key}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>
-                  {f.pdfField}
-                  {f.dataKey !== '__manual' && (
-                    <span style={{ fontWeight: 400, marginLeft: 6 }}>← {keyLabel[f.dataKey] ?? f.dataKey}</span>
-                  )}
+                  {f.label}
                 </label>
-                <input style={inp} value={values[f.pdfField] ?? ''} onChange={e => setField(f.pdfField, e.target.value)} />
+                <input style={inp} value={values[f.key] ?? ''} onChange={e => setField(f.key, e.target.value)} />
               </div>
             ))}
           </div>

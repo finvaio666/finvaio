@@ -13,11 +13,16 @@ export async function GET(req: NextRequest) {
   if (!config) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Forms via the data-source abstraction (Notion or Supabase per flag).
-  // FA list doesn't need the raw field mapping — keep the payload light.
-  const forms = (await listForms(config, { activeOnly: true })).map(f => ({
-    id: f.id, name: f.name, provider: f.provider, category: f.category,
-    tags: f.tags, formType: f.formType,
-  }));
+  // FA list doesn't need the raw field mapping — keep the payload light, but
+  // flag whether the form can be auto-filled (AcroForm fields OR an overlay map).
+  const forms = (await listForms(config, { activeOnly: true })).map(f => {
+    const m = f.fieldMapping;
+    const hasFill = !!m && (m.type === 'fillable' || m.type === 'overlay') && (m.fields?.length ?? 0) > 0;
+    return {
+      id: f.id, name: f.name, provider: f.provider, category: f.category,
+      tags: f.tags, formType: f.formType, hasFill,
+    };
+  });
 
   return NextResponse.json({ forms });
 }

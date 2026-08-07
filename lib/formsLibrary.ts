@@ -49,9 +49,19 @@ export interface FillableFieldMapping {
   dataKey:  string;
 }
 
+/** A field placed by coordinates for text overlay (scanned/flat/XFA forms). */
+export interface OverlayFieldMapping {
+  dataKey: string;
+  label?:  string;   // optional human label for the FA editor
+  page:    number;   // 1-based
+  x:       number;   // PDF points, origin bottom-left
+  y:       number;   // PDF points, origin bottom-left
+  size?:   number;   // font size (default 10)
+}
+
 export interface FieldMapping {
-  type:   'fillable' | 'scanned';
-  fields: FillableFieldMapping[];
+  type:   'fillable' | 'scanned' | 'overlay';
+  fields: Array<FillableFieldMapping | OverlayFieldMapping>;
 }
 
 export interface FormRecord {
