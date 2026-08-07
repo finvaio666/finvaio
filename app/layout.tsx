@@ -21,8 +21,8 @@ export const metadata: Metadata = {
   description: "FINVA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
   manifest: "/manifest.json",
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
+    icon: '/finva-logo.svg',
+    shortcut: '/finva-logo.svg',
   },
   appleWebApp: {
     capable: true,
