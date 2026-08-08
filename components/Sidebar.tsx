@@ -192,18 +192,31 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                             Local EAM, …). Shown only while somewhere under
                             /portfolio so the nav stays compact elsewhere. */}
                         {item.id === 'portfolio' && platformGroups.length > 0 && isActive('/portfolio') && (
-                          <div style={{ marginLeft: 30, borderLeft: '1px solid var(--border)', paddingLeft: 4, marginTop: 2, marginBottom: 4 }}>
-                            {platformGroups.map(g => (
-                              <Link
-                                key={g.id}
-                                href={`/portfolio/${g.id}`}
-                                onClick={onClose}
-                                className={`nav-item ${pathname === `/portfolio/${g.id}` ? 'active' : ''}`}
-                                style={{ fontSize: 12, padding: '6px 10px' }}
-                              >
-                                {g.name}
-                              </Link>
-                            ))}
+                          <div style={{ marginLeft: 20, marginTop: 2, marginBottom: 4 }}>
+                            {platformGroups.map(g => {
+                              const groupActive = pathname === `/portfolio/${g.id}`;
+                              return (
+                                <Link
+                                  key={g.id}
+                                  href={`/portfolio/${g.id}`}
+                                  onClick={onClose}
+                                  className={`nav-item ${groupActive ? 'active' : ''}`}
+                                  style={{ fontSize: 12, padding: '6px 10px', gap: 8 }}
+                                >
+                                  {/* Bullet stands in for the parent items' icon, so the
+                                      labels still line up one level in. Inherits colour
+                                      from .nav-item / .nav-item.active. */}
+                                  <span
+                                    aria-hidden
+                                    style={{
+                                      width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+                                      background: 'currentColor', opacity: groupActive ? 1 : 0.45,
+                                    }}
+                                  />
+                                  {g.name}
+                                </Link>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
