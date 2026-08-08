@@ -20,6 +20,38 @@ export interface PlatformGroup {
   platforms: string[]; // ["Phillip", "iFAST"]
 }
 
+/**
+ * Loose text → canonical platform name. Same table as
+ * scripts/backfill-platform.mjs; kept in sync by hand (the script runs against
+ * Notion outside the app, this copy serves the read path).
+ */
+const PLATFORM_ALIASES: [RegExp, string][] = [
+  [/^i\s*-?\s*fast/i,           'iFAST'],
+  [/phillip|poems|pmart|pgwa/i, 'Phillip'],
+  [/maybank|mbb/i,              'Maybank'],
+  [/\bcgs\b|cimb.?securities/i, 'CGS'],
+  [/swiss\s*-?\s*quote/i,       'SwissQuote'],
+  [/\bmssg\b|morgan\s*stanley/i,'MSSG'],
+];
+
+/**
+ * Best-effort platform for a holding whose stored Platform is still blank —
+ * a new FAME/iFAST sync writes rows before anyone backfills, and without this
+ * they'd silently land in "Ungrouped".
+ *
+ * FAME is the Phillip/Bill Morrisons feed, so a FAME account number pins the
+ * platform regardless of Institution (which on those rows is the *fund house*:
+ * AHAM, Principal, United…). Otherwise fall back to matching Institution.
+ * Mirrors the resolution order in scripts/backfill-platform.mjs.
+ */
+export function derivePlatform(institution: string, fameAccountNo: string): string {
+  if ((fameAccountNo ?? '').trim()) return 'Phillip';
+  const t = (institution ?? '').trim();
+  if (!t) return '';
+  for (const [re, name] of PLATFORM_ALIASES) if (re.test(t)) return name;
+  return '';
+}
+
 /** Used the first time an admin opens the page, before anything is saved. */
 export const DEFAULT_PLATFORM_GROUPS: PlatformGroup[] = [
   { id: 'local-ut',     name: 'Local UT',     platforms: ['Phillip', 'iFAST'] },

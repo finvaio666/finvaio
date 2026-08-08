@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
+import { derivePlatform } from '@/lib/platformGroups';
 import { listPolicies } from '@/lib/insurance';
 import { listAssets } from '@/lib/assets';
 import { listCashflow } from '@/lib/cashflow';
@@ -138,6 +139,10 @@ export async function GET(req: NextRequest) {
             clientName:    client?.name ?? '',
             assetClass:    h.assetClass,
             institution:   h.institution,
+            // What the Investment page groups AUM by. Falls back to deriving it
+            // so rows a sync just wrote — Platform still blank — don't land in
+            // "Ungrouped" until someone reruns the backfill.
+            platform:      h.platform || derivePlatform(h.institution, h.fameAccountNo),
             fameAccountNo: h.fameAccountNo,
             fundSource:    h.fundSource,
             status:        h.status,

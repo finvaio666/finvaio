@@ -23,7 +23,8 @@ export interface PortfolioHolding {
   name:             string;
   assetClass:       string;
   productName:      string;
-  institution:      string;
+  institution:      string;   // fund house on FAME rows (AHAM, Principal…), NOT the platform
+  platform:         string;   // custodian: Phillip, iFAST, SwissQuote… — what AUM groups by
   currency:         string;
   fxRate:           number;
   units:            number;
@@ -101,6 +102,7 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
         assetClass:       sel(p, 'Asset class'),
         productName:      rt(p, 'Product name'),
         institution:      rt(p, 'Institution'),
+        platform:         sel(p, 'Platform'),
         currency:         sel(p, 'Currency'),
         fxRate:           num(p, 'FX Rate to MYR'),
         units:            num(p, 'Units'),
