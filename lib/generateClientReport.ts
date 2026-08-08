@@ -1,5 +1,5 @@
 /**
- * Client Wealth Summary PDF — Bill Morrisons Financial Consulting
+ * Client Wealth Summary PDF — Bill Morrisons Group
  * Premium redesign: clean, minimal, private-banking style.
  * Red · Black · White brand theme.
  *
@@ -212,7 +212,7 @@ function pageFooter(doc: jsPDF, pageNum: number, total: number, today: string) {
   doc.setTextColor(...T.text4);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
-  doc.text('Bill Morrisons Financial Consulting  |  CONFIDENTIAL — For client use only', MARGIN, H - 7);
+  doc.text('Bill Morrisons Group  |  CONFIDENTIAL — For client use only', MARGIN, H - 7);
   doc.text(`${today}  |  Page ${pageNum} of ${total}`, W - MARGIN, H - 7, { align: 'right' });
   // Red pip left
   doc.setFillColor(...T.red);
@@ -422,7 +422,7 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   doc.setTextColor(...T.white);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text('Bill Morrisons Financial Consulting', MARGIN, H - 13);
+  doc.text('Bill Morrisons Group', MARGIN, H - 13);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(180, 180, 180);

@@ -82,7 +82,7 @@ export default function LoginPage() {
             Financial Intelligence Navigator &amp; Virtual Advisor
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, opacity: 0.7 }}>
-            Bill Morrisons Financial Consulting
+            Bill Morrisons Group
           </div>
         </div>
 
@@ -228,7 +228,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'var(--text3)' }}>
-          Protected by FINVA · Bill Morrisons Financial Consulting
+          Protected by FINVA · Bill Morrisons Group
         </div>
       </div>
     </div>

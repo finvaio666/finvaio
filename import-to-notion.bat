@@ -7,7 +7,7 @@ cls
 echo.
 echo  =====================================================
 echo    FINVA - Excel to Notion Import Tool
-echo    Bill Morrisons Financial Consulting
+echo    Bill Morrisons Group
 echo  =====================================================
 echo.
 echo  Excel files are in:  notion-import-templates\

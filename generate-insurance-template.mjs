@@ -41,7 +41,7 @@ async function main() {
   console.log(`Fetched ${clients.length} clients:`, clients);
 
   const wb = new ExcelJS.Workbook();
-  wb.creator  = 'Bill Morrisons Financial Consulting';
+  wb.creator  = 'Bill Morrisons Group';
   wb.created  = new Date();
 
   // ── Sheet 1: Data Entry ─────────────────────────────────────────────────

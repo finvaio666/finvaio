@@ -18,7 +18,7 @@ const dmMono = DM_Mono({
 
 export const metadata: Metadata = {
   title: "FINVA — Financial Intelligence Navigator & Virtual Advisor",
-  description: "FINVA — AI-powered financial advisory platform by Bill Morrisons Financial Consulting",
+  description: "FINVA — AI-powered financial advisory platform by Bill Morrisons Group",
   manifest: "/manifest.json",
   icons: {
     icon: '/finva-logo.svg',

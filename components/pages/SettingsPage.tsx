@@ -653,7 +653,7 @@ function AboutTab() {
     <div>
       <Section title="System Information">
         <Row label="Platform" desc=""><span style={{ fontSize: 13, color: 'var(--text2)' }}>FINVA — Financial Intelligence Navigator & Virtual Advisor</span></Row>
-        <Row label="Company" desc=""><span style={{ fontSize: 13, color: 'var(--text2)' }}>Bill Morrisons Financial Consulting</span></Row>
+        <Row label="Company" desc=""><span style={{ fontSize: 13, color: 'var(--text2)' }}>Bill Morrisons Group</span></Row>
         <Row label="Version" desc=""><Badge label="v1.0.0" color="#818cf8" /></Row>
         <Row label="Stack" desc=""><span style={{ fontSize: 12, color: 'var(--text3)' }}>Next.js 16 · Notion · Gemini AI · Vercel</span></Row>
         <Row label="Storage" desc=""><span style={{ fontSize: 12, color: 'var(--text3)' }}>Notion (client data) · Gmail (emails)</span></Row>

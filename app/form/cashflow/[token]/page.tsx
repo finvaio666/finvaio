@@ -344,7 +344,7 @@ export default function CashflowFormPage() {
             justifyContent: 'center', fontSize: 15,
           }}>💰</div>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            Bill Morrisons Financial Consulting
+            Bill Morrisons Group
           </span>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, marginBottom: 4, color: 'var(--text)', letterSpacing: '-0.02em' }}>
@@ -533,7 +533,7 @@ export default function CashflowFormPage() {
 
         <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text3)', marginTop: 16, lineHeight: 1.6 }}>
           Your information is shared only with your financial advisor.<br />
-          This form was sent by <strong style={{ color: 'var(--text2)' }}>Bill Morrisons Financial Consulting</strong>.
+          This form was sent by <strong style={{ color: 'var(--text2)' }}>Bill Morrisons Group</strong>.
         </p>
       </div>
 

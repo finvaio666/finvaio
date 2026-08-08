@@ -125,7 +125,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             Financial Intelligence Navigator &amp; Virtual Advisor
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6, opacity: 0.7, letterSpacing: '0.04em' }}>
-            Bill Morrisons Financial Consulting
+            Bill Morrisons Group
           </div>
         </div>
 
