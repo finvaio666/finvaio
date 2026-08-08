@@ -5,16 +5,24 @@
  * Expected Notion DB properties:
  *   Task       (title)
  *   Client     (rich_text)   — client name
- *   Status     (select)      — "Open" | "Done"
+ *   Status     (select)      — see TASK_STATUSES
  *   Due        (date)        — optional
  *   Source     (rich_text)   — e.g. "Meeting 2026-05-26" or "Manual"
  *   Done Date  (date)        — set when completed
  *   Type       (select)      — "Admin" | "Client" (optional; used to separate
  *                               an Admin's own daily work from FA/client tasks)
+ *   Progress   (rich_text)   — optional append-only movement log (see appendProgress)
+ *   Updated    (date)        — optional; last time the task moved
  */
 
 import { Client, isFullPage } from '@notionhq/client';
 import { AdvisorConfig } from './getAdvisorConfig';
+import { readRichText, readTitle, toRichText } from './notionText';
+import {
+  type Task, type TaskStatus,
+  toStatus, parseProgress, serializeProgress, appendProgress,
+  filterAndSortTasks, todayMYT,
+} from './taskModel';
 import * as sbTasks from './repos/tasks';
 import { listMeetings } from './meetingNotes';
 
@@ -31,27 +39,24 @@ function useSupabase(): boolean {
   return process.env.DATA_SOURCE_TASKS === 'supabase';
 }
 
-export interface Task {
-  id:       string;
-  task:     string;
-  client:   string;
-  status:   'Open' | 'Done';
-  due:      string;   // ISO date or ''
-  source:   string;
-  doneDate: string;
-  type:     string;   // "Admin" | "Client" | '' (unset = Client)
-}
+// The task shape and all pure logic over it live in lib/taskModel.ts — shared
+// with the Supabase repo. Re-exported here so `@/lib/tasks` stays the one import
+// site callers already use.
+export {
+  TASK_STATUSES, toStatus, statusRank, todayMYT, daysSince,
+  parseProgress, serializeProgress, appendProgress, filterAndSortTasks,
+} from './taskModel';
+export type { Task, TaskStatus, ProgressEntry } from './taskModel';
 
 function rt(p: Record<string, unknown>, k: string): string {
-  const v = p[k] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
-  return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : '';
+  return readRichText(p[k]);
 }
 function titleOf(p: Record<string, unknown>): string {
-  const v = p['Task'] as { type: string; title?: { plain_text: string }[] } | undefined;
-  if (v?.type === 'title') return v.title?.[0]?.plain_text ?? '';
+  const direct = readTitle(p['Task']);
+  if (direct) return direct;
   for (const val of Object.values(p)) {
-    const t = val as { type: string; title?: { plain_text: string }[] } | undefined;
-    if (t?.type === 'title') return t.title?.[0]?.plain_text ?? '';
+    const t = readTitle(val);
+    if (t) return t;
   }
   return '';
 }
@@ -71,7 +76,7 @@ function notionFor(config: AdvisorConfig) {
 /** List tasks, optionally filtered by client name and/or status. */
 export async function listTasks(
   config: AdvisorConfig,
-  opts: { client?: string; status?: 'Open' | 'Done'; type?: 'Admin' | 'Client' } = {},
+  opts: { client?: string; status?: TaskStatus; type?: 'Admin' | 'Client' } = {},
 ): Promise<Task[]> {
   if (useSupabase()) return sbTasks.listTasks(config, opts);
   if (!config.tasksDbId || !config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return [];
@@ -81,39 +86,24 @@ export async function listTasks(
     ? {}
     : { filter: { property: 'Advisor', select: { equals: config.name } } };
   const res = await notion.databases.query({ database_id: config.tasksDbId, page_size: 100, ...advisorScope });
-  let tasks = res.results.filter(isFullPage).map(pg => {
+  const tasks = res.results.filter(isFullPage).map(pg => {
     const p = pg.properties as Record<string, unknown>;
+    const progressRaw = rt(p, 'Progress');
     return {
       id:       pg.id,
       task:     titleOf(p),
       client:   rt(p, 'Client'),
-      status:   (sel(p, 'Status') === 'Done' ? 'Done' : 'Open') as 'Open' | 'Done',
+      status:   toStatus(sel(p, 'Status')),
       due:      dt(p, 'Due'),
       source:   rt(p, 'Source'),
       doneDate: dt(p, 'Done'),
       type:     sel(p, 'Type'),
+      progress: parseProgress(progressRaw),
+      updated:  dt(p, 'Updated'),
     };
   }).filter(t => t.task);
 
-  if (opts.type) {
-    tasks = tasks.filter(t => (opts.type === 'Admin' ? t.type === 'Admin' : t.type !== 'Admin'));
-  }
-  if (opts.client) {
-    const c = opts.client.toLowerCase().trim();
-    tasks = tasks.filter(t => {
-      const tc = t.client.toLowerCase().trim();
-      if (!tc) return false;
-      // Compare whole client names — avoids short-name false matches (e.g. "Tng" vs "Ng")
-      return tc === c || tc.includes(c) || (c.includes(tc) && tc.length > 4);
-    });
-  }
-  if (opts.status) tasks = tasks.filter(t => t.status === opts.status);
-
-  // Open first, then by due date
-  return tasks.sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'Open' ? -1 : 1;
-    return (a.due || '9999').localeCompare(b.due || '9999');
-  });
+  return filterAndSortTasks(tasks, opts);
 }
 
 /** Create a new task. */
@@ -125,10 +115,10 @@ export async function createTask(
   if (!config.tasksDbId) throw new Error('Tasks database not configured.');
   const notion = notionFor(config);
   const props: Record<string, unknown> = {
-    'Task':   { title: [{ text: { content: t.task.slice(0, 200) } }] },
+    'Task':   { title: toRichText(t.task.slice(0, 200)) },
     'Status': { select: { name: 'Open' } },
-    'Client': { rich_text: [{ text: { content: (t.client ?? '').slice(0, 200) } }] },
-    'Source': { rich_text: [{ text: { content: (t.source ?? 'Manual').slice(0, 200) } }] },
+    'Client': { rich_text: toRichText((t.client ?? '').slice(0, 200)) },
+    'Source': { rich_text: toRichText((t.source ?? 'Manual').slice(0, 200)) },
     // Centralized model: stamp the owning advisor so it stays scoped to them.
     'Advisor': { select: { name: config.name } },
   };
@@ -139,15 +129,99 @@ export async function createTask(
   await notion.pages.create({ parent: { database_id: config.tasksDbId }, properties: props as never });
 }
 
-/** Mark a task done or reopen it. */
-export async function setTaskStatus(config: AdvisorConfig, taskId: string, done: boolean): Promise<void> {
-  if (useSupabase()) return sbTasks.setTaskStatus(config, taskId, done);
+/** Fetch one task, or null if it's gone. Returns null rather than throwing. */
+export async function getTask(config: AdvisorConfig, taskId: string): Promise<Task | null> {
+  if (useSupabase()) return sbTasks.getTask(taskId);
+  if (!config.tasksDbId || !config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return null;
+  try {
+    const pg = await notionFor(config).pages.retrieve({ page_id: taskId });
+    if (!isFullPage(pg)) return null;
+    const p = pg.properties as Record<string, unknown>;
+    return {
+      id:       pg.id,
+      task:     titleOf(p),
+      client:   rt(p, 'Client'),
+      status:   toStatus(sel(p, 'Status')),
+      due:      dt(p, 'Due'),
+      source:   rt(p, 'Source'),
+      doneDate: dt(p, 'Done'),
+      type:     sel(p, 'Type'),
+      progress: parseProgress(rt(p, 'Progress')),
+      updated:  dt(p, 'Updated'),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Names of properties this codebase added after the original Tasks DB shipped.
+ * An advisor's Notion DB may predate them, and Notion rejects the whole update
+ * if you write a property that doesn't exist — so writes carrying these retry
+ * once without them (the stage change still lands; only the log is lost).
+ */
+const OPTIONAL_TASK_PROPS = ['Progress', 'Updated'] as const;
+
+async function updateNotionTask(
+  config: AdvisorConfig,
+  taskId: string,
+  props: Record<string, unknown>,
+): Promise<void> {
   const notion = notionFor(config);
-  const props: Record<string, unknown> = {
-    'Status': { select: { name: done ? 'Done' : 'Open' } },
-    'Done': done ? { date: { start: new Date().toISOString().split('T')[0] } } : { date: null },
-  };
-  await notion.pages.update({ page_id: taskId, properties: props as never });
+  try {
+    await notion.pages.update({ page_id: taskId, properties: props as never });
+  } catch (e) {
+    if (!String(e).includes('is not a property')) throw e;
+    const core = { ...props };
+    for (const k of OPTIONAL_TASK_PROPS) delete core[k];
+    if (Object.keys(core).length === 0) return;
+    await notion.pages.update({ page_id: taskId, properties: core as never });
+  }
+}
+
+/** Mark a task done or reopen it. Kept for callers that only need the toggle. */
+export async function setTaskStatus(config: AdvisorConfig, taskId: string, done: boolean): Promise<void> {
+  return updateTask(config, taskId, { status: done ? 'Done' : 'Open' });
+}
+
+/**
+ * Move a task and/or record what happened.
+ *
+ * Every call appends to the movement log: an explicit `note` if given, plus an
+ * automatic "Open → In Progress" line whenever the stage changes. That is what
+ * makes the log a history rather than a comment box — an advisor reviewing a
+ * client six months later can see when work started and where it stalled.
+ */
+export async function updateTask(
+  config: AdvisorConfig,
+  taskId: string,
+  change: { status?: TaskStatus; note?: string },
+): Promise<void> {
+  const { status, note } = change;
+  if (!status && !note?.trim()) return;
+
+  // Read the current row so we can append to the log and label the stage move.
+  const current  = await getTask(config, taskId);
+  const previous = current?.status;
+  const moved    = !!status && !!previous && status !== previous;
+
+  let log = current ? serializeProgress(current.progress) : '';
+  if (note?.trim()) log = appendProgress(log, note);
+  if (moved)        log = appendProgress(log, `Status: ${previous} → ${status}`);
+  else if (status && !previous) log = appendProgress(log, `Status: ${status}`);
+
+  if (useSupabase()) return sbTasks.updateTask(taskId, { status, progressLog: log });
+
+  const today = todayMYT();
+  const props: Record<string, unknown> = { 'Updated': { date: { start: today } } };
+  if (status) {
+    props['Status'] = { select: { name: status } };
+    // 'Done' date is the completion stamp — clear it if the task reopens.
+    props['Done'] = status === 'Done' ? { date: { start: today } } : { date: null };
+  }
+  if (log) props['Progress'] = { rich_text: toRichText(log) };
+
+  await updateNotionTask(config, taskId, props);
 }
 
 /** Delete a task (archive the Notion page). */

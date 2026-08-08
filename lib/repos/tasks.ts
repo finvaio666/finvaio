@@ -14,9 +14,15 @@
 
 import { getSupabase } from '../supabase';
 import type { AdvisorConfig } from '../getAdvisorConfig';
-import type { Task } from '../tasks';
+import {
+  type Task, type TaskStatus,
+  toStatus, parseProgress, filterAndSortTasks, todayMYT,
+} from '../taskModel';
 
 const TABLE = 'tasks';
+
+/** Columns read on every list/get — keep in sync with Row. */
+const COLS = 'id, notion_id, task, client, status, type, due_date, done_date, source, progress_log, updated_at, advisor';
 
 interface Row {
   id: string;
@@ -28,6 +34,8 @@ interface Row {
   due_date: string | null;
   done_date: string | null;
   source: string | null;
+  progress_log: string | null;
+  updated_at: string | null;
   advisor: string | null;
 }
 
@@ -36,46 +44,43 @@ function toTask(r: Row): Task {
     id:       r.id,
     task:     r.task ?? '',
     client:   r.client ?? '',
-    status:   (r.status === 'Done' ? 'Done' : 'Open') as 'Open' | 'Done',
+    status:   toStatus(r.status),
     due:      r.due_date ?? '',
     source:   r.source ?? '',
     doneDate: r.done_date ?? '',
     type:     r.type ?? '',
+    progress: parseProgress(r.progress_log),
+    // stored as a date column; slice guards against a timestamptz-shaped value
+    updated:  (r.updated_at ?? '').slice(0, 10),
   };
 }
 
-/** List tasks. Same filter/sort logic as the Notion path in lib/tasks.ts. */
+/** List tasks. Filter/sort is shared with the Notion path (lib/tasks.ts). */
 export async function listTasks(
   config: AdvisorConfig,
-  opts: { client?: string; status?: 'Open' | 'Done'; type?: 'Admin' | 'Client' } = {},
+  opts: { client?: string; status?: TaskStatus; type?: 'Admin' | 'Client' } = {},
 ): Promise<Task[]> {
   const sb = getSupabase();
-  let q = sb.from(TABLE).select('*').is('deleted_at', null);
+  let q = sb.from(TABLE).select(COLS).is('deleted_at', null);
   // Centralized model: scope to this advisor's tasks (Admin sees all).
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   const { data, error } = await q;
   if (error) throw new Error(`tasks list failed: ${error.message}`);
 
-  let tasks = (data as Row[]).map(toTask).filter(t => t.task);
+  const tasks = (data as unknown as Row[]).map(toTask).filter(t => t.task);
+  return filterAndSortTasks(tasks, opts);
+}
 
-  // ── identical filter/sort to lib/tasks.ts ──
-  if (opts.type) {
-    tasks = tasks.filter(t => (opts.type === 'Admin' ? t.type === 'Admin' : t.type !== 'Admin'));
-  }
-  if (opts.client) {
-    const c = opts.client.toLowerCase().trim();
-    tasks = tasks.filter(t => {
-      const tc = t.client.toLowerCase().trim();
-      if (!tc) return false;
-      return tc === c || tc.includes(c) || (c.includes(tc) && tc.length > 4);
-    });
-  }
-  if (opts.status) tasks = tasks.filter(t => t.status === opts.status);
-
-  return tasks.sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'Open' ? -1 : 1;
-    return (a.due || '9999').localeCompare(b.due || '9999');
-  });
+/** Fetch one live task, or null if it's missing or soft-deleted. */
+export async function getTask(taskId: string): Promise<Task | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .select(COLS)
+    .eq('id', taskId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw new Error(`task fetch failed: ${error.message}`);
+  return data ? toTask(data as unknown as Row) : null;
 }
 
 /** Create a task. */
@@ -98,14 +103,43 @@ export async function createTask(
   if (error) throw new Error(`task create failed: ${error.message}`);
 }
 
-/** Mark a task done or reopen it. */
+/**
+ * Mark a task done or reopen it, without touching the movement log.
+ * Kept as-is for the smoke/soft-delete scripts that drive the repo directly;
+ * app traffic goes through updateTask so the log stays complete.
+ */
 export async function setTaskStatus(_config: AdvisorConfig, taskId: string, done: boolean): Promise<void> {
   const sb = getSupabase();
   const { error } = await sb.from(TABLE).update({
-    status:    done ? 'Done' : 'Open',
-    done_date: done ? new Date().toISOString().split('T')[0] : null,
+    status:     done ? 'Done' : 'Open',
+    done_date:  done ? todayMYT() : null,
+    updated_at: todayMYT(),
   }).eq('id', taskId).is('deleted_at', null);
   if (error) throw new Error(`task status update failed: ${error.message}`);
+}
+
+/**
+ * Move a task and/or replace its movement log. The log is composed by the
+ * caller (lib/tasks.updateTask) so both back ends store identical text.
+ *
+ * Soft-deleted rows are untouched, matching setTaskStatus/deleteTask.
+ */
+export async function updateTask(
+  taskId: string,
+  change: { status?: TaskStatus; progressLog?: string },
+): Promise<void> {
+  const sb = getSupabase();
+  const today = todayMYT();
+  const patch: Record<string, unknown> = { updated_at: today };
+  if (change.status) {
+    patch.status    = change.status;
+    // 'Done' date is the completion stamp — clear it if the task reopens.
+    patch.done_date = change.status === 'Done' ? today : null;
+  }
+  if (change.progressLog !== undefined) patch.progress_log = change.progressLog || null;
+
+  const { error } = await sb.from(TABLE).update(patch).eq('id', taskId).is('deleted_at', null);
+  if (error) throw new Error(`task update failed: ${error.message}`);
 }
 
 /** Soft-delete a task (recoverable — clear deleted_at to restore). */

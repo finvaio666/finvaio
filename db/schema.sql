@@ -21,17 +21,23 @@ create table if not exists tasks (
   notion_id   text,                                 -- source Notion page id (import/reconcile link)
   task        text,
   client      text,                                 -- client name string
-  status      text,                                 -- CHECK: 'Open' | 'Done'
+  status      text,                                 -- CHECK: 'Open' | 'In Progress' | 'Waiting on Client' | 'Done'
   type        text,                                 -- CHECK: 'Client' | 'Admin' | null  (see migration 2026-07-07)
   due_date    date,
   done_date   date,
   source      text,                                 -- e.g. 'Meeting 2026-05-26' | 'Manual'
   advisor     text,                                 -- owning advisor (name)
-  created_at  timestamptz default now()
+  created_at  timestamptz default now(),
+  -- added 2026-08-07 (progress tracking):
+  progress_log text,                                -- append-only movement log, one entry per line
+  updated_at   date                                 -- last movement (drives the "stalled" hint)
 );
--- constraints (already live): status IN ('Open','Done'); type IN ('Client','Admin')
+-- constraints (already live):
+--   status IN ('Open','In Progress','Waiting on Client','Done'); type IN ('Client','Admin')
 --   NOTE: type check was changed 'FA'→'Client' on 2026-07-07 to match the app.
 --   See db/migrations/2026-07-07-tasks-type-fa-to-client.sql
+--   NOTE: status check widened from Open/Done on 2026-08-07.
+--   See db/migrations/2026-08-07-tasks-progress-tracking.sql
 
 create index if not exists tasks_advisor_idx on tasks (advisor);
 create index if not exists tasks_status_idx  on tasks (status);
