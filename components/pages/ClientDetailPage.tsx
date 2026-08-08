@@ -54,6 +54,12 @@ const fmtMonth = (d: string) => {
   return new Date(d).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' });
 };
 
+// Policy inforce date — day precision matters for policy anniversaries
+const fmtDay = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 const ASSET_COLORS: Record<string, string> = {
   'EPF': '#4ADE80', 'Unit Trust': '#60A5FA', 'PRS': '#818CF8',
   'Fixed Deposit': '#F59E0B', 'Stocks': '#A78BFA', 'Bonds': '#F87171',
@@ -665,6 +671,7 @@ function InsuranceTab({ clientName }: { clientName: string }) {
                   <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)' }}>{p.policyName}</div>
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                     {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
+                    {p.commencementDate && <span style={{ marginLeft: 6 }}>📅 In force {fmtDay(p.commencementDate)}</span>}
                     {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {fmtMonth(p.maturityDate)}</span>}
                   </div>
                   {p.beneficiary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>🎯 {p.beneficiary}</div>}

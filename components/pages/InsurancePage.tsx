@@ -68,6 +68,19 @@ const COVERAGE_RULES = [
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n).toLocaleString()}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
+// Policy inforce date — day precision matters for policy anniversaries
+const fmtDay = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+const yearsInForce = (iso: string) => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const yrs = (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (yrs < 0) return '';
+  return yrs < 1 ? `${Math.max(1, Math.round(yrs * 12))} mo` : `${Math.floor(yrs)} yr${Math.floor(yrs) === 1 ? '' : 's'}`;
+};
+
 // Benefit pill colours (keys match Notion benefit names; partial-match by keyword)
 const BENEFIT_COLORS: { kw: string; color: string }[] = [
   { kw: 'life',       color: '#60A5FA' },
@@ -527,6 +540,7 @@ export default function InsurancePage() {
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                         {[p.insurer, p.policyNumber].filter(Boolean).join(' · ')}
+                        {p.commencementDate && <span style={{ marginLeft: 6 }}>📅 In force {fmtDay(p.commencementDate)}{yearsInForce(p.commencementDate) && <span style={{ opacity: 0.75 }}> ({yearsInForce(p.commencementDate)})</span>}</span>}
                         {p.maturityDate && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(p.maturityDate).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                       </div>
                       {p.benefits.length > 0 && (
