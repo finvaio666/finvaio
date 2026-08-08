@@ -18,6 +18,7 @@
 import { Client } from '@notionhq/client';
 import { AdvisorConfig, advisorFilter } from './getAdvisorConfig';
 import { queryAllPages } from './notionQueryAll';
+import { readRichText, readTitle } from './notionText';
 import * as sbMeetings from './repos/meetingNotes';
 
 export interface MeetingNote {
@@ -28,6 +29,14 @@ export interface MeetingNote {
   meetingType:    string;
   notes:          string;
   actionItems:    string;
+  /**
+   * Verbatim record of what was captured — the voice-memo transcription or the
+   * advisor's raw typed notes. `notes` holds the AI's short summary, which is
+   * what you want at a glance; this is what you want when preparing a review
+   * and the summary has flattened out the detail. '' for older meetings logged
+   * before the field existed.
+   */
+  transcript:     string;
   nextReviewDate: string;
   title:          string;
 }
@@ -37,8 +46,7 @@ function useSupabase(): boolean {
 }
 
 function rt(p: Record<string, unknown>, k: string): string {
-  const v = p[k] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
-  return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : '';
+  return readRichText(p[k]);
 }
 function sel(p: Record<string, unknown>, k: string): string {
   const v = p[k] as { type: string; select?: { name: string } | null } | undefined;
@@ -49,8 +57,7 @@ function dateOf(p: Record<string, unknown>, k: string): string {
   return v?.type === 'date' ? (v.date?.start ?? '') : '';
 }
 function titleOf(p: Record<string, unknown>, k: string): string {
-  const v = p[k] as { type: string; title?: { plain_text: string }[] } | undefined;
-  return v?.type === 'title' ? (v.title?.[0]?.plain_text ?? '') : '';
+  return readTitle(p[k]);
 }
 function relId(p: Record<string, unknown>, k: string): string {
   const v = p[k] as { type: string; relation?: { id: string }[] } | undefined;
@@ -93,6 +100,7 @@ export async function listMeetings(config: AdvisorConfig): Promise<MeetingNote[]
       meetingType:    sel(p, 'Meeting Type'),
       notes:          rt(p, 'Notes'),
       actionItems:    rt(p, 'Action Items'),
+      transcript:     rt(p, 'Transcript'),
       nextReviewDate: dateOf(p, 'Next Review Date'),
       title,
     };

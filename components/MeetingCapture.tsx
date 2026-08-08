@@ -230,14 +230,25 @@ export default function MeetingCapture({
     if (!validate()) return;
     setSaving(true); setError('');
     const problems: string[] = [];
+
+    // What actually gets filed. `notes` is the AI summary — short, readable at a
+    // glance. `transcript` is the verbatim capture (voice transcription, else
+    // what was typed), kept because the summary flattens out exactly the detail
+    // an advisor needs months later when preparing the next review. Skipped when
+    // the two would be identical.
+    const summaryText = summary || notes;
+    const rawCapture  = (result?.transcript || notes).trim();
+    const transcript  = rawCapture && rawCapture !== summaryText.trim() ? rawCapture : '';
+
     try {
       // 1. Meeting note (also updates client's last/next review dates)
       const mres = await fetch('/api/meetings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId, clientName, meetingDate, meetingType,
-          notes: summary || notes,
+          notes: summaryText,
           actionItems: actions.map(a => `${a.task}${a.due ? ` (due ${a.due})` : ''}`).join('\n'),
+          transcript,
           nextReviewDate: nextReview,
         }),
       });
@@ -407,6 +418,16 @@ export default function MeetingCapture({
               <label style={labelStyle}>Meeting Summary (saved as the note)</label>
               <textarea value={summary} onChange={e => setSummary(e.target.value)} rows={4}
                 style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
+              {(result?.transcript || notes).trim() && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ fontSize: 12, color: 'var(--text3)', cursor: 'pointer' }}>
+                    📄 Full {result?.transcript ? 'transcript' : 'notes'} — saved with the meeting
+                  </summary>
+                  <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto' }}>
+                    {(result?.transcript || notes).trim()}
+                  </div>
+                </details>
+              )}
             </div>
 
             <div>

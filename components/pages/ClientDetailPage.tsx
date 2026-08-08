@@ -966,7 +966,7 @@ function CorrespondenceTab({ clientName }: { clientName: string }) {
 
 interface ClientMeeting {
   id: string; clientId: string; clientName: string; meetingDate: string;
-  meetingType: string; notes: string; actionItems: string; nextReviewDate: string;
+  meetingType: string; notes: string; actionItems: string; transcript?: string; nextReviewDate: string;
 }
 
 const MEETING_TYPE_COLORS: Record<string, string> = {
@@ -1090,12 +1090,22 @@ function MeetingsTab({ clientId, clientName }: { clientId: string; clientName: s
                         <div style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{m.actionItems}</div>
                       </div>
                     )}
+                    {m.transcript && (
+                      <details>
+                        <summary style={{ fontSize: 12, color: 'var(--text3)', cursor: 'pointer' }}>
+                          📄 Full transcript / raw notes
+                        </summary>
+                        <div style={{ marginTop: 8, background: 'var(--bg2)', borderRadius: 'var(--r-sm)', padding: '12px 14px', borderLeft: '3px solid var(--border)', fontSize: 13, color: 'var(--text2)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+                          {m.transcript}
+                        </div>
+                      </details>
+                    )}
                     {m.nextReviewDate && (
                       <div style={{ fontSize: 12.5, color: 'var(--blue)' }}>
                         📅 Next review set at the time: <strong>{fmtDate(m.nextReviewDate)}</strong>
                       </div>
                     )}
-                    {!m.notes && !m.actionItems && (
+                    {!m.notes && !m.actionItems && !m.transcript && (
                       <div style={{ fontSize: 12.5, color: 'var(--text3)', fontStyle: 'italic' }}>
                         This meeting was logged without notes.
                       </div>

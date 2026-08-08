@@ -3,6 +3,7 @@ import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listMeetings } from '@/lib/meetingNotes';
 import { setClientReviewDates } from '@/lib/clients';
+import { toRichText } from '@/lib/notionText';
 import * as sbMeetings from '@/lib/repos/meetingNotes';
 import { DEMO_MEETINGS } from '@/lib/demoData';
 
@@ -40,19 +41,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { clientId, clientName, meetingDate, meetingType, notes, actionItems, nextReviewDate, clearNextReview } = body;
+  const { clientId, clientName, meetingDate, meetingType, notes, actionItems, transcript, nextReviewDate, clearNextReview } = body;
 
   const notion = new Client({ auth: config.notionApiKey });
   // Title always encodes client name so it can be parsed back without extra DB columns
   const title  = `${clientName} — ${meetingType} — ${meetingDate}`;
 
-  // Core properties that every Meeting Notes DB must have
+  // Core properties that every Meeting Notes DB must have.
+  // Free-text fields go through toRichText: Notion rejects any single text object
+  // over 2000 chars, which used to fail the whole save on a long meeting note.
   const coreProps: Record<string, unknown> = {
-    Name:           { title:     [{ text: { content: title } }] },
+    Name:           { title:     toRichText(title) },
     'Meeting Date': { date:      { start: meetingDate } },
     'Meeting Type': { select:    { name: meetingType } },
-    'Notes':        { rich_text: [{ text: { content: notes || '' } }] },
-    'Action Items': { rich_text: [{ text: { content: actionItems || '' } }] },
+    'Notes':        { rich_text: toRichText(notes) },
+    'Action Items': { rich_text: toRichText(actionItems) },
     ...(nextReviewDate ? { 'Next Review Date': { date: { start: nextReviewDate } } } : {}),
     // Centralized model: stamp owning advisor
     'Advisor':      { select: { name: config.name } },
@@ -60,7 +63,8 @@ export async function POST(req: NextRequest) {
 
   // Optional properties — only present if the DB has these columns
   const optionalProps: Record<string, unknown> = {
-    'Client Name': { rich_text: [{ text: { content: clientName || '' } }] },
+    'Client Name': { rich_text: toRichText(clientName) },
+    ...(transcript ? { 'Transcript': { rich_text: toRichText(transcript) } } : {}),
     ...(clientId ? { 'Client': { relation: [{ id: clientId }] } } : {}),
   };
 
@@ -71,6 +75,7 @@ export async function POST(req: NextRequest) {
       await sbMeetings.createMeeting({
         title, meetingDate, meetingType,
         notes: notes || '', actionItems: actionItems || '',
+        transcript: transcript || '',
         nextReviewDate: nextReviewDate || null, advisor: config.name,
       });
     } else {

@@ -25,6 +25,7 @@ interface Row {
   next_review_date: string | null;
   notes:            string | null;
   action_items:     string | null;
+  transcript:       string | null;
   advisor:          string | null;
 }
 
@@ -38,6 +39,7 @@ function toMeeting(r: Row): MeetingNote {
     meetingType:    r.meeting_type ?? '',
     notes:          r.notes ?? '',
     actionItems:    r.action_items ?? '',
+    transcript:     r.transcript ?? '',
     nextReviewDate: r.next_review_date ?? '',
     title,
   };
@@ -48,7 +50,7 @@ export async function listMeetings(config: AdvisorConfig): Promise<MeetingNote[]
   const sb = getSupabase();
   let q = sb
     .from(TABLE)
-    .select('id, notion_id, name, meeting_date, meeting_type, next_review_date, notes, action_items, advisor')
+    .select('id, notion_id, name, meeting_date, meeting_type, next_review_date, notes, action_items, transcript, advisor')
     .order('meeting_date', { ascending: false });
   if (config.role !== 'Admin') q = q.eq('advisor', config.name);
   const { data, error } = await q;
@@ -62,6 +64,7 @@ export interface MeetingWrite {
   meetingType:    string;
   notes:          string;
   actionItems:    string;
+  transcript:     string;        // verbatim capture; '' → column left null
   nextReviewDate: string | null; // '' / null → column left null
   advisor:        string;
 }
@@ -78,6 +81,7 @@ export async function createMeeting(w: MeetingWrite): Promise<{ id: string }> {
     meeting_type:     w.meetingType,
     notes:            w.notes || null,
     action_items:     w.actionItems || null,
+    transcript:       w.transcript || null,
     next_review_date: w.nextReviewDate || null,
     advisor:          w.advisor,
   }).select('id').single();
