@@ -31,11 +31,17 @@ const dt = (p: P, k: string): string | null => { const v = p[k] as { type: strin
 const title = (p: P, k: string) => { const v = p[k] as { type: string; title?: { plain_text: string }[] }; return v?.type === 'title' ? (v.title?.[0]?.plain_text ?? '') : ''; };
 const relFirst = (p: P, k: string): string | null => { const v = p[k] as { type: string; relation?: { id: string }[] }; return v?.type === 'relation' ? (v.relation?.[0]?.id.replace(/-/g, '') ?? null) : null; };
 
+// `platform` is included deliberately: without it, rows this script INSERTs
+// land with a blank platform, and the Investment page's Phillip/iFAST
+// breakdown only still works because the read path falls back to
+// derivePlatform() (app/api/notion/route.ts). Observed 2026-08-10 — a
+// reconcile inserted 51 rows, all blank-platform. Notion's Platform select is
+// the source of truth here (backfill-platform.mjs keeps it filled).
 const COLS = [
   'holding_name', 'client_notion_id', 'asset_class', 'product_name', 'institution', 'currency',
   'fx_rate_to_myr', 'units', 'purchase_price_original', 'purchase_price_myr', 'value_original_currency',
   'value_myr', 'start_date', 'maturity_date', 'status', 'advisor', 'geography', 'fame_account_no',
-  'fund_source', 'fame_sync_date',
+  'fund_source', 'fame_sync_date', 'platform',
 ] as const;
 type Col = typeof COLS[number];
 type Rec = Record<Col, unknown>;
@@ -65,6 +71,7 @@ function recFromNotion(pg: PageObjectResponse): Rec {
     fame_account_no:         rt(p, 'FAME Account No'),
     fund_source:             rt(p, 'Fund Source'),
     fame_sync_date:          dt(p, 'FAME Sync Date'),
+    platform:                selN(p, 'Platform'),
   };
 }
 
