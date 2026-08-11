@@ -48,6 +48,37 @@ export const LSA_SA_EXPONENT: Record<LsaInsurer, number> = {
   AIA: 1.0, Allianz: 0.992, GE: 1.0, HLA: 0.939, Prudential: 0.9904,
 };
 
+// ── Coverage basis ──────────────────────────────────────────────────────────
+// EVERY rate in LSA_DATA is the "coverage to age 80" quotation, EXCEPT GE, whose
+// SmartProtect Wealth Plus is only sold on a 64-year term running to age 100.
+// That difference is not cosmetic — quoting the same client to age 100 instead of
+// 80 changes the premium a lot (from the RM1m M35 NS illustrations):
+//     AIA        RM828  ->  RM828   (same monthly, but payable to 100, not 80)
+//     Allianz    RM669  ->  RM1,593 (x2.38)
+//     HLA        RM480  ->  RM819   (x1.71)
+//     Prudential RM466  ->  RM583 to age 79, then RM6,857 from 80
+//     GE                     natively to 100 (stepped throughout)
+// A real HLA "Full Pay" (to-100) quote for M58 NS SA2m came in at RM4,910/mo
+// against RM2,990 from this to-80 grid — a 39% gap that is entirely the term,
+// not a modelling error. Hence the loud basis banner in the UI: an FA holding a
+// to-100 illustration must not read these numbers as comparable.
+//
+// Because GE keeps charging past 80, its monthly is NOT like-for-like with the
+// others. outlay80 is: it counts only the premiums paid up to age 80 for every
+// insurer, so it is the honest cross-insurer comparator on this page.
+export const LSA_COVERAGE_BASIS: Record<LsaInsurer, string> = {
+  AIA: 'Quoted to age 80 (auto-extends to 100, no further premium)',
+  Allianz: 'Quoted to age 80 (renewable to 100 at a higher premium)',
+  GE: 'Sold only to age 100 — premiums continue past 80, so compare total outlay',
+  HLA: 'Quoted to age 80 (auto-extends to 100 at a higher premium)',
+  Prudential: 'Quoted to ANB 80 (extendable to 101 at a higher premium)',
+};
+
+/** True where the insurer's own quote basis is NOT coverage-to-80. */
+export const LSA_BASIS_IS_TO_100: Record<LsaInsurer, boolean> = {
+  AIA: false, Allianz: false, GE: true, HLA: false, Prudential: false,
+};
+
 // Short caveat shown on each result card.
 export const LSA_CAVEAT: Record<LsaInsurer, string> = {
   AIA: 'Level premium to 80, auto-extends to 100. Wealth Booster + Wealth Rewards.',
@@ -68,9 +99,11 @@ export interface LsaResult {
   structure: 'level' | 'stepped';
   deathBasis: string;
   caveat: string;
-  monthly: number | null;   // null = no quote available (e.g. GE has no male rates)
+  coverageBasis: string;    // the term this insurer's own quotation is written on
+  basisIsTo100: boolean;    // true = quoted to 100, so the monthly is not like-for-like
+  monthly: number | null;   // null = no quote for this age/gender/smoker
   annual: number | null;
-  outlay80: number | null;  // total premium outlay to age 80 (scaled by SA)
+  outlay80: number | null;  // premiums paid up to age 80 — the cross-insurer comparator
   note?: string;
 }
 
@@ -120,6 +153,7 @@ export function estimate(
   const base: LsaResult = {
     insurer, product: LSA_PRODUCT[insurer], structure: LSA_STRUCTURE[insurer],
     deathBasis: LSA_DEATH_BASIS[insurer], caveat: LSA_CAVEAT[insurer],
+    coverageBasis: LSA_COVERAGE_BASIS[insurer], basisIsTo100: LSA_BASIS_IS_TO_100[insurer],
     monthly: null, annual: null, outlay80: null,
   };
   if (m == null) {

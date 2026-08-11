@@ -111,7 +111,7 @@ export default function LsaCalculator() {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14;
     doc.setFontSize(7); doc.setTextColor(130, 130, 130);
     const disc = doc.splitTextToSize(
-      'Important: Premiums are estimates interpolated (log-linear on age) from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE uses a STEPPED premium - low now, rising steeply with age - so compare the total outlay to age 80, not the monthly figure; GE male smoker ages 56-60 are not yet quoted. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
+      'COVERAGE BASIS - TO AGE 80. AIA, Allianz, HLA and Prudential are quoted for coverage to age 80; GE\'s SmartProtect Wealth Plus is sold only on a term to age 100, so its monthly premium is not like-for-like - compare "Total to 80", which counts only the premiums paid up to age 80 for every insurer. A "Full Pay" or coverage-to-100 illustration will be materially HIGHER than the figures above (at male 35 non-smoker RM1m: HLA RM480 -> RM819, Allianz RM669 -> RM1,593), so check the Coverage Period on any illustration before comparing. Premiums are estimates interpolated (log-linear on age) from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE\'s stepped premium rises steeply with age; GE male smoker ages 56-60 are not yet quoted. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
       W - 80,
     );
     doc.text(disc, 40, y);
@@ -158,8 +158,15 @@ export default function LsaCalculator() {
           action={<span style={{ fontSize: 12, color: 'var(--text3)' }}>{chosen.length} selected</span>}
         >
           <Notice>
-            <strong>Total to age 80</strong> is the full premium outlay over the life of the policy — the honest cost.
-            A low <em>stepped</em> monthly premium (GE) can still end up the most expensive.
+            <strong>These are “coverage to age 80” premiums.</strong> If your client&apos;s illustration is a
+            <em> Full Pay </em>or <em>coverage-to-100</em> quote, it will read <strong>far higher</strong> — the same
+            RM1m male 35 non-smoker is RM480/mo to 80 but RM819/mo to 100 with HLA, and RM669 → RM1,593 with Allianz.
+            Check the <em>Coverage Period</em> on the illustration before comparing.
+          </Notice>
+          <Notice tone="blue">
+            <strong>Total to age 80</strong> counts only the premiums paid up to 80 for every insurer, so it is the
+            like-for-like comparator here — a low <em>stepped</em> monthly (GE) can still cost the most over the term.
+            Note GE&apos;s plan is sold only to age 100, so its monthly is not on the same footing as the other four.
           </Notice>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: 14 }}>
@@ -230,10 +237,17 @@ export default function LsaCalculator() {
 
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
                     {hasQuote && r.structure === 'stepped' && <Pill color="#92400E">STEPPED</Pill>}
+                    {r.basisIsTo100 && <Pill color="#3860BE">TO AGE 100</Pill>}
                     {isLowest && <Pill color="#16A34A">LOWEST</Pill>}
                   </div>
 
                   <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>{r.caveat}</div>
+                  <div style={{
+                    fontSize: 9, color: r.basisIsTo100 ? '#3860BE' : 'var(--text3)', marginTop: 5,
+                    lineHeight: 1.45, fontWeight: r.basisIsTo100 ? 600 : 400,
+                  }}>
+                    {r.coverageBasis}
+                  </div>
                 </div>
               );
             })}
@@ -318,12 +332,15 @@ export default function LsaCalculator() {
           </div>
 
           <FinePrint>
-            Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured
-            using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA, Prudential; AIA &amp; GE
-            scale linearly pending high-SA quotes) — not official quotations; confirm against the insurer system before issue.
-            GE uses a stepped premium — its low year-1 figure escalates and can end up the highest lifetime cost. Death-benefit
-            basis and free riders differ materially — see comparison.
-            For advisory discussion only.
+            <strong>Coverage basis: to age 80.</strong> AIA, Allianz, HLA and Prudential are quoted to age 80; GE&apos;s plan
+            is sold only to age 100, so its monthly is not like-for-like — compare the total outlay to age 80, which counts
+            only premiums paid up to 80 for every insurer. A <em>Full Pay</em> / coverage-to-100 illustration will be
+            materially higher (HLA ≈1.7×, Allianz ≈2.4× at male 35).
+            Premiums are estimates interpolated (log-linear on age) from each insurer&apos;s RM1,000,000 illustrations and
+            scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA,
+            Prudential; AIA &amp; GE scale linearly pending high-SA quotes) — not official quotations; confirm against the
+            insurer system before issue. GE&apos;s stepped premium escalates and can end up the highest lifetime cost.
+            Death-benefit basis and free riders differ materially — see comparison. For advisory discussion only.
           </FinePrint>
         </Section>
       )}
