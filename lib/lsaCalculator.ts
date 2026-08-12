@@ -15,18 +15,27 @@ export const LSA_INSURERS: LsaInsurer[] = ['AIA', 'Allianz', 'GE', 'HLA', 'Prude
 export type CoverageAge = 70 | 80 | 90 | 100;
 
 /**
- * Selectable coverage terms. 70 and 90 are listed but disabled: no insurer prints a
- * premium for those terms in any illustration we hold, and inventing one by
- * extrapolating off the 80/100 pair is not something an FA could defend in front of
- * a client. Pull real 70/90 quotations and they can be switched on here.
- * (Prudential ages 50-60 were quoted to 90 by accident — see PRU_TO90_AGES.)
+ * Selectable coverage terms.
+ *
+ * 80 and 100 are QUOTED: both come straight out of the insurers' own illustrations.
+ *
+ * 70 is DERIVED at the user's request (2026-08-08) — no insurer illustrates a
+ * to-70 term, so it is modelled from the two real anchors (see derive70 below) and
+ * every 70 figure is badged DERIVED on screen and in the client PDF. Treat it as a
+ * planning indication, not a quotable premium.
+ *
+ * 90 stays disabled: it would be the same kind of model, and the user chose not to
+ * enable it. (Prudential ages 50-60 were accidentally quoted to 90 — PRU_TO90_AGES.)
  */
-export const LSA_COVERAGE_AGES: { age: CoverageAge; label: string; enabled: boolean; note?: string }[] = [
-  { age: 70, label: 'To age 70', enabled: false, note: 'Not illustrated — needs quotations' },
+export const LSA_COVERAGE_AGES: { age: CoverageAge; label: string; enabled: boolean; derived?: boolean; note?: string }[] = [
+  { age: 70, label: 'To age 70', enabled: true, derived: true, note: 'Modelled from the 80/100 quotes — not illustrated by any insurer' },
   { age: 80, label: 'To age 80', enabled: true },
   { age: 90, label: 'To age 90', enabled: false, note: 'Not illustrated — needs quotations' },
   { age: 100, label: 'To age 100', enabled: true },
 ];
+
+/** True where the figures for that term are modelled rather than quoted. */
+export const LSA_TERM_IS_DERIVED: Record<number, boolean> = { 70: true, 80: false, 90: true, 100: false };
 
 /**
  * Prudential entry ages whose "to age 80" rate is really a to-age-90 quotation
@@ -140,6 +149,7 @@ export interface LsaResult {
   annual: number | null;
   outlay80: number | null;  // premiums paid to the selected coverage age (name kept for callers)
   coverageAge: CoverageAge; // the term these figures are quoted on
+  derived: boolean;         // true = modelled, not read off an illustration (to-70)
   basisWarning?: string;    // set when this row's own quote basis differs from the selection
   note?: string;
 }
@@ -179,6 +189,25 @@ function interp(rec: Record<string, [number, number]>, g: Gender, sm: string, ag
   return Math.exp(Math.log(y0) + (Math.log(y1) - Math.log(y0)) * t);
 }
 
+/**
+ * Model a to-age-70 premium from the two quoted anchors.
+ *
+ * Premium grows roughly geometrically with the length of the term, so we take the
+ * same log form used for age interpolation and read it at T = 70:
+ *     P(T) = P80 * (P100 / P80) ^ ((T - 80) / 20)   ->   P70 = P80 * sqrt(P80 / P100)
+ *
+ * This is an EXTRAPOLATION below both anchors — nothing validates it, which is why
+ * every 70 figure carries a DERIVED badge. Two known artefacts:
+ *   - AIA quotes the same monthly for 80 and 100 (you simply pay it for longer), so
+ *     the ratio is 1 and the model returns the to-80 premium unchanged.
+ *   - GE is only sold to 100, so its "to-80" grid is really its to-100 grid; the
+ *     ratio is again 1 and its basisWarning already says the term does not apply.
+ */
+function derive70(p80: number | null, p100: number | null): number | null {
+  if (p80 == null || p100 == null || p80 <= 0 || p100 <= 0) return p80;
+  return p80 * Math.sqrt(p80 / p100);
+}
+
 /** Estimate one insurer. Returns a result with nulls if no quote exists (GE male). */
 export function estimate(
   insurer: LsaInsurer, gender: Gender, smoker: boolean, age: number, sa = BASE_SA,
@@ -186,18 +215,29 @@ export function estimate(
 ): LsaResult {
   const sm = smoker ? 'S' : 'N';
   const to100 = coverageAge === 100;
-  const rec = to100 ? LSA_DATA_100[insurer] : LSA_DATA[insurer];
-  const m = interp(rec as Record<string, [number, number]>, gender, sm, age, 0);
-  const o = interp(rec as Record<string, [number, number]>, gender, sm, age, 1);
+  const to70 = coverageAge === 70;
+  const g80 = LSA_DATA[insurer] as Record<string, [number, number]>;
+  const g100 = LSA_DATA_100[insurer] as Record<string, [number, number]>;
+  const rec = to100 ? g100 : g80;
+
+  let m = interp(rec, gender, sm, age, 0);
+  let o = interp(rec, gender, sm, age, 1);
+  if (to70) {
+    m = derive70(interp(g80, gender, sm, age, 0), interp(g100, gender, sm, age, 0));
+    // premiums stop at 70, so the outlay is simply the term paid out
+    o = m == null ? null : m * 12 * Math.max(0, 70 - Math.max(20, Math.min(60, age)));
+  }
+
   const base: LsaResult = {
     insurer, product: LSA_PRODUCT[insurer], structure: LSA_STRUCTURE[insurer],
     deathBasis: LSA_DEATH_BASIS[insurer], caveat: LSA_CAVEAT[insurer],
     coverageBasis: LSA_COVERAGE_BASIS[insurer], basisIsTo100: LSA_BASIS_IS_TO_100[insurer],
     monthly: null, annual: null, outlay80: null, coverageAge,
+    derived: to70,
   };
-  // GE is sold only to age 100, so on a to-80 selection its row is not like-for-like.
+  // GE is sold only to age 100, so on a shorter selection its row is not like-for-like.
   if (!to100 && LSA_BASIS_IS_TO_100[insurer]) {
-    base.basisWarning = 'Sold only to age 100 — premiums continue past 80';
+    base.basisWarning = `Sold only to age 100 — premiums continue past ${coverageAge}`;
   }
   // Prudential's 50/55/60 rows are to-age-90 illustrations sitting in the to-80 grid.
   if (!to100 && insurer === 'Prudential' && PRU_TO90_AGES.some((a) => Math.abs(a - age) < 5)) {
@@ -213,6 +253,9 @@ export function estimate(
   base.monthly = monthly;
   base.annual = monthly * 12;
   base.outlay80 = o == null ? null : Math.round(o * saFactor);
+  if (to70 && LSA_DATA_100[insurer] && !base.basisWarning) {
+    base.note = 'Modelled from the to-80 / to-100 quotes — no insurer illustrates a to-70 term';
+  }
   if (insurer === 'GE') base.note = 'Year-1 stepped premium — rises steeply later; see total outlay';
   if (to100 && insurer === 'Prudential') base.note = 'Steps up again at 80 — lifetime total not shown';
   return base;
