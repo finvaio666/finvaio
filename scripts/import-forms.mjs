@@ -55,7 +55,11 @@ function cleanName(fileName) {
 async function main() {
   const idxPath = path.join(FOLDER, 'index.json');
   const arr = JSON.parse(fs.readFileSync(idxPath, 'utf8'));
-  const entries = arr.filter(e => e.status === 'ok' && e.savedPath && fs.existsSync(e.savedPath));
+  // Normalize both index schemas: Allianz (savedPath/fileName/description) and
+  // FAME/Phillip (saved_path/file_name).
+  const pathOf = e => e.savedPath || e.saved_path;
+  const fileOf = e => e.fileName || e.file_name || e.description || '';
+  const entries = arr.filter(e => (e.status === 'ok' || !e.status) && pathOf(e) && fs.existsSync(pathOf(e)));
   console.log(`Importing ${entries.length} ${PROVIDER} forms from ${FOLDER}\n`);
 
   // Existing names for this provider → skip duplicates (idempotent).
@@ -66,10 +70,10 @@ async function main() {
   let i = 0;
   for (const e of entries) {
     i++;
-    const name = cleanName(e.fileName || e.description);
+    const name = cleanName(fileOf(e));
     if (seen.has(name.toLowerCase())) { report.skipped++; continue; }
     try {
-      const buffer = fs.readFileSync(e.savedPath);
+      const buffer = fs.readFileSync(pathOf(e));
 
       // Detect fillable AcroForm fields.
       let formType = 'Scanned PDF';
