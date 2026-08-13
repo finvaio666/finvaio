@@ -55,12 +55,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     return { name: 'Sky Siew', role: 'Senior Consultant', initials: 'SS' };
   });
   const [features, setFeatures] = useState<string[]>([]);
-  // Investment sub-menu — one entry per admin-defined platform group. Seeded
-  // from cache so the sub-items don't pop in on every navigation.
-  const [platformGroups, setPlatformGroups] = useState<{ id: string; name: string }[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try { return JSON.parse(sessionStorage.getItem('aria-platform-groups') ?? '[]'); } catch { return []; }
-  });
+  // Investment sub-menu — one entry per admin-defined platform group. Starts
+  // empty and is filled from cache in an effect: seeding from sessionStorage in
+  // the initialiser would render sub-items the server didn't emit, which is a
+  // hydration mismatch.
+  const [platformGroups, setPlatformGroups] = useState<{ id: string; name: string }[]>([]);
   // Seed from the last known role (cached client-side) so the nav doesn't
   // flash Advisor → Admin on every page load while /api/auth/me resolves.
   const [isAdmin,  setIsAdmin]  = useState(() =>
@@ -88,6 +87,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   }, []);
 
   useEffect(() => {
+    // Paint from cache first so the sub-items don't pop in on every navigation,
+    // then reconcile with the server.
+    try {
+      const cached = JSON.parse(sessionStorage.getItem('aria-platform-groups') ?? '[]');
+      if (Array.isArray(cached) && cached.length) setPlatformGroups(cached);
+    } catch { /* fall through to the fetch */ }
+
     fetch('/api/admin/platform-groups')
       .then(r => r.json())
       .then(d => {

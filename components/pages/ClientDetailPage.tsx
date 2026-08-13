@@ -10,6 +10,7 @@ import {
 } from '@/components/useClients';
 import CashflowFormModal from '@/components/CashflowFormModal';
 import NetWorthFormModal from '@/components/NetWorthFormModal';
+import AumBreakdownBar from '@/components/AumBreakdownBar';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { MedicalDetail } from '@/components/MedicalDetail';
 import MaskedValue from '@/components/MaskedValue';
@@ -72,10 +73,6 @@ const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 // they're not. Collapse to a single "PRS Acc" label; the account number
 // already distinguishes the group.
 const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
-
-// Colours cycle so a newly added platform group still gets a distinct card.
-const GROUP_CARD_COLORS = ['gold', 'purple', 'blue', 'green', 'red'] as const;
-const GROUP_CARD_ICONS  = ['🏦', '🏛️', '🌏', '💼', '📉'] as const;
 
 const TYPE_COLORS: Record<string, string> = {
   'ILP': '#60A5FA', 'IUL': '#818CF8', 'UL': '#A78BFA',
@@ -315,18 +312,9 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
           <div className="stat-value">{fmtK(totalValue)}</div>
           <div className="stat-sub">{holdings.length} holdings</div>
         </div>
-        {groupTotals.map((g, i) => {
-          const color = GROUP_CARD_COLORS[i % GROUP_CARD_COLORS.length];
-          return (
-            <div key={g.name} className={`stat-card ${color}`}>
-              <div className={`stat-icon ${color}`}>{GROUP_CARD_ICONS[i % GROUP_CARD_ICONS.length]}</div>
-              <div className="stat-label">{g.name}</div>
-              <div className="stat-value">{fmtK(g.value)}</div>
-              <div className="stat-sub">{totalValue > 0 ? `${((g.value / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
-            </div>
-          );
-        })}
       </div>
+
+      <AumBreakdownBar title="AUM by platform group" items={groupTotals} />
 
       {/* Holdings table */}
       <div className="section">

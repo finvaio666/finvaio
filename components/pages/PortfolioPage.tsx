@@ -6,6 +6,7 @@ import NavUpdatePanel from '@/components/NavUpdatePanel';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
+import AumBreakdownBar from '@/components/AumBreakdownBar';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
 interface Holding {
@@ -53,10 +54,6 @@ const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' :
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
-// Colours cycle so a newly added group still gets a distinct stat card.
-const GROUP_CARD_COLORS = ['gold', 'purple', 'blue', 'green', 'red'] as const;
-const GROUP_CARD_ICONS  = ['🏦', '🏛️', '🌏', '💼', '📉'] as const;
-
 function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Holding[] }[] {
   const byAccount = new Map<string, Holding[]>();   // holdings that carry an account no
   const byPlatform = new Map<string, Holding[]>();  // no account no — bucket per platform
@@ -292,17 +289,6 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
           <div className="stat-value">{loading ? '…' : fmtK(totalValue)}</div>
           <div className="stat-sub">{visible.length} holdings · MYR equiv.</div>
         </div>
-        {breakdown.map((g, i) => {
-          const color = GROUP_CARD_COLORS[i % GROUP_CARD_COLORS.length];
-          return (
-            <div key={g.name} className={`stat-card ${color}`}>
-              <div className={`stat-icon ${color}`}>{GROUP_CARD_ICONS[i % GROUP_CARD_ICONS.length]}</div>
-              <div className="stat-label">{g.name}</div>
-              <div className="stat-value">{loading ? '…' : fmtK(g.value)}</div>
-              <div className="stat-sub">{totalValue > 0 ? `${((g.value / totalValue) * 100).toFixed(0)}% of AUM` : '—'}</div>
-            </div>
-          );
-        })}
         <div className="stat-card blue">
           <div className="stat-icon blue">📦</div>
           <div className="stat-label">Holdings</div>
@@ -310,6 +296,17 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
           <div className="stat-sub">{activeTab === 'All' ? `${clientNames.length} clients` : 'Active holdings'}</div>
         </div>
       </div>
+      )}
+
+      {/* ── AUM breakdown — by group at the top level, by platform inside a group ── */}
+      {activeTab && !loading && (
+        <AumBreakdownBar
+          title={activeGroup ? `${activeGroup.name} — AUM by platform` : 'AUM by platform group'}
+          items={breakdown}
+          emptyHint={activeGroup
+            ? `No ${activeGroup.platforms.join(' or ')} holdings for this selection.`
+            : 'No holdings to break down yet.'}
+        />
       )}
 
       {/* ── FX bar ── */}

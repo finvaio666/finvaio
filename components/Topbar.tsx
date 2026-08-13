@@ -30,15 +30,18 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname();
   const [dateStr, setDateStr] = useState('');
   // Investment sub-pages (/portfolio/local-ut) are titled with their group name,
-  // read from the same cache the sidebar populates.
-  const groupTitle = (() => {
+  // read from the same cache the sidebar populates. Resolved in an effect rather
+  // than during render — sessionStorage doesn't exist on the server, so reading
+  // it inline makes the first client render disagree with the SSR'd HTML.
+  const [groupTitle, setGroupTitle] = useState('');
+  useEffect(() => {
     const slug = pathname.startsWith('/portfolio/') ? pathname.slice('/portfolio/'.length) : '';
-    if (!slug || typeof window === 'undefined') return '';
+    if (!slug) { setGroupTitle(''); return; }
     try {
       const groups = JSON.parse(sessionStorage.getItem('aria-platform-groups') ?? '[]') as { id: string; name: string }[];
-      return groups.find(g => g.id === slug)?.name ?? '';
-    } catch { return ''; }
-  })();
+      setGroupTitle(groups.find(g => g.id === slug)?.name ?? '');
+    } catch { setGroupTitle(''); }
+  }, [pathname]);
   const title = groupTitle || pageTitles[pathname] || (pathname.startsWith('/portfolio') ? 'Investment' : 'Dashboard');
 
   useEffect(() => {
