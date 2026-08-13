@@ -47,9 +47,9 @@ export default function AumBreakdownBar({
 
   if (total <= 0) {
     return (
-      <div className="section" style={{ padding: '18px 20px', marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{title}</div>
-        <div style={{ fontSize: 12, color: 'var(--text3)' }}>{emptyHint ?? 'No holdings to break down yet.'}</div>
+      <div className="section" style={{ padding: '26px 30px' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 8 }}>{title}</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)' }}>{emptyHint ?? 'No holdings to break down yet.'}</div>
       </div>
     );
   }
@@ -57,41 +57,57 @@ export default function AumBreakdownBar({
   const colorFor = (i: number) => (rows[i].name === 'Other' && tail.length ? OTHER : SERIES[i % SERIES.length]);
 
   return (
-    <div className="section" style={{ padding: '18px 20px', marginBottom: 16 }}>
-      {/* Header — title carries the total, so the bar itself needs no axis */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{title}</div>
-        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmtK(total)}</div>
+    <div className="section" style={{ padding: '24px 30px 26px' }}>
+      {/* Header — the total lives here, so the bar needs no axis */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)' }}>{title}</div>
+        <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1 }}>{fmtK(total)}</div>
       </div>
 
-      {/* Stacked bar — 2px surface gaps do the separating, no strokes */}
+      {/* Stacked bar. Pill-shaped to sit with the app's rounded language; the
+          2px surface gaps do the separating, never a stroke. Segments carry an
+          inline % only when the text genuinely fits, so nothing is ever clipped
+          — the legend below is what guarantees every value is readable. */}
       <div
-        style={{ display: 'flex', gap: 2, height: 18, marginBottom: 16, borderRadius: 4, overflow: 'hidden', background: 'var(--surface)' }}
+        style={{ display: 'flex', gap: 2, height: 30, marginBottom: 22, borderRadius: 999, overflow: 'hidden', background: 'var(--surface)' }}
         onMouseLeave={() => setHovered(null)}
       >
         {rows.map((r, i) => {
           const pct = (r.value / total) * 100;
+          const label = `${pct.toFixed(1)}%`;
+          // ~7px per char at 12px + breathing room; only label a segment wide
+          // enough to hold it comfortably.
+          const fits = pct >= (label.length * 7 + 24) / 10;
           return (
             <div
               key={r.name}
               onMouseEnter={() => setHovered(r.name)}
-              title={`${r.name} · ${fmtFull(r.value)} · ${pct.toFixed(1)}%`}
+              title={`${r.name} · ${fmtFull(r.value)} · ${label}`}
               style={{
                 width: `${pct}%`,
                 background: colorFor(i),
-                opacity: hovered && hovered !== r.name ? 0.35 : 1,
-                transition: 'opacity 0.15s',
+                opacity: hovered && hovered !== r.name ? 0.3 : 1,
+                transition: 'opacity 0.18s',
                 cursor: 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minWidth: 0,
               }}
-            />
+            >
+              {fits && (
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                  {label}
+                </span>
+              )}
+            </div>
           );
         })}
       </div>
 
-      {/* Legend — identity comes from the swatch, never from coloured text.
-          Exact values live here, which is also the relief the contrast check
-          requires for the lighter hues. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Legend as mini stat tiles — a wide full-width row stranded the name at
+          one edge and its value at the other. A wrapping grid keeps each name
+          next to its own numbers and scales to six platforms.
+          Identity comes from the swatch; text keeps its own tokens. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         {rows.map((r, i) => {
           const pct = (r.value / total) * 100;
           const dim = hovered !== null && hovered !== r.name;
@@ -101,23 +117,32 @@ export default function AumBreakdownBar({
               onMouseEnter={() => setHovered(r.name)}
               onMouseLeave={() => setHovered(null)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '6px 6px', borderRadius: 6,
-                background: hovered === r.name ? 'var(--surface2)' : 'transparent',
-                opacity: dim ? 0.5 : 1,
-                transition: 'opacity 0.15s, background 0.15s',
+                // Grow to fill the row but stop before a two-platform card
+                // stretches each tile across half its width. The cap sits above
+                // a phone's content width so tiles still fill edge-to-edge there.
+                flex: '1 1 170px', maxWidth: 300,
+                padding: '12px 14px',
+                borderRadius: 'var(--r-sm)',
+                background: 'var(--surface2)',
+                boxShadow: hovered === r.name ? 'var(--shadow-sm)' : 'none',
+                opacity: dim ? 0.45 : 1,
+                transition: 'opacity 0.18s, transform 0.18s, box-shadow 0.18s',
+                transform: hovered === r.name ? 'translateY(-2px)' : 'none',
+                minWidth: 0,
               }}
             >
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: colorFor(i), flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {r.name}
-              </span>
-              <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text2)', whiteSpace: 'nowrap' }}>
-                {fmtFull(r.value)}
-              </span>
-              <span style={{ width: 52, textAlign: 'right', fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 999, background: colorFor(i), flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.name}
+                </span>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.1 }}>
                 {pct.toFixed(1)}%
-              </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--font-mono)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {fmtFull(r.value)}
+              </div>
             </div>
           );
         })}
