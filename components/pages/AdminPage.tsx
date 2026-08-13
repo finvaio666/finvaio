@@ -363,7 +363,7 @@ export default function AdminPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Admin Dashboard</h1>
-            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Bill Morrisons Financial Consulting — Platform Overview</div>
+            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Bill Morrisons Group — Platform Overview</div>
           </div>
           <button onClick={loadOverview} style={{ padding: '8px 14px', fontSize: 13, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>⟳ Refresh</button>
         </div>

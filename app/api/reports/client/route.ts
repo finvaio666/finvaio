@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { jwtVerify } from 'jose';
+import { getClientById } from '@/lib/clients';
+import { listHoldings } from '@/lib/portfolio';
+import { listPolicies } from '@/lib/insurance';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabaseClients = () => process.env.DATA_SOURCE_CLIENTS === 'supabase';
 
 async function getSession(req: NextRequest) {
   const token  = req.cookies.get('aria-session')?.value;
@@ -38,8 +43,80 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const notion = new Client({ auth: config.notionApiKey });
   const isAdmin = config.role === 'Admin';
+
+  if (useSupabaseClients()) {
+    const rec = await getClientById(config, clientId);
+    if (!rec) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    // an advisor may only report on their own clients (mirrors the Notion check)
+    if (!isAdmin && rec.advisorName && rec.advisorName !== config.name) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // No config.portfolioDbId / insuranceDbId gate here: those ask whether Notion
+    // is configured. Gating on them would make a Phase 4 env cleanup silently
+    // return an empty portfolio instead of an error.
+    const holdings = (await listHoldings(config).catch(() => []))
+      .filter(h => h.clientNotionId === rec.notionId);
+    const policies = (await listPolicies(config).catch(() => []))
+      .filter(p => p.clientNotionId === rec.notionId);
+
+    return NextResponse.json({
+      client: {
+        id:         rec.id,
+        name:       rec.name,
+        status:     rec.status,
+        segment:    rec.segment,
+        risk:       rec.risk,
+        aum:        rec.aum,
+        income:     rec.monthlyIncome,
+        goals:      rec.financialGoals,
+        phone:      rec.phone,
+        email:      rec.email,
+        dob:        rec.dob,
+        onboarding: rec.onboardingDate,
+        nextReview: rec.nextReview,
+        lastReview: rec.lastReview,
+      },
+      portfolio: holdings.map(h => ({
+        id:           h.id,
+        name:         h.name,
+        assetClass:   h.assetClass,
+        institution:  h.institution,
+        currency:     h.currency || 'MYR',
+        valueOrig:    h.valueOriginal,
+        valueMYR:     h.valueMyr,
+        purchaseOrig: h.purchaseOriginal,
+        purchaseMYR:  h.purchaseMyr,
+        fxRate:       h.fxRate,
+        status:       h.status,
+        maturityDate: h.maturityDate,
+      })),
+      insurance: policies.map(p => ({
+        id:               p.id,
+        policyName:       p.policyName,
+        insuranceType:    p.insuranceType,
+        benefits:         p.benefits,
+        status:           p.status,
+        insurer:          p.insurer,
+        policyNumber:     p.policyNumber,
+        sumAssured:       p.sumAssured,
+        lifeCover:        p.lifeCover,
+        ciCover:          p.ciCover,
+        paCover:          p.paCover,
+        tpdCover:         p.tpdCover,
+        medicalClass:     p.medicalClass,
+        annualPremium:    p.annualPremium,
+        commencementDate: p.commencementDate,
+        maturityDate:     p.maturityDate,
+        beneficiary:      p.beneficiary,
+        policyOwner:      p.policyOwner,
+        lifeAssured:      p.lifeAssured,
+      })),
+      generatedAt: new Date().toISOString(),
+    });
+  }
+
+  const notion = new Client({ auth: config.notionApiKey });
 
   // ── 1. Fetch client ─────────────────────────────────────────────────────────
   let clientData = null;

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import type { UpdatePageParameters, CreatePageParameters } from '@notionhq/client/build/src/api-endpoints';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import * as sbPortfolio from '@/lib/repos/portfolio';
+import { buildPortfolioPatch, newFundToPatchInput } from '@/lib/portfolio';
+import { resolveClientNotionId } from '@/lib/clients';
+
+const useSupabase = () => process.env.DATA_SOURCE_PORTFOLIO === 'supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,13 +33,7 @@ interface NewFund {
 export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   const config    = advisorId ? await getAdvisorConfig(advisorId) : null;
-
-  if (!config?.notionApiKey || !config.portfolioDbId) {
-    return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 401 });
-  }
-
-  const notion = new Client({ auth: config.notionApiKey });
-  const PORTFOLIO_DB = config.portfolioDbId;
+  if (!config) return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 401 });
 
   let body: { redeemed: RedeemedItem[]; newFunds: NewFund[] };
   try {
@@ -45,6 +44,44 @@ export async function POST(req: NextRequest) {
 
   const { redeemed = [], newFunds = [] } = body;
   const results: { action: string; id?: string; name?: string; ok: boolean; error?: string }[] = [];
+
+  if (config.notionApiKey === 'DEMO_MODE') return NextResponse.json({ ok: true, results: [] });
+
+  if (useSupabase()) {
+    for (const item of redeemed) {
+      try {
+        if (item.action === 'full') {
+          await sbPortfolio.updateHolding(config, item.id, { status: 'Redeemed' });
+          results.push({ action: 'redeem', id: item.id, ok: true });
+        } else {
+          await sbPortfolio.updateHolding(config, item.id,
+            buildPortfolioPatch({ valueOrig: item.newValueOrig ?? 0, valueMyr: item.newValueMyr ?? 0 }, config.name, false));
+          results.push({ action: 'partial', id: item.id, ok: true });
+        }
+      } catch (e) {
+        results.push({ action: item.action, id: item.id, ok: false, error: String(e) });
+      }
+    }
+    for (const fund of newFunds) {
+      try {
+        const patch = buildPortfolioPatch(newFundToPatchInput(fund), config.name, true);
+        if (fund.clientId) patch.client_notion_id = await resolveClientNotionId(fund.clientId);
+        const { id } = await sbPortfolio.createHolding(patch);
+        results.push({ action: 'create', id, name: fund.name, ok: true });
+      } catch (e) {
+        results.push({ action: 'create', name: fund.name, ok: false, error: String(e) });
+      }
+    }
+    const allOkSb = results.every(r => r.ok);
+    return NextResponse.json({ ok: allOkSb, results }, { status: allOkSb ? 200 : 207 });
+  }
+
+  // ── Notion path (unchanged) ──
+  if (!config.notionApiKey || !config.portfolioDbId) {
+    return NextResponse.json({ error: 'Advisor configuration not found.' }, { status: 401 });
+  }
+  const notion = new Client({ auth: config.notionApiKey });
+  const PORTFOLIO_DB = config.portfolioDbId;
 
   // ── 1. Process redeemed / partially switched holdings ────────────────────
   for (const item of redeemed) {

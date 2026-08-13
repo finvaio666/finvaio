@@ -5,7 +5,23 @@ on:
     branches: [dev, main]
 
 jobs:
+  # Blocks the deploy when any file reaches Notion without a DATA_SOURCE_ gate.
+  # Such a file is invisible in testing — the page renders and the data is right,
+  # because Notion is still live — and only breaks once the flag flips and Notion
+  # freezes: reads go stale, writes vanish. Seven of them survived two phases.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run audit:notion
+
   deploy:
+    needs: audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

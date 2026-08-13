@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import { resolveClientNotionId } from '@/lib/clients';
+import { buildPortfolioPatch } from '@/lib/portfolio';
+import * as sbPortfolio from '@/lib/repos/portfolio';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabase = () => process.env.DATA_SOURCE_PORTFOLIO === 'supabase';
 
 interface Body {
   id?: string;
@@ -66,6 +71,16 @@ export async function POST(req: NextRequest) {
   if (!config?.notionApiKey || !config.portfolioDbId) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const b = await req.json() as Body;
   if (!b.holdingName?.trim()) return NextResponse.json({ error: 'Holding name is required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      const patch = buildPortfolioPatch(b, config.name, true);
+      if (b.clientId) patch.client_notion_id = await resolveClientNotionId(b.clientId);
+      const { id } = await sbPortfolio.createHolding(patch);
+      return NextResponse.json({ success: true, id });
+    } catch (e: unknown) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   try {
     const page = await notion.pages.create({ parent: { database_id: config.portfolioDbId }, properties: buildProps(b, config.name, true) as never });
@@ -78,6 +93,19 @@ export async function PATCH(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      const patch = buildPortfolioPatch(b, config.name, false);
+      if (b.clientId !== undefined) patch.client_notion_id = b.clientId ? await resolveClientNotionId(b.clientId) : null;
+      await sbPortfolio.updateHolding(config, b.id, patch);
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (!await assertOwner(notion, b.id, config.name, config.role === 'Admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
@@ -91,6 +119,17 @@ export async function DELETE(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      await sbPortfolio.deleteHolding(config, id);
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (!await assertOwner(notion, id, config.name, config.role === 'Admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {

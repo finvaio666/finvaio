@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { NW_ITEMS } from '@/lib/networthForm';
+import * as sbAssets from '@/lib/repos/assets';
 
 export const dynamic = 'force-dynamic';
 
+const useSupabase = () => process.env.DATA_SOURCE_ASSETS === 'supabase';
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const MARKER = 'advisor-entry'; // Notes marker so re-saving replaces prior advisor-entered rows
 
@@ -31,6 +33,19 @@ function buildProps(b: Body, advisorName: string) {
   if (b.value !== undefined)    p['Value (MYR)'] = { number: b.value || 0 };
   if (b.notes !== undefined)    p['Notes'] = { rich_text: txt(b.notes) };
   p['Advisor'] = { select: { name: advisorName } };
+  return p;
+}
+
+/** Supabase column patch — mirrors buildProps() field-for-field (advisor always stamped). */
+function buildAssetPatch(b: Body, advisorName: string): Record<string, unknown> {
+  const p: Record<string, unknown> = {};
+  if (b.name !== undefined)       p.name     = (b.name ?? '').slice(0, 1900);
+  if (b.clientName !== undefined) p.client   = (b.clientName ?? '').slice(0, 1900);
+  if (b.itemType)                 p.type     = b.itemType;
+  if (b.category !== undefined)   p.category = b.category;
+  if (b.value !== undefined)      p.value_myr = b.value || 0;
+  if (b.notes !== undefined)      p.notes    = (b.notes ?? '').slice(0, 1900);
+  p.advisor = advisorName;
   return p;
 }
 
@@ -62,6 +77,21 @@ export async function POST(req: NextRequest) {
   const rows = NW_ITEMS
     .map(it => ({ ...it, value: num(b.items?.[it.key]) }))
     .filter(r => r.value > 0);
+
+  // ── Supabase write path (Phase 2.11) — replace prior marker rows, insert fresh.
+  if (useSupabase()) {
+    const stamp = new Date().toISOString().split('T')[0];
+    try {
+      const count = await sbAssets.replaceAssetEntries(config.name, b.clientName, MARKER,
+        rows.map(r => ({
+          name: r.label, client: b.clientName!, type: r.type, category: r.category,
+          valueMyr: r.value, notes: `${MARKER} · saved ${stamp}`, advisor: config.name,
+        })));
+      return NextResponse.json({ success: true, count });
+    } catch (e: unknown) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+  }
 
   try {
     // Replace prior advisor-entry rows for this client
@@ -108,6 +138,17 @@ export async function PATCH(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      await sbAssets.updateAsset(config, b.id, buildAssetPatch(b, config.name));
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (!await assertOwner(notion, b.id, config.name, config.role === 'Admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
@@ -121,6 +162,17 @@ export async function DELETE(req: NextRequest) {
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  if (useSupabase()) {
+    try {
+      await sbAssets.deleteAsset(config, id);
+      return NextResponse.json({ success: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
+    }
+  }
+
   const notion = new Client({ auth: config.notionApiKey });
   if (!await assertOwner(notion, id, config.name, config.role === 'Admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {

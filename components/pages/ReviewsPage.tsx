@@ -13,7 +13,7 @@ interface Client {
 interface Meeting {
   id: string; clientId: string; clientName: string;
   meetingDate: string; meetingType: string;
-  notes: string; actionItems: string; nextReviewDate: string;
+  notes: string; actionItems: string; transcript?: string; nextReviewDate: string;
 }
 
 function fmt(d: string) {
@@ -263,6 +263,7 @@ export default function ReviewsPage() {
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
   const [filterClientId, setFilterClientId] = useState(searchParams?.get('client') ?? '');
   const [logDays,      setLogDays]      = useState(90); // 0 = All time
+  const [search,       setSearch]       = useState('');
 
   // Sync filter when ?client= param changes (e.g. navigating from Dashboard)
   useEffect(() => {
@@ -291,16 +292,23 @@ export default function ReviewsPage() {
   // filterClient name (for display labels)
   const filterClientName = clients.find(c => c.id === filterClientId)?.name ?? '';
 
-  // ── Filtered meetings — chosen window + optional client ──────────────────
+  // ── Filtered meetings — chosen window + optional client + text search ────
+  // A search deliberately IGNORES the date window: someone hunting for "the
+  // conversation about the bond switch" has no idea whether it was 4 or 14
+  // months ago, and a search that silently stops at 90 days is worse than none.
+  const q = search.trim().toLowerCase();
   const visibleMeetings = meetings.filter(m => {
     const t = new Date(m.meetingDate).getTime();
     const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
-    const inWindow = t >= logWindowStart && t <= endOfToday.getTime();
+    const inWindow = q ? t <= endOfToday.getTime() : (t >= logWindowStart && t <= endOfToday.getTime());
     const matchesClient =
       filterClientId === '' ||
       m.clientId === filterClientId ||                    // match by ID (preferred)
       m.clientName === filterClientName;                  // fallback: match by name
-    return inWindow && matchesClient;
+    const matchesSearch = !q ||
+      `${m.clientName} ${m.meetingType} ${m.notes} ${m.actionItems} ${m.transcript ?? ''}`
+        .toLowerCase().includes(q);
+    return inWindow && matchesClient && matchesSearch;
   });
 
   // ── Filtered upcoming — next 90 days + optional client ───────────────────
@@ -351,7 +359,9 @@ export default function ReviewsPage() {
         </div>
 
         {/* Duration chips for Meeting History window */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* Greyed while searching — a search spans all time, so the window is moot */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, opacity: q ? 0.4 : 1 }}
+          title={q ? 'Search covers all time — clear the search to use the date window' : undefined}>
           <span style={{ fontSize: 12, color: 'var(--text3)', marginRight: 4 }}>📋 Meeting logs:</span>
           {([
             { label: '1M', days: 30 },
@@ -456,20 +466,31 @@ export default function ReviewsPage() {
             Meeting History
             {filterClientId && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>· { filterClientName }</span>}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setExpandedMeeting(null); }}
+              placeholder="Search notes, actions, transcript…"
+              style={{ padding: '6px 12px', fontSize: 12.5, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', color: 'var(--text)', width: 240, fontFamily: 'var(--font-sans)', outline: 'none' }}
+            />
             <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)' }}>
-              {logDays === 0 ? 'All time' : logDays === 30 ? 'Last 1 month' : logDays === 90 ? 'Last 3 months' : logDays === 180 ? 'Last 6 months' : 'Last 1 year'} · {visibleMeetings.length} meeting{visibleMeetings.length !== 1 ? 's' : ''}
+              {q
+                ? 'All time'
+                : logDays === 0 ? 'All time' : logDays === 30 ? 'Last 1 month' : logDays === 90 ? 'Last 3 months' : logDays === 180 ? 'Last 6 months' : 'Last 1 year'}
+              {' · '}{visibleMeetings.length} meeting{visibleMeetings.length !== 1 ? 's' : ''}
             </span>
           </div>
         </div>
 
         {visibleMeetings.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text3)' }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>📝</div>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>{q ? '🔍' : '📝'}</div>
             <div style={{ fontSize: 15 }}>
-              {filterClientId
-                ? `No meetings logged for ${ filterClientName } in this period`
-                : 'No meetings logged in this period'}
+              {q
+                ? <>No meetings match “{search.trim()}”{filterClientId ? ` for ${filterClientName}` : ''}</>
+                : filterClientId
+                  ? `No meetings logged for ${ filterClientName } in this period`
+                  : 'No meetings logged in this period'}
             </div>
           </div>
         ) : (
@@ -522,6 +543,16 @@ export default function ReviewsPage() {
                           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Action Items</div>
                           <div style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{m.actionItems}</div>
                         </div>
+                      )}
+                      {m.transcript && (
+                        <details>
+                          <summary style={{ fontSize: 12.5, color: 'var(--text3)', cursor: 'pointer' }}>
+                            📄 Full transcript / raw notes
+                          </summary>
+                          <div style={{ marginTop: 8, background: 'var(--bg2)', borderRadius: 'var(--r-sm)', padding: '12px 14px', borderLeft: '3px solid var(--border)', fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+                            {m.transcript}
+                          </div>
+                        </details>
                       )}
                       {m.nextReviewDate && (
                         <div style={{ fontSize: 13, color: 'var(--blue)' }}>

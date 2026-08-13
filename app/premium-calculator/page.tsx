@@ -37,7 +37,7 @@ export default async function Page() {
         <CalculatorHub />
 
         <div style={{ textAlign: 'center', marginTop: 28, fontSize: 11, color: 'var(--text3)' }}>
-          FINVA · Bill Morrisons Financial Consulting
+          FINVA · Bill Morrisons Group
         </div>
       </div>
     </div>

@@ -6,11 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "audit:notion": "node --import tsx scripts/audit-notion-gates.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1103.0",
     "@google/generative-ai": "^0.24.1",
+    "@napi-rs/canvas": "^1.0.3",
     "@notionhq/client": "^2.3.0",
+    "@supabase/supabase-js": "^2.110.0",
     "@types/bcryptjs": "^2.4.6",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
@@ -22,6 +26,8 @@
     "jspdf-autotable": "^5.0.8",
     "next": "16.2.6",
     "pdf-lib": "^1.17.1",
+    "pdf-to-img": "^6.2.0",
+    "pdfjs-dist": "^4.2.67",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "^10.1.0"
@@ -29,13 +35,16 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "exceljs": "^4.4.0",
+    "pg": "^8.22.0",
     "puppeteer": "^25.1.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   }
 }

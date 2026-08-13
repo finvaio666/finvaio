@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
+import * as sbProducts from '@/lib/repos/products';
 import { jwtVerify } from 'jose';
 
 export const dynamic = 'force-dynamic';
+
+const useSupabaseProducts = () => process.env.DATA_SOURCE_PRODUCTS === 'supabase';
 
 /* ── Auth helper ────────────────────────────────────────────────────────── */
 async function getSession(req: NextRequest) {
@@ -106,6 +109,20 @@ ${text.slice(0, 8000)}
 
     if (config.notionApiKey === 'DEMO_MODE') {
       return NextResponse.json({ error: 'Cannot save in Demo mode.' }, { status: 403 });
+    }
+
+    // ── Supabase save path (Phase 2.11) — no Notion DB id needed; advisor scoping
+    // stamped in the repo. Feature gate already enforced above.
+    if (useSupabaseProducts()) {
+      try {
+        if (productType === 'insurance')  await sbProducts.createPlan(config.name, product);
+        else if (productType === 'fund')  await sbProducts.createFund(config.name, product);
+        else return NextResponse.json({ error: 'Invalid product type.' }, { status: 400 });
+        return NextResponse.json({ success: true });
+      } catch (e) {
+        console.error('Product save error (supabase):', e);
+        return NextResponse.json({ error: String(e) }, { status: 500 });
+      }
     }
 
     const notion = new Client({ auth: config.notionApiKey });

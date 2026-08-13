@@ -1,4 +1,7 @@
 import { Client, isFullPage } from '@notionhq/client';
+import * as sbUsers from './repos/users';
+
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 export interface AdvisorConfig {
   notionApiKey:       string;
@@ -52,6 +55,19 @@ function rt(props: Record<string, unknown>, key: string): string {
 }
 
 export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig | null> {
+  if (useSupabaseUsers()) {
+    const cached = cache.get(advisorId);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.config;
+    try {
+      const config = await sbUsers.getAdvisorConfig(advisorId);
+      if (config) cache.set(advisorId, { config, ts: Date.now() });
+      return config;
+    } catch (e) {
+      console.error('getAdvisorConfig (supabase) failed:', e);
+      return null; // mirror the Notion path, which returns null on any error
+    }
+  }
+  // ── Notion path (unchanged) ──
   const cached = cache.get(advisorId);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.config;
 
@@ -117,6 +133,7 @@ export function clearAdvisorCache(advisorId: string) {
  * Call this once when onboarding a new advisor (e.g. on user creation).
  */
 export async function addAdvisorSelectOption(advisorName: string): Promise<void> {
+  if (useSupabaseUsers()) return; // no-op: Supabase tables scope by advisor NAME string, no select-option to maintain
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
 
@@ -160,6 +177,11 @@ export async function saveGmailToken(
   refreshToken: string,
   gmailAddress: string,
 ): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.setGmailToken(advisorId, refreshToken, gmailAddress).catch(e => console.error('saveGmailToken (supabase) failed:', e));
+    clearAdvisorCache(advisorId);
+    return;
+  }
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
 
@@ -185,6 +207,11 @@ export async function saveCalendarToken(
   refreshToken: string,
   address:      string,
 ): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.setCalendarToken(advisorId, provider, refreshToken, address).catch(e => console.error('saveCalendarToken (supabase) failed:', e));
+    clearAdvisorCache(advisorId);
+    return;
+  }
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
   const notion = new Client({ auth: hostKey });
@@ -205,6 +232,11 @@ export async function saveCalendarToken(
 
 /** Persist the Drive connection (refresh token) used to store Forms Library PDFs. */
 export async function saveDriveToken(advisorId: string, refreshToken: string): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.setDriveToken(advisorId, refreshToken).catch(e => console.error('saveDriveToken (supabase) failed:', e));
+    clearAdvisorCache(advisorId);
+    return;
+  }
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
   const notion = new Client({ auth: hostKey });
@@ -230,6 +262,11 @@ export async function saveOutlookToken(
   refreshToken:   string,
   outlookAddress: string,
 ): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.setOutlookToken(advisorId, refreshToken, outlookAddress).catch(e => console.error('saveOutlookToken (supabase) failed:', e));
+    clearAdvisorCache(advisorId);
+    return;
+  }
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
 
@@ -251,6 +288,11 @@ export async function saveOutlookToken(
 
 /** Switch the active email provider (gmail | outlook). */
 export async function setEmailProvider(advisorId: string, provider: 'gmail' | 'outlook'): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.setEmailProvider(advisorId, provider).catch(e => console.error('setEmailProvider (supabase) failed:', e));
+    clearAdvisorCache(advisorId);
+    return;
+  }
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
   const notion = new Client({ auth: hostKey });
@@ -272,6 +314,11 @@ export async function saveInstitutions(
   advisorId: string,
   json:      string,
 ): Promise<void> {
+  if (useSupabaseUsers()) {
+    await sbUsers.setInstitutions(advisorId, json).catch(e => console.error('saveInstitutions (supabase) failed:', e));
+    clearAdvisorCache(advisorId);
+    return;
+  }
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return;
 

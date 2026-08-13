@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { listClients } from '@/lib/clients';
+import * as sbClients from '@/lib/repos/clients';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +45,24 @@ export async function POST(req: NextRequest) {
   const phone   = (body.phone ?? '').trim();
   const status  = (body.status  ?? 'Prospect').trim();
   const segment = (body.segment ?? 'Prospect').trim();
+
+  if (process.env.DATA_SOURCE_CLIENTS === 'supabase') {
+    // Reject a duplicate within the same scope the Notion path checks (own book;
+    // Admin sees all) — two same-named clients would split meeting history.
+    const existing = (await listClients(config)).find(c => c.name === name);
+    if (existing) {
+      return NextResponse.json(
+        { error: `"${name}" already exists in your client list.`, existingId: existing.id },
+        { status: 409 },
+      );
+    }
+    // 'Prospect' is the quick-create default segment, but it's not a valid
+    // clients_client_segment_check value; store null (reconcile treats unset
+    // segments the same way). status='Prospect' still records the prospect state.
+    const segmentForDb = segment === 'Prospect' ? null : segment;
+    const { id } = await sbClients.createClient({ name, email, phone, status, segment: segmentForDb, advisor: config.name });
+    return NextResponse.json({ client: { id, name, email, phone, status, segment } });
+  }
 
   const notion = new Client({ auth: config.notionApiKey });
 

@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { estimateAll, type Gender, type LsaInsurer, type LsaResult } from '@/lib/lsaCalculator';
+import {
+  estimateAll, LSA_COVERAGE_AGES,
+  type CoverageAge, type Gender, type LsaInsurer, type LsaResult,
+} from '@/lib/lsaCalculator';
 import { LSA_BENEFITS, LSA_PLAN_LABEL } from '@/lib/lsaBenefits';
 import {
   Section, Grid, Field, Segmented, Btn, Pill, Notice, FinePrint,
@@ -18,6 +21,7 @@ export default function LsaCalculator() {
   const [gender, setGender] = useState<Gender>('M');
   const [smoker, setSmoker] = useState(false);
   const [sumAssured, setSumAssured] = useState('1000000');
+  const [coverageAge, setCoverageAge] = useState<CoverageAge>(80);
 
   const ageN = parseInt(age, 10) || 0;
   const saN = parseInt(sumAssured, 10) || 0;
@@ -27,7 +31,7 @@ export default function LsaCalculator() {
   const [showProposal, setShowProposal] = useState(false);
 
   function calculate() {
-    const r = estimateAll(gender, smoker, ageN, saN);
+    const r = estimateAll(gender, smoker, ageN, saN, coverageAge);
     setResults(r);
     setPicked(new Set(r.filter((x) => x.monthly != null).slice(0, 3).map((x) => x.insurer)));
     setShowProposal(false);
@@ -57,6 +61,10 @@ export default function LsaCalculator() {
     return vals.length ? { lo: Math.min(...vals), hi: Math.max(...vals) } : null;
   }, [results]);
 
+  // label off the results, not the live selector, so changing the toggle after a
+  // calculation cannot mislabel figures that were produced on the previous term
+  const shownAge = results?.[0]?.coverageAge ?? coverageAge;
+
   async function downloadPdf() {
     const { default: jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -75,7 +83,7 @@ export default function LsaCalculator() {
     let y = (clientName ? 98 : 84) + 18;
     autoTable(doc, {
       startY: y,
-      head: [['Insurer', 'Product', 'Monthly', 'Annual', 'Total to 80', 'Death benefit basis']],
+      head: [['Insurer', 'Product', 'Monthly', 'Annual', `Total to ${shownAge}`, 'Death benefit basis']],
       body: chosen.map((c) => [c.insurer, c.product, fmtRM(c.monthly as number), fmtRM(c.annual as number), c.outlay80 != null ? fmtRM(c.outlay80) : '-', c.deathBasis]),
       styles: { fontSize: 9, cellPadding: 5 },
       headStyles: { fillColor: [31, 62, 100] },
@@ -110,8 +118,13 @@ export default function LsaCalculator() {
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14;
     doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+    const basisNote = shownAge === 70
+      ? 'COVERAGE BASIS - TO AGE 70 (MODELLED, NOT QUOTED). No insurer illustrates a to-age-70 term. Every premium in this proposal has been extrapolated from that insurer\'s real to-80 and to-100 quotations and is a planning indication only - it is NOT a figure any insurer will reproduce on their system. Obtain an actual illustration before relying on it. AIA and GE are unchanged from their to-80 figures because their premium does not vary with the coverage term.'
+      : shownAge === 80
+      ? 'COVERAGE BASIS - TO AGE 80. AIA, Allianz, HLA and Prudential are quoted for coverage to age 80; GE\'s SmartProtect Wealth Plus is sold only on a term to age 100, so its monthly premium is not like-for-like - compare "Total to 80", which counts only the premiums paid up to age 80 for every insurer. A "Full Pay" or coverage-to-100 illustration will be materially HIGHER than the figures above (at male 35 non-smoker RM1m: HLA RM480 -> RM819, Allianz RM669 -> RM1,593, Prudential RM466 -> RM1,049).'
+      : 'COVERAGE BASIS - TO AGE 100. Figures are each insurer\'s own to-age-100 quotation (AIA "Alternative 2", Allianz\'s to-99 row, HLA\'s recommended to-99 premium, Prudential\'s total premium payable for sustainability to ANB 101; GE is only ever sold to 100). Premiums are payable for the full term, so the lifetime outlay is far larger than a to-80 plan. Prudential steps up again at 80, so no lifetime total is shown for it.';
     const disc = doc.splitTextToSize(
-      'Important: Premiums are estimates interpolated from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE uses a STEPPED premium (low now, rising steeply with age) and has no male rates. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
+      basisNote + ' Always check the Coverage Period on any illustration before comparing. Premiums are estimates interpolated (log-linear on age) from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE\'s stepped premium rises steeply with age; GE male smoker ages 56-60 are not yet quoted. Prudential entry ages 50-60 on the to-80 basis are to-age-90 illustrations pending re-quote. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
       W - 80,
     );
     doc.text(disc, 40, y);
@@ -145,6 +158,40 @@ export default function LsaCalculator() {
           <Field label="Sum Assured (RM)">
             <input type="number" min={100000} step={100000} value={sumAssured} onChange={(e) => setSumAssured(e.target.value)} style={inp} />
           </Field>
+          <Field
+            label="Coverage to age"
+            hint="Only 80 and 100 are illustrated by the insurers — 70 and 90 need quotations before they can be enabled."
+            span
+          >
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {LSA_COVERAGE_AGES.map((c) => {
+                const on = coverageAge === c.age;
+                return (
+                  <button
+                    key={c.age}
+                    type="button"
+                    disabled={!c.enabled}
+                    title={c.note}
+                    onClick={() => c.enabled && setCoverageAge(c.age)}
+                    style={{
+                      flex: '1 1 110px', padding: '9px 0', borderRadius: 'var(--r-pill)',
+                      fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                      cursor: c.enabled ? 'pointer' : 'not-allowed',
+                      opacity: c.enabled ? 1 : 0.45,
+                      border: `1px solid ${on ? '#F37338' : 'var(--border)'}`,
+                      background: on ? '#F37338' : 'var(--surface)',
+                      color: on ? '#fff' : 'var(--text3)',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {c.label}
+                    {!c.enabled && <span style={{ display: 'block', fontSize: 8.5, fontWeight: 500 }}>needs quotes</span>}
+                    {c.enabled && c.derived && <span style={{ display: 'block', fontSize: 8.5, fontWeight: 500 }}>modelled</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
         </Grid>
         <div style={{ marginTop: 18 }}>
           <Btn onClick={calculate}>Calculate premiums</Btn>
@@ -158,8 +205,24 @@ export default function LsaCalculator() {
           action={<span style={{ fontSize: 12, color: 'var(--text3)' }}>{chosen.length} selected</span>}
         >
           <Notice>
-            <strong>Total to age 80</strong> is the full premium outlay over the life of the policy — the honest cost.
-            A low <em>stepped</em> monthly premium (GE) can still end up the most expensive.
+            <strong>These are “coverage to age {shownAge}” premiums.</strong>{' '}
+            {shownAge === 70
+              ? <><strong>Modelled, not quoted.</strong> No insurer illustrates a to-70 term, so every figure here is
+                extrapolated from that insurer&apos;s real to-80 and to-100 quotes. Use it to frame a conversation —
+                run an actual illustration before you put a number in front of a client. AIA and GE show unchanged
+                because their premium does not vary with the term.</>
+              : shownAge === 80
+                ? <>Check the <em>Coverage Period</em> on your client&apos;s illustration before comparing — a
+                  <em> Full Pay </em>/ to-100 quote reads far higher (same RM1m male 35 non-smoker: HLA RM480 → RM819,
+                  Allianz RM669 → RM1,593, Prudential RM466 → RM1,049). Switch the toggle above to compare on that basis.</>
+                : <>Taken from each insurer&apos;s own to-age-100 figures (AIA “Alternative 2”, Allianz&apos;s to-99 row,
+                  HLA&apos;s recommended to-99 premium, Prudential&apos;s total premium payable). Premiums are paid for the
+                  full term, so the lifetime outlay is much larger than the to-80 basis.</>}
+          </Notice>
+          <Notice tone="blue">
+            <strong>Total to age {shownAge}</strong> counts the premiums paid over the whole term for every insurer, so it
+            is the like-for-like comparator here — a low <em>stepped</em> monthly (GE) can still cost the most.
+            {shownAge === 80 && <> GE&apos;s plan is sold only to age 100, so its monthly is not on the same footing as the other four.</>}
           </Notice>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: 14 }}>
@@ -207,7 +270,7 @@ export default function LsaCalculator() {
                       {r.outlay80 != null && (
                         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                            Total to age 80
+                            Total to age {r.coverageAge}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                             <span style={{
@@ -229,11 +292,24 @@ export default function LsaCalculator() {
                   )}
 
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
+                    {hasQuote && r.derived && <Pill color="#7C3AED">DERIVED</Pill>}
                     {hasQuote && r.structure === 'stepped' && <Pill color="#92400E">STEPPED</Pill>}
+                    {r.basisWarning && <Pill color="#92400E">BASIS DIFFERS</Pill>}
                     {isLowest && <Pill color="#16A34A">LOWEST</Pill>}
                   </div>
+                  {r.basisWarning && (
+                    <div style={{ fontSize: 9.5, color: '#92400E', marginTop: 6, lineHeight: 1.45, fontWeight: 600 }}>
+                      ⚠ {r.basisWarning}
+                    </div>
+                  )}
 
                   <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>{r.caveat}</div>
+                  <div style={{
+                    fontSize: 9, color: r.basisIsTo100 ? '#3860BE' : 'var(--text3)', marginTop: 5,
+                    lineHeight: 1.45, fontWeight: r.basisIsTo100 ? 600 : 400,
+                  }}>
+                    {r.coverageBasis}
+                  </div>
                 </div>
               );
             })}
@@ -272,7 +348,7 @@ export default function LsaCalculator() {
                 <div style={{ ...money, fontSize: 11, color: 'var(--text3)' }}>{fmtRM(c.annual as number)}/yr</div>
                 {c.outlay80 != null && (
                   <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 6 }}>
-                    Total to 80: <strong style={{ ...money, color: 'var(--text2)' }}>{fmtRMShort(c.outlay80)}</strong>
+                    Total to {shownAge}: <strong style={{ ...money, color: 'var(--text2)' }}>{fmtRMShort(c.outlay80)}</strong>
                   </div>
                 )}
               </div>
@@ -318,11 +394,15 @@ export default function LsaCalculator() {
           </div>
 
           <FinePrint>
-            Premiums are estimates interpolated from each insurer&apos;s RM1,000,000 illustrations and scaled by sum assured
-            using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA, Prudential; AIA &amp; GE
-            scale linearly pending high-SA quotes) — not official quotations; confirm against the insurer system before issue.
-            GE uses a stepped premium and has no male rates. Death-benefit basis and free riders differ materially — see comparison.
-            For advisory discussion only.
+            <strong>Coverage basis: to age 80.</strong> AIA, Allianz, HLA and Prudential are quoted to age 80; GE&apos;s plan
+            is sold only to age 100, so its monthly is not like-for-like — compare the total outlay to age 80, which counts
+            only premiums paid up to 80 for every insurer. A <em>Full Pay</em> / coverage-to-100 illustration will be
+            materially higher (HLA ≈1.7×, Allianz ≈2.4× at male 35).
+            Premiums are estimates interpolated (log-linear on age) from each insurer&apos;s RM1,000,000 illustrations and
+            scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m–3m quotes (Allianz, HLA,
+            Prudential; AIA &amp; GE scale linearly pending high-SA quotes) — not official quotations; confirm against the
+            insurer system before issue. GE&apos;s stepped premium escalates and can end up the highest lifetime cost.
+            Death-benefit basis and free riders differ materially — see comparison. For advisory discussion only.
           </FinePrint>
         </Section>
       )}

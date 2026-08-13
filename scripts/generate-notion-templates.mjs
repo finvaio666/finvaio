@@ -160,7 +160,7 @@ function addReadme(wb, dbName, steps, rules) {
 
   sh.addRow([]);
   addLine(`📊  ${dbName}`, { size: 16, bold: true, color: '0A4A14', height: 30 });
-  addLine('Bill Morrisons Financial Consulting — Data Entry Guide', { size: 11, italic: true, color: '4A7A4E', height: 20 });
+  addLine('Bill Morrisons Group — Data Entry Guide', { size: 11, italic: true, color: '4A7A4E', height: 20 });
   sh.addRow([]);
 
   addLine('HOW TO USE THIS FILE', { bold: true, size: 11, color: C.hdrBg, height: 22 });
@@ -226,7 +226,7 @@ async function makeClients() {
 
   const widths = [36, 14, 18, 16, 14, 20, 16, 18, 18, 18, 44, 20, 30];
 
-  sectionTitle(sh, '  Bill Morrisons Financial Consulting  —  Clients Database', cols.length);
+  sectionTitle(sh, '  Bill Morrisons Group  —  Clients Database', cols.length);
   subTitle(sh, '  ✏️  Fill in one client per row  |  Yellow = Required  |  Green = Optional  |  Delete the blue example row before importing', cols.length);
   headerRow(sh, cols, widths);
   hintRow(sh, [
@@ -308,7 +308,7 @@ async function makeCashflow() {
   ];
   const widths = [38, 18, 22, 22, 22, 22, 26, 28];
 
-  sectionTitle(sh, '  Bill Morrisons Financial Consulting  —  Cash Flow Planner', cols.length);
+  sectionTitle(sh, '  Bill Morrisons Group  —  Cash Flow Planner', cols.length);
   subTitle(sh, '  ✏️  One row per client per month  |  DELETE the last 2 pink columns before importing to Notion', cols.length);
   headerRow(sh, cols, widths);
 
@@ -423,7 +423,7 @@ async function makePortfolio() {
   ];
   const widths = [30, 36, 14, 20, 12, 10, 24, 28, 16, 16, 20, 18, 28, 24];
 
-  sectionTitle(sh, '  Bill Morrisons Financial Consulting  —  Portfolio Holdings', cols.length);
+  sectionTitle(sh, '  Bill Morrisons Group  —  Portfolio Holdings', cols.length);
   subTitle(sh, '  ✏️  Supports MYR / USD / SGD / GBP / EUR  |  Enter original currency amount + FX rate → MYR auto-calculated  |  DELETE last 2 pink cols before import', cols.length);
   headerRow(sh, cols, widths);
 

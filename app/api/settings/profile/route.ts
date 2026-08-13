@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getAdvisorConfig, clearAdvisorCache } from '@/lib/getAdvisorConfig';
+import * as sbUsers from '@/lib/repos/users';
 
 export const dynamic = 'force-dynamic';
+const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 // ── GET — return current profile ─────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -32,6 +34,16 @@ export async function PATCH(req: NextRequest) {
 
   let body: { name?: string; gmailAddress?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }); }
+
+  if (useSupabaseUsers()) {
+    const patch: { name?: string; gmailAddress?: string } = {};
+    if (body.name?.trim()) patch.name = body.name.trim().slice(0, 100);
+    if (body.gmailAddress !== undefined) patch.gmailAddress = body.gmailAddress.trim().slice(0, 200);
+    if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    await sbUsers.updateProfile(advisorId, patch);
+    clearAdvisorCache(advisorId);
+    return NextResponse.json({ success: true });
+  }
 
   const hostKey = process.env.NOTION_API_KEY;
   if (!hostKey) return NextResponse.json({ error: 'Server config error' }, { status: 500 });

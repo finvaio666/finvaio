@@ -1,75 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Client, isFullPage } from '@notionhq/client';
-import { getAdvisorConfig, AdvisorConfig, advisorFilter } from '@/lib/getAdvisorConfig';
+import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listTasks, setTaskStatus } from '@/lib/tasks';
+import { listClients, ClientRecord } from '@/lib/clients';
+import { listHoldings } from '@/lib/portfolio';
+import { listMeetings } from '@/lib/meetingNotes';
 import { logAiUsage } from '@/lib/aiUsage';
-import { queryAllPages } from '@/lib/notionQueryAll';
 
 export const dynamic = 'force-dynamic';
 
 const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
-// ── Property helpers ──────────────────────────────────────────────────────────
-function rt(p: Record<string, unknown>, k: string): string {
-  const v = p[k] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
-  return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : '';
-}
-function sel(p: Record<string, unknown>, k: string): string {
-  const v = p[k] as { type: string; select?: { name: string } } | undefined;
-  return v?.type === 'select' ? (v.select?.name ?? '') : '';
-}
-function num(p: Record<string, unknown>, k: string): number {
-  const v = p[k] as { type: string; number?: number | null } | undefined;
-  return v?.type === 'number' ? (v.number ?? 0) : 0;
-}
-function dt(p: Record<string, unknown>, k: string): string {
-  const v = p[k] as { type: string; date?: { start: string } | null } | undefined;
-  return v?.type === 'date' ? (v.date?.start ?? '') : '';
-}
-function titleOf(p: Record<string, unknown>): string {
-  for (const v of Object.values(p)) {
-    const t = v as { type: string; title?: { plain_text: string }[] } | undefined;
-    if (t?.type === 'title') return t.title?.[0]?.plain_text ?? '';
-  }
-  return '';
-}
-function relIds(p: Record<string, unknown>, k: string): string[] {
-  const v = p[k] as { type: string; relation?: { id: string }[] } | undefined;
-  return v?.type === 'relation' ? (v.relation ?? []).map(r => r.id) : [];
-}
-
-type ClientPage = { id: string; name: string; props: Record<string, unknown> };
-
-async function fetchClientPages(config: AdvisorConfig): Promise<ClientPage[]> {
+/** This advisor's clients via the data-source abstraction (Notion or Supabase). */
+async function fetchClients(config: AdvisorConfig): Promise<ClientRecord[]> {
   if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.clientsDbId) return [];
-  const notion = new Client({ auth: config.notionApiKey });
   try {
-    const f = advisorFilter(config);
-    const pages = await queryAllPages(notion, { database_id: config.clientsDbId, ...(f ? { filter: f } : {}) });
-    return pages.map(pg => {
-      const props = pg.properties as Record<string, unknown>;
-      const name = (props['Client Name'] as { type: string; title?: { plain_text: string }[] } | undefined)?.type === 'title'
-        ? ((props['Client Name'] as { title: { plain_text: string }[] }).title[0]?.plain_text ?? '')
-        : titleOf(props);
-      return { id: pg.id, name, props };
-    }).filter(c => c.name);
+    return (await listClients(config)).filter(c => c.name);
   } catch { return []; }
 }
 
 /**
  * Look up any client mentioned in the question and return their full profile,
- * contact details and open action items (todo list) from Notion.
+ * contact details and open action items (todo list).
  */
-async function lookupMentionedClients(config: AdvisorConfig, question: string, clientPages: ClientPage[]): Promise<string> {
-  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.clientsDbId) return '';
-  if (clientPages.length === 0) return '';
-  const notion = new Client({ auth: config.notionApiKey });
+async function lookupMentionedClients(config: AdvisorConfig, question: string, clients: ClientRecord[]): Promise<string> {
+  if (clients.length === 0) return '';
   const q = question.toLowerCase();
 
   // Match clients whose full name OR (first AND last) appears in the question
   const wordIn = (h: string, w: string) => w.length > 1 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(h);
-  const matched = clientPages.filter(c => {
+  const matched = clients.filter(c => {
     const n = c.name.toLowerCase();
     if (q.includes(n)) return true;
     const parts = n.split(/\s+/);
@@ -79,33 +39,22 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string, c
 
   if (matched.length === 0) {
     // No specific match — give the AI the roster so it knows who exists
-    const roster = clientPages.map(c => c.name).slice(0, 60).join(', ');
-    return `\n# CLIENT ROSTER (${clientPages.length} clients)\n${roster}`;
+    const roster = clients.map(c => c.name).slice(0, 60).join(', ');
+    return `\n# CLIENT ROSTER (${clients.length} clients)\n${roster}`;
   }
 
   const blocks: string[] = [];
   for (const c of matched) {
-    const p = c.props;
     const lines: string[] = [`\n# CLIENT: ${c.name}`];
-    const email = rt(p, 'Email') || rt(p, 'Email Address') || rt(p, 'Email address');
-    const phone = rt(p, 'Phone') || rt(p, 'Phone Number') || rt(p, 'Mobile') || rt(p, 'Contact');
-    if (email) lines.push(`Email: ${email}`);
-    if (phone) lines.push(`Phone: ${phone}`);
-    const status = sel(p, 'Status') || sel(p, 'Client Status');
-    const segment = sel(p, 'Client Segment') || sel(p, 'Segment');
-    const risk = sel(p, 'Risk Profile') || sel(p, 'Risk');
-    const aum = num(p, 'AUM (MYR)') || num(p, 'AUM') || num(p, 'Total AUM');
-    if (status || segment || risk) lines.push(`Profile: ${[status, segment, risk].filter(Boolean).join(' · ')}`);
-    if (aum) lines.push(`AUM: RM ${aum.toLocaleString()}`);
-    const goalsProp = p['Financial goals'] as { type: string; multi_select?: { name: string }[] } | undefined;
-    if (goalsProp?.type === 'multi_select' && goalsProp.multi_select?.length) {
-      lines.push(`Goals: ${goalsProp.multi_select.map(g => g.name).join(', ')}`);
-    }
-    const nextRev = dt(p, 'Next review date'), lastRev = dt(p, 'Last review date');
-    if (nextRev) lines.push(`Next review: ${nextRev}`);
-    if (lastRev) lines.push(`Last review: ${lastRev}`);
+    if (c.email) lines.push(`Email: ${c.email}`);
+    if (c.phone) lines.push(`Phone: ${c.phone}`);
+    if (c.status || c.segment || c.risk) lines.push(`Profile: ${[c.status, c.segment, c.risk].filter(Boolean).join(' · ')}`);
+    if (c.aum) lines.push(`AUM: RM ${c.aum.toLocaleString()}`);
+    if (c.financialGoals.length) lines.push(`Goals: ${c.financialGoals.join(', ')}`);
+    if (c.nextReview) lines.push(`Next review: ${c.nextReview}`);
+    if (c.lastReview) lines.push(`Last review: ${c.lastReview}`);
 
-    // Open tasks (preferred) — from the Tasks database
+    // Open tasks (preferred) — from the Tasks abstraction
     if (config.tasksDbId) {
       try {
         const open = await listTasks(config, { client: c.name, status: 'Open' });
@@ -117,30 +66,20 @@ async function lookupMentionedClients(config: AdvisorConfig, question: string, c
         }
       } catch { /* ignore */ }
     } else if (config.meetingNotesDbId) {
-      // Fallback: raw action items from meeting notes
+      // Fallback: raw action items from meeting notes (latest 20) via the abstraction
       try {
-        const mf = advisorFilter(config);
-        const mres = await notion.databases.query({
-          database_id: config.meetingNotesDbId,
-          ...(mf ? { filter: mf } : {}),
-          sorts: [{ property: 'Meeting Date', direction: 'descending' }],
-          page_size: 20,
-        });
+        const meetings = (await listMeetings(config)).slice(0, 20);
         const target = c.name.toLowerCase().trim();
         const todos: string[] = [];
-        for (const m of mres.results) {
-          if (!isFullPage(m)) continue;
-          const mp = m.properties as Record<string, unknown>;
+        for (const m of meetings) {
           // Match on the meeting's CLIENT field (or the client portion of the
           // title "Client — Type — Date") — NOT the action-item text, which
           // caused false matches on short names like "Ng".
-          const mClient = (rt(mp, 'Client Name') || titleOf(mp).split(' — ')[0] || '').toLowerCase().trim();
+          const mClient = (m.clientName || '').toLowerCase().trim();
           if (!mClient) continue;
           const isMatch = mClient === target || mClient.includes(target) || (target.includes(mClient) && mClient.length > 4);
           if (!isMatch) continue;
-          const action = rt(mp, 'Action Items');
-          const mdate  = dt(mp, 'Meeting Date');
-          if (action.trim()) todos.push(`(${mdate || 'n/a'}) ${action.trim()}`);
+          if (m.actionItems.trim()) todos.push(`(${m.meetingDate || 'n/a'}) ${m.actionItems.trim()}`);
         }
         if (todos.length) {
           lines.push('ACTION ITEMS (from meeting notes):');
@@ -205,25 +144,23 @@ function matchHoldingNames(question: string, names: string[]): string[] {
  * every client holding them, tagged with the asset class (Cash / EPF) so the
  * AI can filter by category when asked.
  */
-async function lookupFundHoldings(config: AdvisorConfig, question: string, clientPages: ClientPage[]): Promise<string> {
+async function lookupFundHoldings(config: AdvisorConfig, question: string, clients: ClientRecord[]): Promise<string> {
   if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE' || !config.portfolioDbId) return '';
   if (!FUND_TRIGGER.test(question)) return '';
-  const notion = new Client({ auth: config.notionApiKey });
   try {
-    const f = advisorFilter(config);
-    const pages = await queryAllPages(notion, { database_id: config.portfolioDbId, ...(f ? { filter: f } : {}) });
-    const rows = pages.map(pg => {
-      const p = pg.properties as Record<string, unknown>;
-      return {
-        name:        titleOf(p),
-        assetClass:  sel(p, 'Asset class'),
-        institution: rt(p, 'Institution'),
-        status:      sel(p, 'Status'),
-        value:       num(p, 'Value (MYR)'),
-        purchase:    num(p, 'Purchase price (MYR)'),
-        clientIds:   relIds(p, '👥 Clients'),
-      };
-    }).filter(r => r.name);
+    // Holdings via the portfolio abstraction (Notion or Supabase per flag).
+    // Every holding links exactly one client, so clientNotionId == the sole
+    // relation id — equivalent to the old relIds('👥 Clients') list.
+    const holdings = await listHoldings(config);
+    const rows = holdings.map(h => ({
+      name:        h.name,
+      assetClass:  h.assetClass,
+      institution: h.institution,
+      status:      h.status,
+      value:       h.valueMyr,
+      purchase:    h.purchaseMyr,
+      clientIds:   h.clientNotionId ? [h.clientNotionId] : [],
+    })).filter(r => r.name);
 
     const distinct = [...new Set(rows.map(r => r.name))];
     const matched = matchHoldingNames(question, distinct);
@@ -233,7 +170,7 @@ async function lookupFundHoldings(config: AdvisorConfig, question: string, clien
     }
 
     const clientMap: Record<string, string> = {};
-    clientPages.forEach(c => { clientMap[c.id] = c.name; });
+    clients.forEach(c => { if (c.notionId) clientMap[c.notionId] = c.name; });
 
     const blocks = ['\n# FUND HOLDINGS LOOKUP (each line: client · category · current value · cost · institution · status)'];
     for (const name of matched.slice(0, 5)) {
@@ -331,11 +268,11 @@ Message: "${body.question}"`;
 
   // Look up any client mentioned in the question (full profile, contact, todos)
   // and any fund/holding named in it (which clients own it, Cash vs EPF).
-  const clientPages = config ? await fetchClientPages(config) : [];
+  const clients = config ? await fetchClients(config) : [];
   const [clientData, fundData] = config
     ? await Promise.all([
-        lookupMentionedClients(config, body.question, clientPages).catch(() => ''),
-        lookupFundHoldings(config, body.question, clientPages).catch(() => ''),
+        lookupMentionedClients(config, body.question, clients).catch(() => ''),
+        lookupFundHoldings(config, body.question, clients).catch(() => ''),
       ])
     : ['', ''];
 
