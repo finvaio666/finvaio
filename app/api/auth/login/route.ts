@@ -52,6 +52,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 });
   }
 
+  // Usernames are stored trimmed + lowercased (see settings/users POST) — match that here,
+  // or logins fail for any casing other than the exact stored form.
+  username = username.trim().toLowerCase();
+
   const usersDbId  = process.env.NOTION_USERS_DB_ID;
   const hostKey    = process.env.NOTION_API_KEY;
   const authSecret = process.env.AUTH_SECRET;
