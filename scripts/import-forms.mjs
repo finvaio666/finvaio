@@ -19,6 +19,7 @@ loadEnv({ path: '.env.local' });
 
 const { PDFDocument } = await import('pdf-lib');
 const { uploadPdf } = await import('../lib/storage.ts');
+const { autoMapFields } = await import('../lib/fieldAutoMap.ts');
 const sbForms = await import('../lib/repos/formsLibrary.ts');
 const { getSupabase } = await import('../lib/supabase.ts');
 
@@ -80,10 +81,12 @@ async function main() {
       let fieldMapping = { type: 'scanned', fields: [] };
       try {
         const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-        const fields = doc.getForm().getFields().map(f => f.getName());
-        if (fields.length > 0) {
+        const fieldsInfo = doc.getForm().getFields().map(f => ({ name: f.getName(), type: f.constructor.name }));
+        if (fieldsInfo.length > 0) {
           formType = 'Fillable PDF';
-          fieldMapping = { type: 'fillable', fields: fields.map(pdfField => ({ pdfField, dataKey: '__manual' })) };
+          // Auto-suggest unambiguous mappings (see lib/fieldAutoMap.ts); anything
+          // uncertain stays '__manual' for an admin to confirm in Map Fields.
+          fieldMapping = { type: 'fillable', fields: autoMapFields(fieldsInfo) };
         }
       } catch { /* unreadable form dict → treat as scanned */ }
 

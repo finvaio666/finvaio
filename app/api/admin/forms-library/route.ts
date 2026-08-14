@@ -3,6 +3,7 @@ import { Client } from '@notionhq/client';
 import { PDFDocument } from 'pdf-lib';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { uploadPdf, storageReady } from '@/lib/storage';
+import { autoMapFields } from '@/lib/fieldAutoMap';
 import { FieldMapping, listForms } from '@/lib/formsLibrary';
 import * as sbForms from '@/lib/repos/formsLibrary';
 
@@ -60,14 +61,17 @@ export async function POST(req: NextRequest) {
   // reference (Drive URL or R2 key) as `pdf_url`.
   const url = await uploadPdf(provider, name, buffer);
 
-  // For fillable PDFs, extract AcroForm field names so the admin can map them.
+  // For fillable PDFs, extract AcroForm field names and suggest unambiguous
+  // mappings automatically (lib/fieldAutoMap.ts) — the admin only needs to
+  // confirm/fill the rest in Map Fields, not start every field from scratch.
   let detectedFields: string[] = [];
   let fieldMapping: FieldMapping | null = null;
   if (formType === 'Fillable PDF') {
     try {
       const pdfDoc = await PDFDocument.load(buffer);
-      detectedFields = pdfDoc.getForm().getFields().map(f => f.getName());
-      fieldMapping = { type: 'fillable', fields: detectedFields.map(pdfField => ({ pdfField, dataKey: '__manual' })) };
+      const fieldsInfo = pdfDoc.getForm().getFields().map(f => ({ name: f.getName(), type: f.constructor.name }));
+      detectedFields = fieldsInfo.map(f => f.name);
+      fieldMapping = { type: 'fillable', fields: autoMapFields(fieldsInfo) };
     } catch (e) {
       console.error('Failed to read PDF form fields:', e);
     }
