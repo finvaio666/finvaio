@@ -150,6 +150,7 @@ export interface PortfolioPatchInput {
   holdingName?:  string;
   assetClass?:   string;
   institution?:  string;
+  platform?:     string;
   status?:       string;
   currency?:     string;
   valueOrig?:    number;
@@ -169,6 +170,7 @@ export function buildPortfolioPatch(b: PortfolioPatchInput, advisorName: string,
   if (isCreate || b.holdingName !== undefined) p.holding_name = t(b.holdingName);
   if (b.assetClass)               p.asset_class            = b.assetClass;
   if (b.institution !== undefined) p.institution           = t(b.institution);
+  if (b.platform    !== undefined) p.platform              = t(b.platform);
   if (b.status)                   p.status                 = b.status;
   if (b.currency)                 p.currency               = b.currency;
   if (b.valueOrig    !== undefined) p.value_original_currency = b.valueOrig || 0;

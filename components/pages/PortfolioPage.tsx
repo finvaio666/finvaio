@@ -114,7 +114,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     loadHoldings(true);
   }
   function editHolding(h: Holding) {
-    setEditing({ id: h.id, clientId: h.clientId, clientName: h.clientName, holdingName: h.name, assetClass: h.assetClass, institution: h.institution, status: h.status, currency: h.currency, valueOrig: h.valueOrig, purchaseOrig: h.purchaseOrig, fxRate: h.fxRate, maturityDate: h.maturity });
+    setEditing({ id: h.id, clientId: h.clientId, clientName: h.clientName, holdingName: h.name, assetClass: h.assetClass, institution: h.institution, platform: h.platform, status: h.status, currency: h.currency, valueOrig: h.valueOrig, purchaseOrig: h.purchaseOrig, fxRate: h.fxRate, maturityDate: h.maturity });
     setFormOpen(true);
   }
 
@@ -337,30 +337,16 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         </div>
       )}
 
-      {/* ── Stat cards — only when client selected ── */}
-      {activeTab && (
-      <div className="stat-grid">
-        <div className="stat-card green">
-          <div className="stat-icon green">📈</div>
-          <div className="stat-label">Total AUM</div>
-          <div className="stat-value">{loading ? '…' : fmtK(totalValue)}</div>
-          <div className="stat-sub">{visible.length} holdings · MYR equiv.</div>
-        </div>
-        <div className="stat-card blue">
-          <div className="stat-icon blue">📦</div>
-          <div className="stat-label">Holdings</div>
-          <div className="stat-value">{loading ? '…' : visible.length}</div>
-          <div className="stat-sub">{activeTab === 'All' ? `${clientNames.length} clients` : 'Active holdings'}</div>
-        </div>
-      </div>
-      )}
-
-      {/* ── Breakdowns — where the money sits, and what it's invested in ── */}
+      {/* ── Breakdowns — where the money sits, and what it's invested in.
+             The ring centre carries total AUM, so a separate Total AUM stat
+             card would just repeat it; client and holding counts ride along
+             in the header meta instead. ── */}
       {activeTab && !loading && (
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 20 }}>
           <DonutBreakdown
             title={activeGroup ? `${activeGroup.name} — by platform` : 'AUM by platform group'}
             items={breakdown}
+            meta={`${clientNames.length} client${clientNames.length === 1 ? '' : 's'} · ${visible.length} holding${visible.length === 1 ? '' : 's'}`}
             emptyHint={activeGroup
               ? `No ${activeGroup.platforms.join(' or ')} holdings for this selection.`
               : 'No holdings to break down yet.'}

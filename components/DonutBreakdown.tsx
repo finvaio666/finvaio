@@ -32,8 +32,8 @@ const fmtK = (n: number) =>
 const R = 42, STROKE = 17, C = 2 * Math.PI * R, GAP = 1.6;
 
 export default function DonutBreakdown({
-  items, title, emptyHint,
-}: { items: BreakdownItem[]; title: string; emptyHint?: string }) {
+  items, title, emptyHint, meta,
+}: { items: BreakdownItem[]; title: string; emptyHint?: string; meta?: string }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
   const sorted = [...items].filter(i => i.value > 0).sort((a, b) => b.value - a.value);
@@ -76,8 +76,13 @@ export default function DonutBreakdown({
 
   return (
     <div className="section" style={{ padding: '24px 28px', flex: '1 1 340px', minWidth: 0 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 18 }}>
-        {title}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)' }}>
+          {title}
+        </div>
+        {meta && (
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>{meta}</div>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>

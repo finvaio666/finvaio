@@ -313,17 +313,13 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
 
   return (
     <>
-      {/* Summary cards */}
-      <div className="stat-grid" style={{ marginBottom: 16 }}>
-        <div className="stat-card green">
-          <div className="stat-icon green">📈</div>
-          <div className="stat-label">Total AUM</div>
-          <div className="stat-value">{fmtK(totalValue)}</div>
-          <div className="stat-sub">{holdings.length} holdings</div>
-        </div>
-      </div>
-
-      <DonutBreakdown title="AUM by platform group" items={groupTotals} />
+      {/* The ring centre carries total AUM, so a separate Total AUM card
+          would just repeat it — the holding count rides in the header meta. */}
+      <DonutBreakdown
+        title="AUM by platform group"
+        items={groupTotals}
+        meta={`${holdings.length} holding${holdings.length === 1 ? '' : 's'}`}
+      />
 
       {/* Holdings table */}
       <div className="section">

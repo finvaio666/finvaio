@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ClientSearchCombobox, { type ComboboxClient } from '@/components/ClientSearchCombobox';
 
 export interface HoldingDraft {
@@ -10,6 +10,7 @@ export interface HoldingDraft {
   holdingName?: string;
   assetClass?: string;
   institution?: string;
+  platform?: string;
   status?: string;
   currency?: string;
   valueOrig?: number;
@@ -35,6 +36,19 @@ export default function PortfolioFormModal({ clients, initial, onClose, onSaved 
   const [f, setF] = useState<HoldingDraft>(initial ?? { currency: 'MYR', status: 'Active', fxRate: 1 });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  // Offer whatever platforms the admin has grouped, so a newly onboarded
+  // custodian appears here without a code change. A holding saved without one
+  // lands in "Ungrouped" on the Investment page.
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  useEffect(() => {
+    fetch('/api/admin/platform-groups')
+      .then(r => r.json())
+      .then(d => {
+        if (!Array.isArray(d.groups)) return;
+        setPlatforms([...new Set((d.groups as { platforms: string[] }[]).flatMap(g => g.platforms))].sort());
+      })
+      .catch(() => { /* field just falls back to a free-text-less empty list */ });
+  }, []);
   const isEdit = !!initial?.id;
   const set = (k: keyof HoldingDraft) => (v: string | number) => setF(s => ({ ...s, [k]: v }));
   const numSet = (k: keyof HoldingDraft) => (v: string) => setF(s => ({ ...s, [k]: v === '' ? undefined : Number(v) }));
@@ -71,7 +85,8 @@ export default function PortfolioFormModal({ clients, initial, onClose, onSaved 
       <Grid>
         <Field label="Holding Name *"><input style={inp} value={f.holdingName ?? ''} onChange={e => set('holdingName')(e.target.value)} placeholder="e.g. Principal Asia Pacific Dynamic" /></Field>
         <Field label="Asset Class"><Select value={f.assetClass ?? ''} opts={ASSET_CLASSES} onChange={set('assetClass')} /></Field>
-        <Field label="Institution"><input style={inp} value={f.institution ?? ''} onChange={e => set('institution')(e.target.value)} placeholder="e.g. iFAST / KWSP" /></Field>
+        <Field label="Platform"><Select value={f.platform ?? ''} opts={platforms} onChange={set('platform')} /></Field>
+        <Field label="Institution"><input style={inp} value={f.institution ?? ''} onChange={e => set('institution')(e.target.value)} placeholder="Fund house, e.g. Principal / AHAM" /></Field>
         <Field label="Status"><Select value={f.status ?? 'Active'} opts={STATUSES} onChange={set('status')} /></Field>
         <Field label="Currency"><Select value={f.currency ?? 'MYR'} opts={CURRENCIES} onChange={set('currency')} /></Field>
         <Field label="FX Rate to MYR"><input style={inp} type="number" value={f.fxRate ?? ''} onChange={e => numSet('fxRate')(e.target.value)} placeholder="1" /></Field>

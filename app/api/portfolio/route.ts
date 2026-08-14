@@ -15,6 +15,7 @@ interface Body {
   holdingName?: string;
   assetClass?: string;
   institution?: string;
+  platform?: string;
   status?: string;
   currency?: string;
   valueOrig?: number;
@@ -33,6 +34,9 @@ function buildProps(b: Body, advisorName: string, isCreate: boolean) {
   if (isCreate || b.holdingName !== undefined) p['Holding Name'] = { title: txt(b.holdingName) };
   if (b.assetClass)               p['Asset class']  = { select: { name: b.assetClass } };
   if (b.institution !== undefined) p['Institution'] = { rich_text: txt(b.institution) };
+  // Platform is the custodian (Phillip, iFAST, SwissQuote…) — what AUM groups
+  // by. Clearing it is allowed, so treat '' as "unset the select".
+  if (b.platform    !== undefined) p['Platform']    = b.platform ? { select: { name: b.platform } } : { select: null };
   if (b.status)                   p['Status']       = { select: { name: b.status } };
   if (b.currency)                 p['Currency']     = { select: { name: b.currency } };
   if (b.valueOrig    !== undefined) p['Value (Original Currency)']          = { number: b.valueOrig || 0 };
