@@ -6,7 +6,7 @@ import NavUpdatePanel from '@/components/NavUpdatePanel';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
-import AumBreakdownBar from '@/components/AumBreakdownBar';
+import DonutBreakdown from '@/components/DonutBreakdown';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
 interface Holding {
@@ -97,6 +97,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
   const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
   const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
+  const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
   const { clients: allClients }        = useClients();
 
   const loadHoldings = (fresh = false) => {
@@ -129,9 +130,24 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   // On a sub-menu page (/portfolio/local-ut) everything below is scoped to that
   // group's platforms; on /portfolio it's the whole book.
   const activeGroup = groupSlug ? platformGroups.find(g => g.id === groupSlug) ?? null : null;
-  const holdings = activeGroup
+  const groupHoldings = activeGroup
     ? allHoldings.filter(h => activeGroup.platforms.some(p => p.toLowerCase() === (h.platform ?? '').toLowerCase()))
     : allHoldings;
+
+  // Platforms an advisor can narrow to. On a group page that's the group's own
+  // list; at the top level it's every platform actually present in the book.
+  const platformOptions = (activeGroup
+    ? activeGroup.platforms
+    : [...new Set(allHoldings.map(h => h.platform).filter(Boolean) as string[])]
+  ).filter(p => groupHoldings.some(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()))
+   .sort();
+
+  // Applied before the client list is derived, so picking a platform also
+  // narrows who is searchable — an advisor working an iFAST book shouldn't have
+  // to wade through Phillip-only clients.
+  const holdings = platformFilter
+    ? groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === platformFilter.toLowerCase())
+    : groupHoldings;
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
 
@@ -188,6 +204,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     return rows;
   })();
 
+  // What the money is actually invested in, independent of who custodies it.
+  const assetBreakdown = Object.entries(
+    visible.reduce<Record<string, number>>((acc, h) => {
+      const cls = h.assetClass || 'Unclassified';
+      acc[cls] = (acc[cls] ?? 0) + h.value;
+      return acc;
+    }, {}),
+  ).map(([name, value]) => ({ name, value }));
+
   // Group rows by client for visual separation
   const grouped: { client: string; rows: Holding[] }[] = activeTab === 'All'
     ? clientNames.map(c => ({ client: c, rows: holdings.filter(h => h.clientName === c) }))
@@ -195,6 +220,38 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
 
   return (
     <>
+      {/* ── Platform filter — narrows holdings AND who's searchable below ── */}
+      {platformOptions.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginRight: 2 }}>
+            Platform
+          </span>
+          {['', ...platformOptions].map(p => {
+            const on = platformFilter === p;
+            const count = p
+              ? new Set(groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()).map(h => h.clientId)).size
+              : new Set(groupHoldings.map(h => h.clientId)).size;
+            return (
+              <button
+                key={p || 'all'}
+                onClick={() => setPlatformFilter(p)}
+                style={{
+                  padding: '7px 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+                  fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                  border: `1.5px solid ${on ? 'var(--accent2)' : 'var(--border)'}`,
+                  background: on ? 'var(--accent2)' : 'var(--surface)',
+                  color: on ? '#fff' : 'var(--text3)',
+                  transition: 'all 0.15s', whiteSpace: 'nowrap',
+                }}
+              >
+                {p || 'All platforms'}
+                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 11 }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Client selector ── always visible at top ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <div style={{ width: 300 }}>
@@ -298,15 +355,18 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
       </div>
       )}
 
-      {/* ── AUM breakdown — by group at the top level, by platform inside a group ── */}
+      {/* ── Breakdowns — where the money sits, and what it's invested in ── */}
       {activeTab && !loading && (
-        <AumBreakdownBar
-          title={activeGroup ? `${activeGroup.name} — AUM by platform` : 'AUM by platform group'}
-          items={breakdown}
-          emptyHint={activeGroup
-            ? `No ${activeGroup.platforms.join(' or ')} holdings for this selection.`
-            : 'No holdings to break down yet.'}
-        />
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 20 }}>
+          <DonutBreakdown
+            title={activeGroup ? `${activeGroup.name} — by platform` : 'AUM by platform group'}
+            items={breakdown}
+            emptyHint={activeGroup
+              ? `No ${activeGroup.platforms.join(' or ')} holdings for this selection.`
+              : 'No holdings to break down yet.'}
+          />
+          <DonutBreakdown title="AUM by asset class" items={assetBreakdown} />
+        </div>
       )}
 
       {/* ── FX bar ── */}
@@ -534,38 +594,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         )}
       </div>}
 
-      {/* ── Asset allocation ── */}
-      {activeTab && !loading && visible.length > 0 && (
-        <div className="section" style={{ marginBottom: 48 }}>
-          <div className="section-header">
-            <div className="section-title">
-              <span className="section-dot" style={{ background: 'var(--gold)' }} />
-              Asset Class Allocation
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 28 }}>
-            {Object.entries(
-              visible.reduce<Record<string, number>>((acc, h) => {
-                acc[h.assetClass] = (acc[h.assetClass] ?? 0) + h.value;
-                return acc;
-              }, {})
-            ).sort(([, a], [, b]) => b - a).map(([cls, val]) => {
-              const pct = totalValue > 0 ? (val / totalValue) * 100 : 0;
-              const color = assetColor(cls);
-              return (
-                <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 110, fontSize: 12, fontWeight: 600, color: 'var(--text)', flexShrink: 0 }}>{cls}</div>
-                  <div style={{ flex: 1, height: 8, borderRadius: 'var(--r-pill)', background: 'var(--surface2)', overflow: 'hidden' }}>
-                    <div style={{ width: `${pct}%`, height: '100%', borderRadius: 'var(--r-pill)', background: color, transition: 'width 0.4s ease' }} />
-                  </div>
-                  <div style={{ width: 46, fontSize: 12, fontWeight: 700, color, textAlign: 'right', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{pct.toFixed(1)}%</div>
-                  <div style={{ width: 86, fontSize: 12, color: 'var(--text3)', textAlign: 'right', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{fmtK(val)}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Asset allocation now lives in the donut pair above, so the old
+          bar list here would just repeat it. */}
+      <div style={{ height: 28 }} />
     </>
   );
 }

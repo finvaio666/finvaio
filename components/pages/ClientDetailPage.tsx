@@ -10,7 +10,7 @@ import {
 } from '@/components/useClients';
 import CashflowFormModal from '@/components/CashflowFormModal';
 import NetWorthFormModal from '@/components/NetWorthFormModal';
-import AumBreakdownBar from '@/components/AumBreakdownBar';
+import DonutBreakdown from '@/components/DonutBreakdown';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { MedicalDetail } from '@/components/MedicalDetail';
 import MaskedValue from '@/components/MaskedValue';
@@ -252,6 +252,15 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
     return rows;
   })();
 
+  // What this client's money is invested in, independent of who custodies it.
+  const assetBreakdown = Object.entries(
+    holdings.reduce<Record<string, number>>((acc, h) => {
+      const cls = h.assetClass || 'Unclassified';
+      acc[cls] = (acc[cls] ?? 0) + h.value;
+      return acc;
+    }, {}),
+  ).map(([name, value]) => ({ name, value }));
+
   // Group holdings by FAME account no (e.g. "PMART" account M018415 holds several
   // underlying funds) so a wrapper account and its funds don't read as unrelated,
   // duplicated line items. Holdings with no account no (older manual entries) fall
@@ -314,7 +323,7 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
         </div>
       </div>
 
-      <AumBreakdownBar title="AUM by platform group" items={groupTotals} />
+      <DonutBreakdown title="AUM by platform group" items={groupTotals} />
 
       {/* Holdings table */}
       <div className="section">
@@ -385,31 +394,10 @@ function PortfolioTab({ clientId, clientName }: { clientId: string; clientName: 
         </div>
       </div>
 
-      {/* Asset allocation */}
+      {/* Asset allocation — paired with the platform split above it */}
       {holdings.length > 0 && (
-        <div className="section" style={{ marginTop: 16 }}>
-          <SectionHeader dot="var(--gold)" title="Asset Class Allocation" />
-          <div style={{ padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Object.entries(
-              holdings.reduce<Record<string, number>>((acc, h) => {
-                acc[h.assetClass] = (acc[h.assetClass] ?? 0) + h.value;
-                return acc;
-              }, {})
-            ).sort(([, a], [, b]) => b - a).map(([cls, val]) => {
-              const pct = totalValue > 0 ? (val / totalValue) * 100 : 0;
-              const color = assetColor(cls);
-              return (
-                <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 110, fontSize: 12, fontWeight: 600, color: 'var(--text)', flexShrink: 0 }}>{cls}</div>
-                  <div style={{ flex: 1, height: 8, borderRadius: 'var(--r-pill)', background: 'var(--surface2)', overflow: 'hidden' }}>
-                    <div style={{ width: `${pct}%`, height: '100%', borderRadius: 'var(--r-pill)', background: color, transition: 'width 0.4s ease' }} />
-                  </div>
-                  <div style={{ width: 46, fontSize: 12, fontWeight: 700, color, textAlign: 'right', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{pct.toFixed(1)}%</div>
-                  <div style={{ width: 86, fontSize: 12, color: 'var(--text3)', textAlign: 'right', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{fmtK(val)}</div>
-                </div>
-              );
-            })}
-          </div>
+        <div style={{ marginTop: 16 }}>
+          <DonutBreakdown title="AUM by asset class" items={assetBreakdown} />
         </div>
       )}
     </>
