@@ -322,11 +322,11 @@ function DownloadButton({ onClick, loading }: { onClick: () => void; loading: bo
 
 // ─── Retirement Calculator ────────────────────────────────────────────────────
 const RETIREMENT_DEFAULTS = {
-  clientName: '', currentAge: 35, retirementAge: 60,
+  clientName: '', currentAge: 0, retirementAge: 0,
   currentEPF: 0, currentInvestments: 0,
   monthlyEPF: 0, monthlyInvestment: 0,
-  epfDividend: 5.5, investmentReturn: 8.0, inflationRate: 3.5,
-  targetMonthlyIncome: 5000, retirementDuration: 20,
+  epfDividend: 0, investmentReturn: 0, inflationRate: 0,
+  targetMonthlyIncome: 0, retirementDuration: 0,
 };
 
 function RetirementCalculator({ preloadClient }: { preloadClient?: ClientData | null }) {
