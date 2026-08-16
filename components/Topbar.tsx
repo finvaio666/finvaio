@@ -10,6 +10,7 @@ const pageTitles: Record<string, string> = {
   '/reviews': 'Meetings',
   '/tasks': 'Tasks',
   '/cashflow': 'Cash Flow',
+  '/networth': 'Net Worth',
   '/insurance': 'Insurance',
   '/templates': 'Templates',
   '/knowledge': 'Knowledge Base',
