@@ -11,21 +11,21 @@ export async function GET(req: NextRequest) {
   const state = searchParams.get('state');
   const error = searchParams.get('error');
 
-  // Drive connections (Forms Library) use a "drive:<advisorId>" state prefix
+  // Drive connections (Forms storage) use a "drive:<advisorId>" state prefix
   // to distinguish from the Gmail flow below, which shares this callback.
   if (state?.startsWith('drive:')) {
     const advisorId = state.slice('drive:'.length);
-    if (error) return NextResponse.redirect(new URL('/forms-library?error=auth_denied', req.url));
-    if (!code || !advisorId) return NextResponse.redirect(new URL('/forms-library?error=invalid_callback', req.url));
+    if (error) return NextResponse.redirect(new URL('/forms?error=auth_denied', req.url));
+    if (!code || !advisorId) return NextResponse.redirect(new URL('/forms?error=invalid_callback', req.url));
 
     try {
       const { refreshToken } = await exchangeCodeForTokens(code);
-      if (!refreshToken) return NextResponse.redirect(new URL('/forms-library?error=no_refresh_token', req.url));
+      if (!refreshToken) return NextResponse.redirect(new URL('/forms?error=no_refresh_token', req.url));
       await saveDriveToken(advisorId, refreshToken);
-      return NextResponse.redirect(new URL('/forms-library?connected=1', req.url));
+      return NextResponse.redirect(new URL('/forms?connected=1', req.url));
     } catch (e) {
       console.error('Drive OAuth callback error:', e);
-      return NextResponse.redirect(new URL('/forms-library?error=token_exchange_failed', req.url));
+      return NextResponse.redirect(new URL('/forms?error=token_exchange_failed', req.url));
     }
   }
 

@@ -1,12 +1,21 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Overlay, Field, fieldInput as inp } from '@/components/PortfolioFormModal';
+import { Overlay, Grid, Field, Select, Footer, fieldInput as inp } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
-import { CLIENT_DATA_KEYS, FieldMapping } from '@/lib/formsLibrary';
+import { CLIENT_DATA_KEYS, FORM_CATEGORIES, FieldMapping } from '@/lib/formsLibrary';
 
 interface HubForm {
-  id: string; name: string; provider: string; category: string; tags: string[]; formType: string; hasFill?: boolean;
+  id: string; name: string; provider: string; category: string; tags: string[]; formType: string;
+  hasFill?: boolean;
+  // Present only when fetched via the admin listing (Admin / Sky Siew).
+  active?: boolean;
+  fieldMapping?: FieldMapping | null;
+}
+
+/** A form has an auto-fill flow when it has a fillable or overlay mapping with fields. */
+function computeHasFill(m?: FieldMapping | null): boolean {
+  return !!m && (m.type === 'fillable' || m.type === 'overlay') && (m.fields?.length ?? 0) > 0;
 }
 
 const keyLabel: Record<string, string> = Object.fromEntries(CLIENT_DATA_KEYS.map(k => [k.key, k.label]));
@@ -21,21 +30,58 @@ function downloadBlank(id: string) {
 }
 
 export default function FormsHubPage() {
+  const [role, setRole] = useState<{ isAdmin: boolean; isAdminOrSky: boolean } | null>(null);
   const [forms, setForms]     = useState<HubForm[]>([]);
+  const [storageReady, setStorageReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [q, setQ]             = useState('');
   const [provider, setProvider] = useState('');
   const [category, setCategory] = useState('');
   const [fillForm, setFillForm] = useState<HubForm | null>(null);
   const [showMatch, setShowMatch] = useState(false);
+  const [showAdd, setShowAdd]   = useState(false);
+  const [mappingForm, setMappingForm] = useState<HubForm | null>(null);
 
   useEffect(() => {
-    fetch('/api/forms')
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      setRole({ isAdmin: d.role === 'Admin', isAdminOrSky: d.role === 'Admin' || d.name === 'Sky Siew' });
+    }).catch(() => setRole({ isAdmin: false, isAdminOrSky: false }));
+  }, []);
+
+  const load = useCallback(() => {
+    if (!role) return;
+    setLoading(true);
+    const url = role.isAdminOrSky ? '/api/admin/forms-library' : '/api/forms';
+    fetch(url)
       .then(r => r.json())
-      .then(d => { if (d.forms) setForms(d.forms); })
+      .then(d => {
+        if (d.forms) {
+          setForms(role.isAdminOrSky
+            ? d.forms.map((f: HubForm) => ({ ...f, hasFill: computeHasFill(f.fieldMapping) }))
+            : d.forms);
+        }
+        if (d.storageReady !== undefined) setStorageReady(d.storageReady);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [role]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function toggleActive(f: HubForm) {
+    await fetch(`/api/admin/forms-library/${f.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !f.active }),
+    });
+    load();
+  }
+
+  async function deleteForm(f: HubForm) {
+    if (!confirm(`Remove "${f.name}" from the Forms library?`)) return;
+    await fetch(`/api/admin/forms-library/${f.id}`, { method: 'DELETE' });
+    load();
+  }
 
   const providers = useMemo(() => [...new Set(forms.map(f => f.provider).filter(Boolean))].sort(), [forms]);
   const providerCounts = useMemo(() => {
@@ -64,8 +110,19 @@ export default function FormsHubPage() {
             <span className="section-dot" style={{ background: 'var(--gold)' }} />
             Forms
           </div>
-          <button className="section-action" onClick={() => setShowMatch(true)}>Match from letter</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="section-action" onClick={() => setShowMatch(true)}>Match from letter</button>
+            {role?.isAdminOrSky && (
+              <button className="section-action" onClick={() => setShowAdd(true)} disabled={!storageReady}>+ Add Form</button>
+            )}
+          </div>
         </div>
+
+        {role?.isAdminOrSky && !storageReady && (
+          <div style={{ padding: '16px 20px', fontSize: 13, color: 'var(--text3)' }}>
+            File storage is not configured. Set the storage environment variables before uploading forms.
+          </div>
+        )}
 
         {/* Step 1 — pick a company (provider) first. */}
         {!provider ? (
@@ -121,6 +178,9 @@ export default function FormsHubPage() {
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{f.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>
                     {[f.provider, f.category].filter(Boolean).join(' · ')}
+                    {role?.isAdminOrSky && f.active === false && (
+                      <span style={{ marginLeft: 8, color: 'var(--red)' }}>Inactive</span>
+                    )}
                   </div>
                   {f.tags.length > 0 && (
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -129,10 +189,19 @@ export default function FormsHubPage() {
                       ))}
                     </div>
                   )}
-                  <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', gap: 8 }}>
+                  <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="section-action" onClick={() => downloadBlank(f.id)}>Download</button>
                     {(f.hasFill ?? f.formType === 'Fillable PDF') && (
                       <button className="section-action" onClick={() => setFillForm(f)}>Fill &amp; Download</button>
+                    )}
+                    {role?.isAdminOrSky && f.formType === 'Fillable PDF' && (
+                      <button className="section-action" onClick={() => setMappingForm(f)}>Map fields</button>
+                    )}
+                    {role?.isAdmin && (
+                      <>
+                        <button className="section-action" onClick={() => toggleActive(f)}>{f.active ? 'Disable' : 'Enable'}</button>
+                        <button className="section-action" onClick={() => deleteForm(f)}>Remove</button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -150,6 +219,20 @@ export default function FormsHubPage() {
           providers={providers}
           onClose={() => setShowMatch(false)}
           onFill={(f) => { setShowMatch(false); setFillForm(f); }}
+        />
+      )}
+      {showAdd && (
+        <AddFormModal
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); load(); }}
+          onMap={(f) => { setShowAdd(false); load(); setMappingForm(f); }}
+        />
+      )}
+      {mappingForm && (
+        <FieldMappingModal
+          form={mappingForm}
+          onClose={() => setMappingForm(null)}
+          onSaved={() => { setMappingForm(null); load(); }}
         />
       )}
     </div>
@@ -368,7 +451,7 @@ function FillModal({ form, onClose }: { form: HubForm; onClose: () => void }) {
           <div style={{ fontSize: 13, color: 'var(--text3)' }}>Loading form fields…</div>
         ) : fields.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--text3)' }}>
-            This form has no mapped fillable fields yet. Ask an admin to map it in Forms Library.
+            This form has no mapped fillable fields yet. Ask an admin to map it (Map fields, on the Forms page).
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '45vh', overflowY: 'auto', paddingRight: 4 }}>
@@ -397,6 +480,128 @@ function FillModal({ form, onClose }: { form: HubForm; onClose: () => void }) {
           </button>
         </div>
       </div>
+    </Overlay>
+  );
+}
+
+// ── Admin: add / map forms (merged in from the former Forms Library page) ──────
+
+function AddFormModal({ onClose, onSaved, onMap }: {
+  onClose: () => void;
+  onSaved: () => void;
+  onMap: (f: HubForm) => void;
+}) {
+  const [name, setName] = useState('');
+  const [provider, setProvider] = useState('');
+  const [category, setCategory] = useState('');
+  const [tags, setTags] = useState('');
+  const [formType, setFormType] = useState('Fillable PDF');
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save() {
+    if (!name.trim() || !provider.trim() || !file) { setErr('Form name, provider and PDF file are required.'); return; }
+    setSaving(true); setErr('');
+    const fd = new FormData();
+    fd.append('name', name.trim());
+    fd.append('provider', provider.trim());
+    fd.append('category', category);
+    fd.append('tags', tags);
+    fd.append('formType', formType);
+    fd.append('file', file);
+
+    const res = await fetch('/api/admin/forms-library', { method: 'POST', body: fd });
+    const d = await res.json();
+    setSaving(false);
+    if (!res.ok) { setErr(d.error ?? 'Upload failed'); return; }
+
+    if (formType === 'Fillable PDF' && d.id) {
+      onMap({
+        id: d.id, name, provider, category,
+        tags: tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+        formType: 'Fillable PDF', fieldMapping: d.fieldMapping, active: true,
+      });
+    } else {
+      onSaved();
+    }
+  }
+
+  return (
+    <Overlay onClose={onClose} title="Add Form">
+      <Grid>
+        <Field label="Form Name *"><input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Beneficiary Change Form" /></Field>
+        <Field label="Provider *"><input style={inp} value={provider} onChange={e => setProvider(e.target.value)} placeholder="e.g. AIA" /></Field>
+        <Field label="Category"><Select value={category} opts={FORM_CATEGORIES} onChange={setCategory} /></Field>
+        <Field label="Tags (comma separated)"><input style={inp} value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g. fund switch, EPF" /></Field>
+        <Field label="Form Type">
+          <select value={formType} onChange={e => setFormType(e.target.value)} style={inp}>
+            <option value="Fillable PDF">Fillable PDF</option>
+            <option value="Scanned PDF">Scanned PDF</option>
+          </select>
+        </Field>
+        <Field label="PDF File *"><input type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] ?? null)} style={inp} /></Field>
+      </Grid>
+      <Footer err={err} saving={saving} onClose={onClose} onSave={save} />
+    </Overlay>
+  );
+}
+
+const fieldMapLbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 };
+
+function FieldMappingModal({ form, onClose, onSaved }: {
+  form: HubForm;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  // This modal only maps AcroForm (fillable) forms → narrow to fields with pdfField.
+  const [fields, setFields] = useState<{ pdfField: string; dataKey: string }[]>(
+    (form.fieldMapping?.fields ?? []).filter((f): f is { pdfField: string; dataKey: string } => 'pdfField' in f),
+  );
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  function setMapping(pdfField: string, dataKey: string) {
+    setFields(fs => fs.map(f => f.pdfField === pdfField ? { ...f, dataKey } : f));
+  }
+
+  async function save() {
+    setSaving(true); setErr('');
+    const res = await fetch(`/api/admin/forms-library/${form.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fieldMapping: { type: 'fillable', fields } }),
+    });
+    setSaving(false);
+    if (!res.ok) { setErr('Save failed'); return; }
+    onSaved();
+  }
+
+  return (
+    <Overlay onClose={onClose} title={`Map Fields — ${form.name}`}>
+      {fields.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--text3)' }}>
+          No fillable fields were detected in this PDF. It may need to be treated as a Scanned PDF instead.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '50vh', overflowY: 'auto' }}>
+          {fields.map(f => (
+            <div key={f.pdfField} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center' }}>
+              <div>
+                <label style={fieldMapLbl}>PDF Field</label>
+                <div style={{ fontSize: 13, fontFamily: 'monospace', wordBreak: 'break-all' }}>{f.pdfField}</div>
+              </div>
+              <div>
+                <label style={fieldMapLbl}>Maps to</label>
+                <select value={f.dataKey} onChange={e => setMapping(f.pdfField, e.target.value)} style={inp}>
+                  {CLIENT_DATA_KEYS.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+                </select>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Footer err={err} saving={saving} onClose={onClose} onSave={save} />
     </Overlay>
   );
 }
