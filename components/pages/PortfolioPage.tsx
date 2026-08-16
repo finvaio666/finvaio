@@ -97,6 +97,8 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
   const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
   const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
+  const [fxUpdating, setFxUpdating] = useState(false);
+  const [fxResult, setFxResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
   const { clients: allClients }        = useClients();
 
@@ -116,6 +118,25 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   function editHolding(h: Holding) {
     setEditing({ id: h.id, clientId: h.clientId, clientName: h.clientName, holdingName: h.name, assetClass: h.assetClass, institution: h.institution, platform: h.platform, status: h.status, currency: h.currency, valueOrig: h.valueOrig, purchaseOrig: h.purchaseOrig, fxRate: h.fxRate, maturityDate: h.maturity });
     setFormOpen(true);
+  }
+
+  async function updateFxRates() {
+    setFxUpdating(true);
+    setFxResult('');
+    try {
+      const res = await fetch('/api/portfolio/update-fx', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) { setFxResult(d.error ?? 'FX update failed.'); return; }
+      const parts = [`Updated ${d.updated} rate${d.updated === 1 ? '' : 's'} as of ${d.date}`];
+      if (d.failed)        parts.push(`${d.failed} failed`);
+      if (d.heldBackCount) parts.push(`${d.heldBackCount} held back — no stored value, ask an admin to check`);
+      setFxResult(parts.join(' · '));
+      if (d.updated > 0) loadHoldings(true);
+    } catch {
+      setFxResult('FX update failed — network error.');
+    } finally {
+      setFxUpdating(false);
+    }
   }
 
   useEffect(() => { loadHoldings(); }, []);
@@ -355,9 +376,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         </div>
       )}
 
-      {/* ── FX bar ── */}
+      {/* ── FX bar — shown whenever there's foreign currency anywhere in this
+             view, and the button is always live so a stale rate can be
+             refreshed before it's the only currency left on screen. ── */}
       {activeTab && !loading && foreignCount > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           {holdings.filter(h => h.currency && h.currency !== 'MYR' && h.fxRate > 0)
             .filter((h, i, arr) => arr.findIndex(x => x.currency === h.currency) === i)
             .map(h => (
@@ -367,7 +390,20 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>RM {h.fxRate.toFixed(4)}</span>
               </div>
             ))}
-          <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>ℹ️ Update FX rates to refresh</div>
+          <button
+            onClick={updateFxRates}
+            disabled={fxUpdating}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', borderRadius: 'var(--r-pill)',
+              background: 'none', border: '1px solid var(--accent2)',
+              color: 'var(--accent2)', fontSize: 12, fontWeight: 700,
+              cursor: fxUpdating ? 'default' : 'pointer', opacity: fxUpdating ? 0.6 : 1,
+            }}
+          >
+            {fxUpdating ? 'Updating…' : '🔄 Update FX rates'}
+          </button>
+          {fxResult && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fxResult}</span>}
         </div>
       )}
 

@@ -143,6 +143,21 @@ export async function setHoldingValue(config: AdvisorConfig, holdingId: string, 
   });
 }
 
+/**
+ * Write a holding's FX rate to MYR — used by the "Update FX rates" action.
+ * Deliberately narrow (rate only, never value_myr): this book stores value_myr
+ * as an independently-synced figure rather than a derived one, so a rate
+ * refresh must not silently reprice anyone's AUM. See app/api/portfolio/update-fx.
+ */
+export async function setFxRate(config: AdvisorConfig, holdingId: string, fxRate: number): Promise<void> {
+  if (useSupabase()) return sbPortfolio.updateHolding(config, holdingId, { fx_rate_to_myr: fxRate });
+  const notion = new Client({ auth: config.notionApiKey });
+  await notion.pages.update({
+    page_id: holdingId,
+    properties: { 'FX Rate to MYR': { number: fxRate } },
+  });
+}
+
 /** Fields a caller may set on a holding. Superset shared by the CRUD route and
  *  the switch route — both map to columns through buildPortfolioPatch so the
  *  column names exist in exactly one place. */
