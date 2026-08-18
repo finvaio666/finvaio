@@ -150,15 +150,28 @@ function mapClientPage(cp: PageObjectResponse): ClientRecord {
 
 /**
  * A single client by source-appropriate id (Notion page id or Supabase uuid per
- * DATA_SOURCE_CLIENTS), or null. Unscoped — callers enforce ownership (mirrors
- * the old inline notion.pages.retrieve in forms prefill).
+ * DATA_SOURCE_CLIENTS), or null.
+ *
+ * Ownership is enforced centrally: a non-admin advisor only ever gets their own
+ * client; anything else — another advisor's record, or one with no Advisor set —
+ * returns null (→ 404 at the caller). This is the defense-in-depth backstop for
+ * IDOR: callers no longer have to remember the check, and an empty Advisor field
+ * can't slip through the old `advisorName && …` guard. Admin sees every client.
  */
 export async function getClientById(config: AdvisorConfig, clientId: string): Promise<ClientRecord | null> {
-  if (useSupabase()) return sbClients.getClientById(clientId);
-  if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE') return null;
-  const notion = new Client({ auth: config.notionApiKey });
-  const pg = await notion.pages.retrieve({ page_id: clientId });
-  return isFullPage(pg) ? mapClientPage(pg) : null;
+  let rec: ClientRecord | null;
+  if (useSupabase()) {
+    rec = await sbClients.getClientById(clientId);
+  } else if (!config.notionApiKey || config.notionApiKey === 'DEMO_MODE') {
+    rec = null;
+  } else {
+    const notion = new Client({ auth: config.notionApiKey });
+    const pg = await notion.pages.retrieve({ page_id: clientId });
+    rec = isFullPage(pg) ? mapClientPage(pg) : null;
+  }
+  if (!rec) return null;
+  if (config.role !== 'Admin' && rec.advisorName !== config.name) return null;
+  return rec;
 }
 
 /**

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   if (useSupabaseUsers()) {
     try { return NextResponse.json({ users: await sbUsers.listUsers() }); }
-    catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+    catch (e) { console.error('list users failed:', e); return NextResponse.json({ error: 'Could not load users.' }, { status: 500 }); }
   }
 
   const hostKey  = process.env.NOTION_API_KEY;
@@ -50,8 +50,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ users });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('user admin operation failed:', e);
+    return NextResponse.json({ error: 'Could not complete the request. Please try again.' }, { status: 500 });
   }
 }
 
@@ -116,8 +116,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('user admin operation failed:', e);
+    return NextResponse.json({ error: 'Could not complete the request. Please try again.' }, { status: 500 });
   }
 }
 
@@ -165,7 +165,7 @@ export async function PATCH(req: NextRequest) {
     await notion.pages.update({ page_id: body.userId, properties: updates as never });
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('user admin operation failed:', e);
+    return NextResponse.json({ error: 'Could not complete the request. Please try again.' }, { status: 500 });
   }
 }

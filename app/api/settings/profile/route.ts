@@ -67,7 +67,7 @@ export async function PATCH(req: NextRequest) {
     clearAdvisorCache(advisorId);
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('profile update failed:', e);
+    return NextResponse.json({ error: 'Could not update profile. Please try again.' }, { status: 500 });
   }
 }

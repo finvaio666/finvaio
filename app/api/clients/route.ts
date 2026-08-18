@@ -99,6 +99,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ client: { id: page.id, name, email, phone, status, segment } });
   } catch (e) {
     console.error('Client create error:', e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return NextResponse.json({ error: 'Could not create client. Please try again.' }, { status: 500 });
   }
 }

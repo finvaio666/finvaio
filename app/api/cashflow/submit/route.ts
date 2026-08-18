@@ -218,8 +218,7 @@ export async function POST(req: NextRequest) {
       });
     } catch (e: unknown) {
       console.error('Cashflow submit error (supabase):', e);
-      const msg = e instanceof Error ? e.message : String(e);
-      return NextResponse.json({ error: `Failed to save to database: ${msg}` }, { status: 500 });
+      return NextResponse.json({ error: 'Could not save. Please try again.' }, { status: 500 });
     }
   }
 
@@ -321,10 +320,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     console.error('Cashflow submit error:', e);
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json(
-      { error: `Failed to save to database: ${msg}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Could not save. Please try again.' }, { status: 500 });
   }
 }

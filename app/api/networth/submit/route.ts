@@ -56,7 +56,8 @@ export async function POST(req: NextRequest) {
         buildAssetRows(rows, clientName, config.name, MARKER, today));
       return NextResponse.json(summary);
     } catch (e: unknown) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+      console.error('networth submit (supabase) failed:', e);
+      return NextResponse.json({ error: 'Could not save. Please try again.' }, { status: 500 });
     }
   }
 
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(summary);
   } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    console.error('networth submit (notion) failed:', e);
+    return NextResponse.json({ error: 'Could not save. Please try again.' }, { status: 500 });
   }
 }
