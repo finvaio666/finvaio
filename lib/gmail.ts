@@ -55,14 +55,6 @@ export interface SendOptions {
   references?: string;     // References header chain
 }
 
-// ── Gmail Labels for FINVA status tracking ────────────────────────────────────
-
-export const FINVA_LABELS = {
-  MONITORED: 'FINVA',           // All emails FINVA is tracking
-  CLOSED:    'FINVA/Closed',    // Manually closed by advisor
-  SENT:      'FINVA/Sent',      // Outbound emails initiated from FINVA
-};
-
 // ── OAuth2 Setup ─────────────────────────────────────────────────────────────
 
 function createOAuthClient() {
@@ -602,23 +594,6 @@ export async function sendEmail(
   });
 
   return res.data.id ?? '';
-}
-
-/**
- * Add the FINVA/Sent label to an outbound message (creates label if needed).
- */
-export async function markAsSent(refreshToken: string, messageId: string): Promise<void> {
-  const gmail = getGmailClient(refreshToken);
-
-  // Ensure label exists
-  const labelId = await ensureLabel(gmail, 'FINVA/Sent');
-  if (!labelId) return;
-
-  await gmail.users.messages.modify({
-    userId: 'me',
-    id:     messageId,
-    requestBody: { addLabelIds: [labelId] },
-  }).catch(() => {}); // non-critical
 }
 
 /**

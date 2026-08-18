@@ -404,7 +404,3 @@ export async function closeThread(refreshToken: string, threadId: string): Promi
   const id = data.value?.[0]?.id;
   if (id) await addCategory(refreshToken, id, 'FINVA/Closed');
 }
-
-export async function markAsSent(): Promise<void> {
-  // No-op for Outlook — sent items are tracked natively in the Sent folder.
-}

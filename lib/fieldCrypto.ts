@@ -11,4 +11,4 @@
  * real defense. `decryptField` passes non-`enc:v1:` values through unchanged, so
  * the decrypt code can ship before the migration runs (no broken window).
  */
-export { encryptNric as encryptField, decryptNric as decryptField, isEncrypted } from './nricCrypto';
+export { encryptNric as encryptField, decryptNric as decryptField } from './nricCrypto';

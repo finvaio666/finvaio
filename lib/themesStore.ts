@@ -95,5 +95,3 @@ export async function setCompanyThemes(adminId: string, list: Theme[]): Promise<
   });
   cache = { themes: toSave, ts: Date.now() };
 }
-
-export function clearThemesCache() { cache = null; }

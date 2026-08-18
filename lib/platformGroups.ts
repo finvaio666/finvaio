@@ -150,10 +150,3 @@ export async function setPlatformGroups(adminId: string, groups: PlatformGroup[]
     }
   } catch { /* non-critical */ }
 }
-
-/** Group name a platform belongs to, or '' when it hasn't been assigned yet. */
-export function groupForPlatform(groups: PlatformGroup[], platform: string): string {
-  if (!platform) return '';
-  const hit = groups.find(g => g.platforms.some(p => p.toLowerCase() === platform.toLowerCase()));
-  return hit?.name ?? '';
-}
