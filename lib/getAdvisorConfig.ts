@@ -1,5 +1,6 @@
 import { Client, isFullPage } from '@notionhq/client';
 import * as sbUsers from './repos/users';
+import { encryptField, decryptField } from './fieldCrypto';
 
 const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
@@ -85,7 +86,7 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
     // to the company-wide shared DB (env). New FAs need NO DB IDs filled in.
     const env = process.env;
     const config: AdvisorConfig = {
-      notionApiKey:     rt(p, 'Notion API Key')      || env.NOTION_API_KEY            || '',
+      notionApiKey:     decryptField(rt(p, 'Notion API Key')) || env.NOTION_API_KEY   || '',
       clientsDbId:      rt(p, 'Clients DB ID')       || env.COMPANY_CLIENTS_DB_ID      || '',
       portfolioDbId:    rt(p, 'Portfolio DB ID')     || env.COMPANY_PORTFOLIO_DB_ID    || '',
       insuranceDbId:    rt(p, 'Insurance DB ID')     || env.COMPANY_INSURANCE_DB_ID    || '',
@@ -100,18 +101,18 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
       name: (p['Name']  as { type: string; title?: { plain_text: string }[] } | undefined)?.title?.[0]?.plain_text ?? '',
       // Email Hub fields
       emailProvider:       (rt(p, 'Email Provider') || 'gmail').toLowerCase(),
-      gmailRefreshToken:   rt(p, 'Gmail Refresh Token'),
+      gmailRefreshToken:   decryptField(rt(p, 'Gmail Refresh Token')),
       gmailAddress:        rt(p, 'Gmail Address'),
-      outlookRefreshToken: rt(p, 'Outlook Refresh Token'),
+      outlookRefreshToken: decryptField(rt(p, 'Outlook Refresh Token')),
       outlookAddress:      rt(p, 'Outlook Address'),
       institutionsJson:    rt(p, 'Institutions JSON'),
       calendarProvider:     (rt(p, 'Calendar Provider') || '').toLowerCase(),
-      calendarRefreshToken: rt(p, 'Calendar Refresh Token'),
+      calendarRefreshToken: decryptField(rt(p, 'Calendar Refresh Token')),
       calendarAddress:      rt(p, 'Calendar Address'),
       // Forms Library uses ONE shared company Drive for all FAs. The company
       // token (env) takes precedence; a per-advisor token is only a fallback
       // for an admin who deliberately connected their own Drive.
-      driveRefreshToken:    env.COMPANY_DRIVE_REFRESH_TOKEN || rt(p, 'Drive Refresh Token'),
+      driveRefreshToken:    env.COMPANY_DRIVE_REFRESH_TOKEN || decryptField(rt(p, 'Drive Refresh Token')),
     };
 
     cache.set(advisorId, { config, ts: Date.now() });
@@ -190,7 +191,7 @@ export async function saveGmailToken(
     await notion.pages.update({
       page_id:    advisorId,
       properties: {
-        'Gmail Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Gmail Refresh Token': { rich_text: [{ text: { content: encryptField(refreshToken) } }] },
         'Gmail Address':       { rich_text: [{ text: { content: gmailAddress } }] },
       } as never,
     });
@@ -220,7 +221,7 @@ export async function saveCalendarToken(
       page_id:    advisorId,
       properties: {
         'Calendar Provider':      { rich_text: [{ text: { content: provider } }] },
-        'Calendar Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Calendar Refresh Token': { rich_text: [{ text: { content: encryptField(refreshToken) } }] },
         'Calendar Address':       { rich_text: [{ text: { content: address } }] },
       } as never,
     });
@@ -244,7 +245,7 @@ export async function saveDriveToken(advisorId: string, refreshToken: string): P
     await notion.pages.update({
       page_id:    advisorId,
       properties: {
-        'Drive Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Drive Refresh Token': { rich_text: [{ text: { content: encryptField(refreshToken) } }] },
       } as never,
     });
     clearAdvisorCache(advisorId);
@@ -275,7 +276,7 @@ export async function saveOutlookToken(
     await notion.pages.update({
       page_id:    advisorId,
       properties: {
-        'Outlook Refresh Token': { rich_text: [{ text: { content: refreshToken } }] },
+        'Outlook Refresh Token': { rich_text: [{ text: { content: encryptField(refreshToken) } }] },
         'Outlook Address':       { rich_text: [{ text: { content: outlookAddress } }] },
         'Email Provider':        { rich_text: [{ text: { content: 'outlook' } }] },
       } as never,
