@@ -6,6 +6,7 @@ import { listClients, ClientRecord } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { listMeetings } from '@/lib/meetingNotes';
 import { logAiUsage } from '@/lib/aiUsage';
+import { listFunds, listPlans } from '@/lib/products';
 
 export const dynamic = 'force-dynamic';
 
@@ -186,6 +187,52 @@ async function lookupFundHoldings(config: AdvisorConfig, question: string, clien
   } catch { return ''; }
 }
 
+// ── Company knowledge base (funds / insurance products) ────────────────────────
+// The admin-maintained house catalogue — Ask FINVA must ground fund-performance
+// and insurance-product questions in this before falling back to general
+// knowledge. Distinct from FUND_TRIGGER above: that one answers "who owns
+// fund X" from a CLIENT's holdings; this answers "which fund/plan is best/
+// compare X vs Y" from the CATALOGUE, unrelated to any one client.
+const KB_TRIGGER = /\b(compare|comparison|best|top|recommend(?:ed|ation)?|which (?:fund|insurer|insurance|plan)|rank(?:ing|ed)?|performance|return|sum assured|premium|coverage|rider|epf.?approved|sales charge|risk level|asset class)\b/i;
+
+/**
+ * Pull the active fund and insurance-plan catalogue (admin-maintained, company-
+ * wide) so the AI answers product questions from house data first. Only runs
+ * when the question sounds product-related to avoid paying for this on every
+ * chat turn.
+ */
+async function lookupKnowledgeBase(config: AdvisorConfig, question: string): Promise<string> {
+  if (!KB_TRIGGER.test(question)) return '';
+  try {
+    const [funds, plans] = await Promise.all([
+      listFunds(config).catch(() => []),
+      listPlans(config).catch(() => []),
+    ]);
+
+    if (funds.length === 0 && plans.length === 0) {
+      return `\n# COMPANY KNOWLEDGE BASE\nEmpty — no funds or insurance plans have been added to the company catalogue yet.`;
+    }
+
+    const blocks: string[] = ['\n# COMPANY KNOWLEDGE BASE (admin-maintained house catalogue — authoritative for product questions)'];
+
+    if (funds.length > 0) {
+      blocks.push(`\n## Funds (${funds.length} active, each line: name · fund house · asset class · region · risk · 3Y return · min investment · sales charge · EPF approved)`);
+      for (const f of funds) {
+        blocks.push(`- ${f.name} · ${f.fundHouse} · ${f.assetClass} · ${f.region} · ${f.riskLevel} · ${f.return3Y}% (3Y) · RM ${f.minInvestment.toLocaleString()} min · ${f.salesCharge}% sales charge · ${f.epfApproved ? 'EPF approved' : 'Not EPF approved'}`);
+      }
+    }
+
+    if (plans.length > 0) {
+      blocks.push(`\n## Insurance plans (${plans.length} active, each line: name · insurer · type · age range · sum assured range · est. monthly premium · EPF approved)`);
+      for (const p of plans) {
+        blocks.push(`- ${p.name} · ${p.insurer} · ${p.type} · ages ${p.minAge}-${p.maxAge} · RM ${p.minSumAssured.toLocaleString()}-${p.maxSumAssured.toLocaleString()} sum assured · ${p.estMonthlyPremium || 'n/a'}/mo · ${p.epfApproved ? 'EPF approved' : 'Not EPF approved'}${p.keyFeatures ? ` · ${p.keyFeatures}` : ''}`);
+      }
+    }
+
+    return blocks.join('\n');
+  } catch { return ''; }
+}
+
 export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -269,12 +316,13 @@ Message: "${body.question}"`;
   // Look up any client mentioned in the question (full profile, contact, todos)
   // and any fund/holding named in it (which clients own it, Cash vs EPF).
   const clients = config ? await fetchClients(config) : [];
-  const [clientData, fundData] = config
+  const [clientData, fundData, kbData] = config
     ? await Promise.all([
         lookupMentionedClients(config, body.question, clients).catch(() => ''),
         lookupFundHoldings(config, body.question, clients).catch(() => ''),
+        lookupKnowledgeBase(config, body.question).catch(() => ''),
       ])
-    : ['', ''];
+    : ['', '', ''];
 
   const systemPrompt = `You are FINVA, the daily co-pilot for ${advisorName}, a licensed financial advisor in Malaysia. Today is ${today}.
 
@@ -284,6 +332,7 @@ RULES:
 - Use the actual names, dates, emails and figures from the data. Never invent clients, contacts or tasks.
 - When asked for a client's email / contact / to-do list, read it from the "CLIENT:" section below and present it clearly. If a field is blank, say it isn't on record.
 - When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If SEVERAL funds match the name the advisor used (e.g. two "Greater China" funds), present each fund's holders under its own heading and note they may want to be more specific. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
+- COMPANY KNOWLEDGE BASE: for questions about which fund/insurance plan is best, comparisons between products, returns, sum assured, premiums, EPF approval, risk level, or "what should I recommend" — answer FIRST from the "COMPANY KNOWLEDGE BASE" section below. This is the firm's own curated, admin-maintained catalogue and is authoritative — treat it as the house view, not just background info. Only bring in general market/product knowledge if the catalogue doesn't cover what was asked, and say so explicitly when you do (e.g. "not in our catalogue, but generally…"). If the catalogue section says it's empty, tell the advisor no funds/plans have been added yet rather than answering from general knowledge as if it were house data.
 - Prioritise by urgency: overdue first, then due-soon, then upcoming.
 - Use RM for money. Keep it tight — short bullet points, no preamble.
 - If asked "what's urgent" / "today's agenda", give a ranked action list (up to 6), each with the client name and why it matters.
@@ -299,7 +348,8 @@ RULES:
 === LIVE DASHBOARD DATA ===
 ${body.context || '(no data provided)'}
 ${clientData}
-${fundData}`;
+${fundData}
+${kbData}`;
 
   try {
     const genAI = new GoogleGenerativeAI(key);
