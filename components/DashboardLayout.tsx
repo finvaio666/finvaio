@@ -6,6 +6,7 @@ import Topbar from './Topbar';
 import SessionTimeout from './SessionTimeout';
 import InstallPrompt from './InstallPrompt';
 import MobileNav from './MobileNav';
+import AssistantLauncher from './AssistantLauncher';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,6 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="page-content">{children}</div>
       </div>
       <MobileNav />
+      <AssistantLauncher />
     </>
   );
 }

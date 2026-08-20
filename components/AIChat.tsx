@@ -106,7 +106,7 @@ export default function AIChat({
       <div className="section-header">
         <div className="section-title">
           <span className="section-dot" style={{ background: 'var(--gold)' }} />
-          AI Assistant
+          Ask FINVA
         </div>
         <div style={{ fontSize: 11, color: 'var(--text3)' }}>FINVA Intelligence · Live data</div>
       </div>
