@@ -15,7 +15,7 @@ const pageTitles: Record<string, string> = {
   '/templates': 'Templates',
   '/knowledge': 'Knowledge Base',
   '/planning': 'Planning',
-  '/ai': 'Ask FINVA',
+  '/ai': 'AI Assistant',
   '/emails': 'Email Hub',
   '/settings': 'Settings',
   '/admin': 'Admin Dashboard',
