@@ -676,6 +676,18 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             )}
                           </div>
                         )}
+                        {(() => {
+                          const worst = worstVsKo(h.underlyingDetails);
+                          if (!worst) return null;
+                          return (
+                            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                              Worst Asset vs KO: <span style={{ fontWeight: 700, color: 'var(--text)' }}>{worst.ticker}</span>{' '}
+                              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: worst.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                {worst.pct >= 0 ? '+' : ''}{worst.pct.toFixed(1)}%
+                              </span>
+                            </div>
+                          );
+                        })()}
                         <div style={{ overflowX: 'auto' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
                             <thead>
