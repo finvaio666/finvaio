@@ -507,21 +507,6 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         ) : (
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ minWidth: 680 }}>
-            {/* Column headers */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 120px 120px 90px 80px',
-              padding: '8px 20px', fontSize: 11, fontWeight: 700,
-              color: 'var(--text3)', borderBottom: '1px solid var(--border)',
-              background: 'var(--bg2)', letterSpacing: '0.04em', textTransform: 'uppercase',
-            }}>
-              <div>Fund / Holding</div>
-              <div style={{ textAlign: 'right' }}>Value (MYR)</div>
-              <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
-              <div style={{ textAlign: 'right' }}>Gain / Loss</div>
-              <div style={{ textAlign: 'right' }}>Return / worst vs KO</div>
-            </div>
-
             {/* Rows — grouped by client in "All" view */}
             {grouped.map(({ client, rows }) => (
               <div key={client}>
@@ -577,8 +562,16 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         return (
                     <div key={h.id}>
                     {showClassLabel && (
-                      <div style={{ padding: '10px 20px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)' }}>
-                        {cls}
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: cols,
+                        padding: '10px 20px 5px', fontSize: 10, fontWeight: 700,
+                        letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
+                      }}>
+                        <div>{cls}</div>
+                        <div style={{ textAlign: 'right' }}>Value (MYR)</div>
+                        <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
+                        <div style={{ textAlign: 'right' }}>Gain / Loss</div>
+                        <div style={{ textAlign: 'right' }}>{cls === 'Structured Product' ? 'Worst vs KO' : 'Return'}</div>
                       </div>
                     )}
                     <div style={{
