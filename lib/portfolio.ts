@@ -43,6 +43,7 @@ export interface PortfolioHolding {
   // Structured-product terms (FCN/autocallable underlyings + payment schedule).
   // Supabase-only — no equivalent Notion property (pure UI enhancement, not a synced field).
   underlyingDetails: {
+    couponRatePa?: number;
     underlyings: { name: string; entry: number; strike: number; ki: number; ko: number }[];
     schedule: { date: string; label: string }[];
   } | null;

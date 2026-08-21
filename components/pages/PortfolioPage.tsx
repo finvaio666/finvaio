@@ -30,6 +30,7 @@ interface Holding {
   fundSource?: string;
   platform?: string;
   underlyingDetails?: {
+    couponRatePa?: number;
     underlyings: { name: string; entry: number; strike: number; ki: number; ko: number }[];
     schedule: { date: string; label: string }[];
   } | null;
@@ -543,6 +544,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           {h.currency && h.currency !== 'MYR' && (
                             <span style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)', background: `${ccyColor(h.currency)}22`, color: ccyColor(h.currency), border: `1px solid ${ccyColor(h.currency)}44` }}>{h.currency}</span>
                           )}
+                          {typeof h.underlyingDetails?.couponRatePa === 'number' && (
+                            <span title="Coupon rate p.a." style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)', background: '#F79E1B22', color: 'var(--gold)', border: '1px solid #F79E1B44' }}>
+                              {h.underlyingDetails.couponRatePa}% p.a.
+                            </span>
+                          )}
                           <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
                           <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
                         </div>
@@ -579,6 +585,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                     </div>
                     {isNoteOpen && h.underlyingDetails && (
                       <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
+                        {typeof h.underlyingDetails.couponRatePa === 'number' && (
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                            Coupon rate: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--gold)' }}>{h.underlyingDetails.couponRatePa}% p.a.</span>
+                          </div>
+                        )}
                         <div style={{ overflowX: 'auto' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
                             <thead>
