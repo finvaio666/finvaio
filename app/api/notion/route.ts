@@ -155,6 +155,7 @@ export async function GET(req: NextRequest) {
             purchase,
             gain,
             returnPct:     purchase > 0 ? Math.round((gain / purchase) * 100) : 0,
+            underlyingDetails: h.underlyingDetails,
           };
         });
       return json({ data });

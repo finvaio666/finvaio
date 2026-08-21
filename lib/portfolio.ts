@@ -40,6 +40,12 @@ export interface PortfolioHolding {
   fameAccountNo:    string;
   fundSource:       string;
   fameSyncDate:     string;
+  // Structured-product terms (FCN/autocallable underlyings + payment schedule).
+  // Supabase-only — no equivalent Notion property (pure UI enhancement, not a synced field).
+  underlyingDetails: {
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number }[];
+    schedule: { date: string; label: string }[];
+  } | null;
 }
 
 function useSupabase(): boolean {
@@ -118,6 +124,7 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
         fameAccountNo:    rt(p, 'FAME Account No'),
         fundSource:       rt(p, 'Fund Source'),
         fameSyncDate:     dateOf(p, 'FAME Sync Date'),
+        underlyingDetails: null,
       });
     }
     cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;

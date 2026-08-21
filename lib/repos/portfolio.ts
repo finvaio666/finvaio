@@ -40,6 +40,7 @@ interface Row {
   fame_account_no: string | null;
   fund_source: string | null;
   fame_sync_date: string | null;
+  underlying_details: PortfolioHolding['underlyingDetails'];
 }
 
 const n = (v: number | string | null): number => (v == null ? 0 : Number(v));
@@ -69,10 +70,11 @@ function toHolding(r: Row): PortfolioHolding {
     fameAccountNo:    r.fame_account_no ?? '',
     fundSource:       r.fund_source ?? '',
     fameSyncDate:     r.fame_sync_date ?? '',
+    underlyingDetails: r.underlying_details ?? null,
   };
 }
 
-const COLS = 'id, notion_id, holding_name, client_notion_id, asset_class, product_name, institution, platform, currency, fx_rate_to_myr, units, purchase_price_original, purchase_price_myr, value_original_currency, value_myr, start_date, maturity_date, status, advisor, geography, fame_account_no, fund_source, fame_sync_date';
+const COLS = 'id, notion_id, holding_name, client_notion_id, asset_class, product_name, institution, platform, currency, fx_rate_to_myr, units, purchase_price_original, purchase_price_myr, value_original_currency, value_myr, start_date, maturity_date, status, advisor, geography, fame_account_no, fund_source, fame_sync_date, underlying_details';
 const PAGE = 1000; // PostgREST caps a single response at 1000 rows — paginate past it.
 
 /** List holdings scoped to this advisor (Admin sees all). Paginated (portfolio > 1000 rows). */

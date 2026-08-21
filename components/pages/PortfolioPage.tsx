@@ -29,6 +29,10 @@ interface Holding {
   fameAccountNo?: string;
   fundSource?: string;
   platform?: string;
+  underlyingDetails?: {
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number }[];
+    schedule: { date: string; label: string }[];
+  } | null;
 }
 
 const CCY_COLORS: Record<string, string> = {
@@ -96,6 +100,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [formOpen,     setFormOpen]    = useState(false);
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
   const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
+  const [expandedNote, setExpandedNote] = useState<Record<string, boolean>>({});
   const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
   const [fxUpdating, setFxUpdating] = useState(false);
   const [fxResult, setFxResult] = useState<string>('');
@@ -509,11 +514,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {acctGroup.rows.length} fund{acctGroup.rows.length === 1 ? '' : 's'}</span>
                         </div>
                       )}
-                      {!isCollapsed && acctGroup.rows.map((h, i) => (
-                    <div key={h.id} style={{
+                      {!isCollapsed && acctGroup.rows.map((h, i) => {
+                        const hasUnderlyings = !!(h.underlyingDetails && h.underlyingDetails.underlyings?.length);
+                        const isNoteOpen = hasUnderlyings && !!expandedNote[h.id];
+                        return (
+                    <div key={h.id}>
+                    <div style={{
                       display: 'grid', gridTemplateColumns: cols,
                       padding: '13px 20px', alignItems: 'center',
-                      borderBottom: '1px solid var(--border)',
+                      borderBottom: isNoteOpen ? 'none' : '1px solid var(--border)',
                       transition: 'background 0.12s',
                     }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
@@ -523,6 +532,13 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)', flexWrap: 'wrap', paddingLeft: showAcctHeaders ? 13 : 0 }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(h.assetClass), flexShrink: 0 }} />
+                          {hasUnderlyings && (
+                            <button
+                              onClick={() => setExpandedNote(prev => ({ ...prev, [h.id]: !prev[h.id] }))}
+                              title={isNoteOpen ? 'Hide underlying details' : 'Show underlying details'}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: 'var(--text3)', padding: '0 1px', transition: 'transform 0.15s', transform: isNoteOpen ? 'rotate(90deg)' : 'none' }}
+                            >▶</button>
+                          )}
                           {h.name}
                           {h.currency && h.currency !== 'MYR' && (
                             <span style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)', background: `${ccyColor(h.currency)}22`, color: ccyColor(h.currency), border: `1px solid ${ccyColor(h.currency)}44` }}>{h.currency}</span>
@@ -561,7 +577,49 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
                       </div>
                     </div>
-                      ))}
+                    {isNoteOpen && h.underlyingDetails && (
+                      <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
+                            <thead>
+                              <tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+                                <th style={{ textAlign: 'left', fontWeight: 600, padding: '4px 8px' }}>Underlying</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>Entry</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>Strike</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>KI</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>KO</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {h.underlyingDetails.underlyings.map((u, ui) => (
+                                <tr key={ui} style={{ borderTop: '1px solid var(--border)' }}>
+                                  <td style={{ padding: '5px 8px', fontWeight: 500, color: 'var(--text)' }}>{u.name}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.entry.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.strike.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ki.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ko.toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {h.underlyingDetails.schedule?.length > 0 && (
+                          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {h.underlyingDetails.schedule.map((s, si) => (
+                              <div key={si} style={{ padding: '4px 8px', borderRadius: 6, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 11 }}>
+                                <span style={{ color: 'var(--text3)' }}>{s.label}: </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
+                                  {new Date(s.date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </div>
+                        );
+                      })}
                       {showAcctHeaders && (
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Subtotal — {acctGroup.label}</span>

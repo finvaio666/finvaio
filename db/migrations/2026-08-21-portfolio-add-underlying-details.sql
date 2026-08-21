@@ -1,0 +1,27 @@
+-- Migration: 2026-08-21  public.portfolio_holdings — add underlying_details column
+--
+-- WHY: structured products (FCNs, autocallables) need to show the FA their
+-- per-underlying Entry/Strike/KI/KO levels and the autocall/payment schedule.
+-- This has no equivalent field anywhere else in the schema — it's note-level
+-- terms, not derivable from the existing value/price columns.
+--
+-- Shape (nullable JSONB, only populated for structured products):
+--   {
+--     "underlyings": [{ "name": "NVIDIA (NVDA)", "entry": 221.95, "strike": 155.365, "ki": 155.365, "ko": 221.95 }, ...],
+--     "schedule":    [{ "date": "2026-10-06", "label": "Autocall obs #1" }, ...]
+--   }
+-- "ki" is included even where it equals "strike" (no separate continuously-
+-- monitored barrier on this note family) so the UI has one consistent shape
+-- across products that DO have a distinct KI level.
+--
+-- Notion-side: NOT mirrored — there's no equivalent property on the Portfolio
+-- Holdings data source and this is a pure UI enhancement, not a synced field
+-- (unlike platform/client_notion_id which the FAME/iFAST/Allianz syncs write).
+--
+-- Additive, nullable. portfolio_holdings already has RLS enabled — this is an
+-- `alter table`, NOT a `create table`, so per AGENTS.md do NOT add an
+-- `enable row level security` line.
+--
+-- Rollback: alter table public.portfolio_holdings drop column if exists underlying_details;
+
+alter table public.portfolio_holdings add column if not exists underlying_details jsonb;
