@@ -577,8 +577,8 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           </>
                         ) : (
                           <>
-                            <div style={{ textAlign: 'right' }}>Value (MYR)</div>
-                            <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
+                            <div style={{ textAlign: 'right' }}>Value</div>
+                            <div style={{ textAlign: 'right' }}>Purchase</div>
                             <div style={{ textAlign: 'right' }}>Gain / Loss</div>
                             <div style={{ textAlign: 'right' }}>Return</div>
                           </>
@@ -668,29 +668,42 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             );
                           })()}
                         </>
-                      ) : (
+                      ) : (() => {
+                        // Foreign-currency holdings display in their own currency
+                        // (a USD/AUD/GBP bond's MYR-converted number isn't what the
+                        // FA is actually tracking it against). MYR-denominated
+                        // holdings are unaffected — valueOrig/purchaseOrig are often
+                        // just unset for those, so h.value/h.purchase (already MYR)
+                        // stay the source of truth there.
+                        const isForeign = !!h.currency && h.currency !== 'MYR';
+                        const dispValue    = isForeign ? h.valueOrig    : h.value;
+                        const dispPurchase = isForeign ? h.purchaseOrig : h.purchase;
+                        const dispGain     = dispValue - dispPurchase;
+                        return (
                         <>
-                          {/* Value (MYR) */}
+                          {/* Value */}
                           <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
-                            {Math.round(h.value).toLocaleString()}
+                            {Math.round(dispValue).toLocaleString()}
                           </div>
 
-                          {/* Purchase (MYR) */}
+                          {/* Purchase */}
                           <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
-                            {Math.round(h.purchase).toLocaleString()}
+                            {Math.round(dispPurchase).toLocaleString()}
                           </div>
 
                           {/* Gain */}
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12, color: h.gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                            {h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12, color: dispGain >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            {dispGain >= 0 ? '+' : ''}{Math.round(dispGain).toLocaleString()}
                           </div>
 
-                          {/* Return % */}
+                          {/* Return % — a ratio, so it reads the same regardless of
+                              which currency Value/Purchase above are shown in. */}
                           <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
                             {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
                           </div>
                         </>
-                      )}
+                        );
+                      })()}
                     </div>
                     {isNoteOpen && h.underlyingDetails && (
                       <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
