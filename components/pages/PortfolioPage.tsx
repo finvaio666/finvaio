@@ -70,6 +70,26 @@ function sortByAssetClass(rows: Holding[]): Holding[] {
   return [...rows].sort((a, b) => rank(a.assetClass) - rank(b.assetClass));
 }
 
+// The worst-performing underlying relative to its Knock-Out level is the one
+// that actually determines whether this note is close to autocalling — 0%
+// or above means every underlying has cleared its KO and the note redeems at
+// the next observation; deeply negative means the worst one still has a long
+// way to climb. Requires at least one underlying with a live "today" price;
+// returns null otherwise so the caller falls back to ordinary Return %.
+function worstVsKo(details: Holding['underlyingDetails']): { pct: number; ticker: string } | null {
+  const unds = details?.underlyings;
+  if (!unds || unds.length === 0) return null;
+  let worst: { pct: number; ticker: string } | null = null;
+  for (const u of unds) {
+    if (typeof u.today !== 'number' || !u.ko) continue;
+    const pct = (u.today / u.ko - 1) * 100;
+    if (worst === null || pct < worst.pct) {
+      worst = { pct, ticker: u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name };
+    }
+  }
+  return worst;
+}
+
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
@@ -499,7 +519,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               <div style={{ textAlign: 'right' }}>Value (MYR)</div>
               <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
               <div style={{ textAlign: 'right' }}>Gain / Loss</div>
-              <div style={{ textAlign: 'right' }}>Return</div>
+              <div style={{ textAlign: 'right' }}>Return / worst vs KO</div>
             </div>
 
             {/* Rows — grouped by client in "All" view */}
@@ -619,10 +639,32 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         {h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}
                       </div>
 
-                      {/* Return % */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
-                      </div>
+                      {/* Return % — for Structured Products with live prices, this
+                          slot instead shows how far the WORST underlying sits from
+                          its Knock-Out level (the number that actually matters for
+                          a note: 0% or above triggers autocall; deeply negative
+                          means it's far from calling and closer to the KI/strike
+                          risk zone). Falls back to ordinary Return % otherwise. */}
+                      {(() => {
+                        const worstKo = h.assetClass === 'Structured Product' ? worstVsKo(h.underlyingDetails) : null;
+                        if (worstKo) {
+                          return (
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: worstKo.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                {worstKo.pct >= 0 ? '+' : ''}{worstKo.pct.toFixed(1)}%
+                              </div>
+                              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 1 }}>
+                                {worstKo.ticker} vs KO
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
+                          </div>
+                        );
+                      })()}
                     </div>
                     {isNoteOpen && h.underlyingDetails && (
                       <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
