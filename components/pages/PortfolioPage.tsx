@@ -240,6 +240,23 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     }, {}),
   ).map(([name, value]) => ({ name, value }));
 
+  // Structured-note underlying exposure — each note's value is split evenly
+  // across its basket (a 3-stock note contributes 1/3 of its value to each),
+  // then aggregated across every structured product in view. Only appears
+  // where such holdings exist, so it's silent everywhere else in the app.
+  const underlyingBreakdown = Object.entries(
+    visible.reduce<Record<string, number>>((acc, h) => {
+      const unds = h.underlyingDetails?.underlyings;
+      if (!unds || unds.length === 0) return acc;
+      const share = h.value / unds.length;
+      for (const u of unds) {
+        const ticker = u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name;
+        acc[ticker] = (acc[ticker] ?? 0) + share;
+      }
+      return acc;
+    }, {}),
+  ).map(([name, value]) => ({ name, value }));
+
   // Group rows by client for visual separation
   const grouped: { client: string; rows: Holding[] }[] = activeTab === 'All'
     ? clientNames.map(c => ({ client: c, rows: holdings.filter(h => h.clientName === c) }))
@@ -379,6 +396,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               : 'No holdings to break down yet.'}
           />
           <DonutBreakdown title="AUM by asset class" items={assetBreakdown} />
+          {underlyingBreakdown.length > 0 && (
+            <DonutBreakdown title="Structured note underlying exposure" items={underlyingBreakdown} />
+          )}
         </div>
       )}
 
