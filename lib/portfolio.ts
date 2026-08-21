@@ -44,7 +44,8 @@ export interface PortfolioHolding {
   // Supabase-only — no equivalent Notion property (pure UI enhancement, not a synced field).
   underlyingDetails: {
     couponRatePa?: number;
-    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number }[];
+    priceAsOf?: string;
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
     schedule: { date: string; label: string }[];
   } | null;
 }

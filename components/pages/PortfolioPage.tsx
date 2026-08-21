@@ -31,7 +31,8 @@ interface Holding {
   platform?: string;
   underlyingDetails?: {
     couponRatePa?: number;
-    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number }[];
+    priceAsOf?: string;
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
     schedule: { date: string; label: string }[];
   } | null;
 }
@@ -608,6 +609,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         {typeof h.underlyingDetails.couponRatePa === 'number' && (
                           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
                             Coupon rate: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--gold)' }}>{h.underlyingDetails.couponRatePa}% p.a.</span>
+                            {h.underlyingDetails.priceAsOf && (
+                              <span style={{ marginLeft: 10, color: 'var(--text3)' }}>· prices as of {h.underlyingDetails.priceAsOf}</span>
+                            )}
                           </div>
                         )}
                         <div style={{ overflowX: 'auto' }}>
@@ -615,6 +619,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             <thead>
                               <tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
                                 <th style={{ textAlign: 'left', fontWeight: 600, padding: '4px 8px' }}>Underlying</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>Today</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>Entry</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>Strike</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>KI</th>
@@ -622,15 +627,21 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                               </tr>
                             </thead>
                             <tbody>
-                              {h.underlyingDetails.underlyings.map((u, ui) => (
+                              {h.underlyingDetails.underlyings.map((u, ui) => {
+                                const breached = typeof u.today === 'number' && u.today < u.ki;
+                                return (
                                 <tr key={ui} style={{ borderTop: '1px solid var(--border)' }}>
                                   <td style={{ padding: '5px 8px', fontWeight: 500, color: 'var(--text)' }}>{u.name}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: typeof u.today !== 'number' ? 'var(--text3)' : breached ? 'var(--red)' : 'var(--green)' }}>
+                                    {typeof u.today === 'number' ? u.today.toLocaleString() : '—'}
+                                  </td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.entry.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.strike.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ki.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ko.toLocaleString()}</td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
