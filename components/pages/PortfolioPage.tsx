@@ -568,10 +568,21 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
                       }}>
                         <div>{cls}</div>
-                        <div style={{ textAlign: 'right' }}>Value (MYR)</div>
-                        <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
-                        <div style={{ textAlign: 'right' }}>Gain / Loss</div>
-                        <div style={{ textAlign: 'right' }}>{cls === 'Structured Product' ? 'Worst vs KO' : 'Return'}</div>
+                        {cls === 'Structured Product' ? (
+                          <>
+                            <div style={{ textAlign: 'right' }}>Currency</div>
+                            <div style={{ textAlign: 'right' }}>Value</div>
+                            <div style={{ textAlign: 'right' }}>Purchase</div>
+                            <div style={{ textAlign: 'right' }}>Worst vs KO</div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ textAlign: 'right' }}>Value (MYR)</div>
+                            <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
+                            <div style={{ textAlign: 'right' }}>Gain / Loss</div>
+                            <div style={{ textAlign: 'right' }}>Return</div>
+                          </>
+                        )}
                       </div>
                     )}
                     <div style={{
@@ -617,47 +628,69 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         )}
                       </div>
 
-                      {/* Value */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
-                        {Math.round(h.value).toLocaleString()}
-                      </div>
+                      {/* Structured Products show raw original-currency figures (a USD
+                          note's value in MYR is a distraction, not the number an FA
+                          is actually tracking against Entry/Strike/KO) and drop
+                          Gain/Loss in favour of Worst vs KO — the only two other
+                          categories keep the MYR/Gain/Return layout. Account and
+                          client subtotals below stay MYR-only either way, so the
+                          FA still gets one true aggregate AUM figure. */}
+                      {h.assetClass === 'Structured Product' ? (
+                        <>
+                          {/* Currency */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: ccyColor(h.currency || 'MYR') }}>
+                            {h.currency || 'MYR'}
+                          </div>
 
-                      {/* Purchase */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
-                        {Math.round(h.purchase).toLocaleString()}
-                      </div>
+                          {/* Value (original currency) */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
+                            {Math.round(h.valueOrig).toLocaleString()}
+                          </div>
 
-                      {/* Gain */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12, color: h.gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}
-                      </div>
+                          {/* Purchase (original currency) */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
+                            {Math.round(h.purchaseOrig).toLocaleString()}
+                          </div>
 
-                      {/* Return % — for Structured Products with live prices, this
-                          slot instead shows how far the WORST underlying sits from
-                          its Knock-Out level (the number that actually matters for
-                          a note: 0% or above triggers autocall; deeply negative
-                          means it's far from calling and closer to the KI/strike
-                          risk zone). Falls back to ordinary Return % otherwise. */}
-                      {(() => {
-                        const worstKo = h.assetClass === 'Structured Product' ? worstVsKo(h.underlyingDetails) : null;
-                        if (worstKo) {
-                          return (
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: worstKo.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                                {worstKo.pct >= 0 ? '+' : ''}{worstKo.pct.toFixed(1)}%
+                          {/* Worst vs KO */}
+                          {(() => {
+                            const worstKo = worstVsKo(h.underlyingDetails);
+                            if (!worstKo) return <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text3)' }}>—</div>;
+                            return (
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: worstKo.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                  {worstKo.pct >= 0 ? '+' : ''}{worstKo.pct.toFixed(1)}%
+                                </div>
+                                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 1 }}>
+                                  {worstKo.ticker} vs KO
+                                </div>
                               </div>
-                              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 1 }}>
-                                {worstKo.ticker} vs KO
-                              </div>
-                            </div>
-                          );
-                        }
-                        return (
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <>
+                          {/* Value (MYR) */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
+                            {Math.round(h.value).toLocaleString()}
+                          </div>
+
+                          {/* Purchase (MYR) */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
+                            {Math.round(h.purchase).toLocaleString()}
+                          </div>
+
+                          {/* Gain */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12, color: h.gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            {h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}
+                          </div>
+
+                          {/* Return % */}
                           <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
                             {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
                           </div>
-                        );
-                      })()}
+                        </>
+                      )}
                     </div>
                     {isNoteOpen && h.underlyingDetails && (
                       <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
