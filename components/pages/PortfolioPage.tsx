@@ -44,7 +44,8 @@ const CCY_COLORS: Record<string, string> = {
 const ASSET_COLORS: Record<string, string> = {
   'EPF': '#4ADE80', 'Unit Trust': '#60A5FA', 'PRS': '#818CF8',
   'Fixed Deposit': '#F59E0B', 'Stocks': '#A78BFA', 'Bonds': '#F87171',
-  'Money Market': '#34D399',
+  'Money Market': '#34D399', 'Structured Product': '#F472B6', 'ETF': '#2DD4BF',
+  'Cash': '#FDE047',
 };
 const ccyColor   = (c: string) => CCY_COLORS[c]  ?? '#9CB8A0';
 const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
@@ -564,10 +565,17 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                     {showClassLabel && (
                       <div style={{
                         display: 'grid', gridTemplateColumns: cols,
-                        padding: '10px 20px 5px', fontSize: 10, fontWeight: 700,
+                        marginTop: i === 0 ? 0 : 12,
+                        padding: '7px 20px', fontSize: 10, fontWeight: 700,
                         letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
+                        background: 'var(--surface2)',
+                        borderTop: `2px solid ${assetColor(cls)}`,
+                        borderBottom: '1px solid var(--border)',
                       }}>
-                        <div>{cls}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(cls), flexShrink: 0 }} />
+                          {cls}
+                        </div>
                         {cls === 'Structured Product' ? (
                           <>
                             <div style={{ textAlign: 'right' }}>Currency</div>
