@@ -57,6 +57,19 @@ const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).m
 // already distinguishes the group.
 const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
 
+// Fixed reading order (matches the Add Holding asset-class list) so a client's
+// funds cluster by what they are, not by insertion/creation order — an EPF
+// balance, three unit trusts, and two FCNs each read as one visual block
+// instead of interleaving. Unknown classes sort after all named ones.
+const ASSET_CLASS_ORDER = ['EPF', 'Unit Trust', 'PRS', 'Stocks', 'Bonds', 'Structured Product', 'Fixed Deposit', 'ETF', 'Cash', 'Other'];
+function sortByAssetClass(rows: Holding[]): Holding[] {
+  const rank = (cls: string) => {
+    const i = ASSET_CLASS_ORDER.indexOf(cls || 'Other');
+    return i === -1 ? ASSET_CLASS_ORDER.length : i;
+  };
+  return [...rows].sort((a, b) => rank(a.assetClass) - rank(b.assetClass));
+}
+
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
@@ -536,11 +549,18 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {acctGroup.rows.length} fund{acctGroup.rows.length === 1 ? '' : 's'}</span>
                         </div>
                       )}
-                      {!isCollapsed && acctGroup.rows.map((h, i) => {
+                      {!isCollapsed && sortByAssetClass(acctGroup.rows).map((h, i, sortedRows) => {
                         const hasUnderlyings = !!(h.underlyingDetails && h.underlyingDetails.underlyings?.length);
                         const isNoteOpen = hasUnderlyings && !!expandedNote[h.id];
+                        const cls = h.assetClass || 'Other';
+                        const showClassLabel = i === 0 || (sortedRows[i - 1].assetClass || 'Other') !== cls;
                         return (
                     <div key={h.id}>
+                    {showClassLabel && (
+                      <div style={{ padding: '10px 20px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)' }}>
+                        {cls}
+                      </div>
+                    )}
                     <div style={{
                       display: 'grid', gridTemplateColumns: cols,
                       padding: '13px 20px', alignItems: 'center',
