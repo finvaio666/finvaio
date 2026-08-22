@@ -597,7 +597,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                   // Structured Products drop the Value column outright (a blank
                   // slot read as awkward) rather than reflowing into the 5-column
                   // grid the other categories use.
-                  const colsStructured = '1fr 90px 120px 100px';
+                  const colsStructured = '1fr 140px 110px';
                   return acctGroups.map(acctGroup => {
                     const collapseKey = `${client}::${acctGroup.key}`;
                     const isCollapsed = showAcctHeaders && (collapsed[collapseKey] ?? true);
@@ -636,7 +636,6 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         </div>
                         {cls === 'Structured Product' ? (
                           <>
-                            <div style={{ textAlign: 'right' }}>Currency</div>
                             <div style={{ textAlign: 'right' }}>Purchase</div>
                             <div style={{ textAlign: 'right' }}>Worst vs KO</div>
                           </>
@@ -702,12 +701,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           FA still gets one true aggregate AUM figure. */}
                       {h.assetClass === 'Structured Product' ? (
                         <>
-                          {/* Currency */}
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: ccyColor(h.currency || 'MYR') }}>
-                            {h.currency || 'MYR'}
-                          </div>
-
-                          {/* No Value column for Structured Products — secondary-
+                          {/* No Currency column — already tagged next to the note
+                              name above, and no Value column for Structured
+                              Products — secondary-
                               market bid-based mark-to-market isn't a meaningful
                               number here; revisit once there's a valuation basis
                               worth surfacing. */}
