@@ -122,12 +122,22 @@ type NoteFlag = 'ki' | 'likely-ko' | 'likely-matured';
 function deriveNoteFlag(h: Holding): NoteFlag | null {
   const details = h.underlyingDetails;
   if (h.assetClass !== 'Structured Product' || !details || !details.schedule?.length) return null;
-  const today = new Date();
+  // Compare as plain "YYYY-MM-DD" strings (UTC calendar date) rather than
+  // Date objects. Schedule dates carry no timezone of their own, and the
+  // underlyings can be listed on exchanges in different countries — there's
+  // no single "correct" timezone to evaluate against. Pinning to UTC at
+  // least means every viewer sees the same flag for the same note on the
+  // same real day, instead of it depending on whichever timezone the FA's
+  // browser happens to be in (`new Date()` would otherwise be viewer-local).
+  // This is still a same-day-ish approximation, which is fine — the flag is
+  // an unconfirmed hint an admin has to act on anyway, never written
+  // automatically (see isExitedNote/confirmExit).
+  const todayUTC = new Date().toISOString().slice(0, 10);
   const finalRow = details.schedule.find(s => s.label.startsWith('Final'));
-  if (finalRow && today >= new Date(finalRow.date)) return 'likely-matured';
+  if (finalRow && todayUTC >= finalRow.date) return 'likely-matured';
   const worst = worstVsKo(details);
   if (worst && worst.pct >= 0) {
-    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && today >= new Date(s.date));
+    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && todayUTC >= s.date);
     if (pastKoObs) return 'likely-ko';
   }
   if (details.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
