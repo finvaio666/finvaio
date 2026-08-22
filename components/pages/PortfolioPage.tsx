@@ -119,25 +119,31 @@ type NoteFlag = 'ki' | 'likely-ko' | 'likely-matured';
 // meantime. KI is a different kind of event (principal-protection risk, not
 // an exit) and always reported separately even once the note is otherwise
 // past a KO observation.
+// One full UTC day after a schedule date, as a "YYYY-MM-DD" string. Used as
+// the flag threshold instead of the schedule date itself — whatever
+// timezone an underlying's own exchange actually settles in, that event has
+// definitely already happened by one full day later everywhere on Earth, so
+// this removes the remaining ambiguity that pinning to UTC alone doesn't
+// (an underlying trading many hours behind/ahead of UTC could otherwise
+// flag a day early from that exchange's point of view).
+function dayAfterUTC(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function deriveNoteFlag(h: Holding): NoteFlag | null {
   const details = h.underlyingDetails;
   if (h.assetClass !== 'Structured Product' || !details || !details.schedule?.length) return null;
-  // Compare as plain "YYYY-MM-DD" strings (UTC calendar date) rather than
-  // Date objects. Schedule dates carry no timezone of their own, and the
-  // underlyings can be listed on exchanges in different countries — there's
-  // no single "correct" timezone to evaluate against. Pinning to UTC at
-  // least means every viewer sees the same flag for the same note on the
-  // same real day, instead of it depending on whichever timezone the FA's
-  // browser happens to be in (`new Date()` would otherwise be viewer-local).
-  // This is still a same-day-ish approximation, which is fine — the flag is
-  // an unconfirmed hint an admin has to act on anyway, never written
-  // automatically (see isExitedNote/confirmExit).
+  // Compared as plain "YYYY-MM-DD" strings (UTC), one day past the schedule
+  // date — see dayAfterUTC. This is still an unconfirmed hint an admin has
+  // to act on anyway, never written automatically (see isExitedNote/confirmExit).
   const todayUTC = new Date().toISOString().slice(0, 10);
   const finalRow = details.schedule.find(s => s.label.startsWith('Final'));
-  if (finalRow && todayUTC >= finalRow.date) return 'likely-matured';
+  if (finalRow && todayUTC >= dayAfterUTC(finalRow.date)) return 'likely-matured';
   const worst = worstVsKo(details);
   if (worst && worst.pct >= 0) {
-    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && todayUTC >= s.date);
+    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && todayUTC >= dayAfterUTC(s.date));
     if (pastKoObs) return 'likely-ko';
   }
   if (details.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
