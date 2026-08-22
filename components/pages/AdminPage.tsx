@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { AdminOverview, FAStats } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
 import type { PlatformGroup } from '@/lib/platformGroups';
+import { upperName } from '@/lib/displayName';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ function ClientsTab({ faId, faName, onBack }: { faId?: string; faName?: string; 
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{client.name}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{upperName(client.name)}</div>
                   {client.email && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{client.email}</div>}
                 </div>
                 <div>

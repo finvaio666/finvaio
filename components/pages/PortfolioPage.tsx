@@ -6,6 +6,7 @@ import NavUpdatePanel from '@/components/NavUpdatePanel';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
+import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
@@ -263,6 +264,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     .map(h => clientById.get(h.clientId) ?? { id: h.clientId, name: h.clientName || 'Unknown' })
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // The search box shouldn't offer holdings with no linked client record — an
+  // "Unknown" stub isn't a real, searchable client. (Still visible as its own
+  // group in the "All Holdings" view below, which is a useful data-quality cue.)
+  const searchableClients = uniqueClients.filter(c => c.name !== 'Unknown');
+
   // Derive activeTab (name string) from id — preserves all existing filtering logic
   const activeTab: string | null = activeTabId === ''
     ? null
@@ -377,7 +383,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <div style={{ width: 300 }}>
           <ClientSearchCombobox
-            clients={uniqueClients}
+            clients={searchableClients}
             value={activeTabId === 'All' ? '' : activeTabId}
             onChange={c => setTabId(c?.id ?? '')}
             placeholder="Search client…"
@@ -557,7 +563,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--blue)' }} />
-            {activeTab === 'All' ? 'All Holdings' : `${activeTab}`}
+            {activeTab === 'All' ? 'All Holdings' : upperName(activeTab)}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{visible.length} holdings</div>
         </div>
@@ -584,7 +590,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 10, fontWeight: 800, flexShrink: 0,
                     }}>{initials(client)}</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{client}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{upperName(client)}</span>
                     <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 2 }}>· {rows.length} holdings</span>
                     <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
                       {fmtK(rows.reduce((s, h) => s + h.value, 0))}
@@ -831,13 +837,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           </table>
                         </div>
                         {h.underlyingDetails.schedule?.length > 0 && (
-                          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          // Fixed 6-per-row grid — a 12-month schedule reads as two even
+                          // rows instead of ragged flex-wrap that reflows with column width.
+                          <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
                             {h.underlyingDetails.schedule.map((s, si) => (
                               <div key={si} style={{ padding: '4px 8px', borderRadius: 6, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 11 }}>
-                                <span style={{ color: 'var(--text3)' }}>{s.label}: </span>
-                                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
+                                <div style={{ color: 'var(--text3)' }}>{s.label}</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
                                   {new Date(s.date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </span>
+                                </div>
                               </div>
                             ))}
                           </div>

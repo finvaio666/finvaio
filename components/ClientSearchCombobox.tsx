@@ -23,6 +23,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { segmentLabel, segmentClass } from '@/components/useClients';
+import { upperName } from '@/lib/displayName';
 
 /** Minimal shape the combobox needs — compatible with any Client type in the app */
 export interface ComboboxClient {
@@ -176,7 +177,7 @@ export default function ClientSearchCombobox({
     }
   }
 
-  const displayValue = open ? query : (selected?.name ?? query);
+  const displayValue = open ? query : (selected ? upperName(selected.name) : query);
 
   const segCls = selected ? segmentClass(selected.segment ?? '') : 'active';
   const segColors = SEGMENT_COLORS[segCls] ?? SEGMENT_COLORS.active;
@@ -317,7 +318,7 @@ export default function ClientSearchCombobox({
                       color: isSelected ? 'var(--accent2)' : 'var(--text)',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
-                      {highlightMatch(c.name, query)}
+                      {highlightMatch(upperName(c.name), query)}
                     </div>
                   </div>
 

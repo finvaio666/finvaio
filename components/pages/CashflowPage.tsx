@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useClients } from '@/components/useClients';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
+import { upperName } from '@/lib/displayName';
 
 interface CashflowBreakdown {
   income:   Record<string, number>;
@@ -149,7 +150,7 @@ export default function CashflowPage() {
 
   const router      = useRouter();
   const clientReady = !loading && !clientsLoading && !!clientLatest && !!selectedId;
-  const firstName   = selectedClient?.name?.split(' ')[0] ?? '';
+  const firstName   = upperName(selectedClient?.name?.split(' ')[0] ?? '');
 
   // Find the client ID from an entry title like "JANICE QUEK KHANG WEN — May 2026"
   const clientIdFromEntry = (entry: string) => {
@@ -370,7 +371,7 @@ export default function CashflowPage() {
                           onMouseOut={e => (e.currentTarget.style.textDecoration = 'none')}
                           title="View this client's cash flow"
                         >
-                          {row.entry}
+                          {upperName(row.entry)}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)' }}>
                           {row.month ? new Date(row.month + 'T00:00:00').toLocaleString('en-MY', { month: 'long', year: 'numeric' }) : ''}
@@ -547,7 +548,7 @@ export default function CashflowPage() {
               Cash Flow Form Ready
             </h3>
             <p style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', marginBottom: 20, lineHeight: 1.6 }}>
-              Send this link to <strong style={{ color: 'var(--text)' }}>{linkModal.clientName}</strong> via WhatsApp or Email.
+              Send this link to <strong style={{ color: 'var(--text)' }}>{upperName(linkModal.clientName)}</strong> via WhatsApp or Email.
               It expires in <strong style={{ color: 'var(--accent2)' }}>7 days</strong>.
             </p>
             <div style={{

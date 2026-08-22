@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
+import { upperName } from '@/lib/displayName';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface TokenInfo {
@@ -287,7 +288,7 @@ export default function CashflowFormPage() {
 
           <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 8, letterSpacing: '-0.02em' }}>Submitted!</h2>
           <p style={{ fontSize: 14, color: 'var(--text3)', lineHeight: 1.6, marginBottom: 28 }}>
-            Thank you, <strong style={{ color: 'var(--text)' }}>{info?.clientName}</strong>. Your cash flow for{' '}
+            Thank you, <strong style={{ color: 'var(--text)' }}>{upperName(info?.clientName)}</strong>. Your cash flow for{' '}
             <strong style={{ color: 'var(--accent2)' }}>{monthLabel}</strong> has been received.
           </p>
 
@@ -352,7 +353,7 @@ export default function CashflowFormPage() {
         </h1>
         {info?.clientName && (
           <div style={{ fontSize: 14, color: 'var(--text3)' }}>
-            Hi <strong style={{ color: 'var(--accent2)' }}>{info.clientName}</strong>{monthLabel ? ` · ${monthLabel}` : ''}
+            Hi <strong style={{ color: 'var(--accent2)' }}>{upperName(info.clientName)}</strong>{monthLabel ? ` · ${monthLabel}` : ''}
           </div>
         )}
       </div>

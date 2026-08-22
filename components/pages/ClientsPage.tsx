@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, segmentLabel, statusClass } from '@/components/useClients';
+import { upperName } from '@/lib/displayName';
 
 export default function ClientsPage() {
   const router = useRouter();
@@ -190,7 +191,7 @@ export default function ClientsPage() {
               <div className="client-name-cell">
                 <div className="client-avatar">{initials(client.name)}</div>
                 <div>
-                  <div className="client-name">{client.name}</div>
+                  <div className="client-name">{upperName(client.name)}</div>
                   <div className="client-meta">{client.phone} · {client.email}</div>
                 </div>
               </div>

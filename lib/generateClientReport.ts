@@ -8,6 +8,7 @@
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { upperName } from './displayName';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -266,7 +267,7 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   const logo  = await loadLogo();
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const today = new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
-  const clientName = safeText(data.client.name);
+  const clientName = safeText(upperName(data.client.name));
   const H = 297;
 
   // Pre-compute

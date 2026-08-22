@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import InsuranceFormModal, { type PolicyDraft } from '@/components/InsuranceFormModal';
 import { MedicalDetail } from '@/components/MedicalDetail';
+import { upperName } from '@/lib/displayName';
 
 interface Policy {
   id: string;
@@ -168,7 +169,7 @@ function CoverageGapCard({ clientName, clientData, policies }: {
           {initials(clientName)}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{clientName}</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{upperName(clientName)}</div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
             Annual income {income > 0 ? fmtK(income) : '—'} · Premium {fmtK(totalPremium)}/yr
             {income > 0 && <span style={{ marginLeft: 6, color: Number(premiumRatio) > 15 ? 'var(--red)' : 'var(--green)' }}>({premiumRatio}% of income)</span>}
@@ -476,7 +477,7 @@ export default function InsurancePage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, flexShrink: 0 }}>{initials(clientName)}</div>
             <div style={{ flex: 1 }}>
-              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{clientName}</span>
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{upperName(clientName)}</span>
               <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', marginLeft: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>👤 Policy Owner</span>
               {(() => {
                 const lives = Array.from(new Set(rows.map(p => (p.lifeAssured || '').trim()).filter(Boolean)));

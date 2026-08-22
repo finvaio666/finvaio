@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { NW_ASSETS, NW_LIABILITIES } from '@/lib/networthForm';
+import { upperName } from '@/lib/displayName';
 
 interface TokenInfo { valid: boolean; clientName?: string; error?: string }
 
@@ -99,7 +100,7 @@ export default function NetWorthFormPage() {
     <div style={wrap}>
       <div style={{ background: '#1e3a5f', color: '#fff', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 800 }}>Net Worth Statement</div>
-        <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>For: {info.clientName}</div>
+        <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>For: {upperName(info.clientName)}</div>
       </div>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 18 }}>
         Enter the current value of each item you have. Leave blank if it doesn&apos;t apply. All amounts in MYR. Your advisor uses this for retirement &amp; education planning.

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
+import { upperName } from '@/lib/displayName';
 
 // ─── Client data ──────────────────────────────────────────────────────────────
 interface ClientData {
@@ -381,7 +382,7 @@ function RetirementCalculator({ preloadClient }: { preloadClient?: ClientData | 
 
       await downloadPDF({
         reportType: 'Retirement Planning Report',
-        clientName: f.clientName,
+        clientName: upperName(f.clientName),
         subtitle: `Age ${f.currentAge} → Retire at ${f.retirementAge}  ·  ${years} years`,
         sections: [
           {
@@ -406,7 +407,7 @@ function RetirementCalculator({ preloadClient }: { preloadClient?: ClientData | 
           { title: 'Projection Results', rows: resultRows },
         ],
         summary: isOnTrack
-          ? { status: 'positive', headline: `✅ ON TRACK — Projected surplus: +${fmtK(gap)}`, detail: `${f.clientName} is projected to have sufficient funds for retirement at age ${f.retirementAge}.` }
+          ? { status: 'positive', headline: `✅ ON TRACK — Projected surplus: +${fmtK(gap)}`, detail: `${upperName(f.clientName)} is projected to have sufficient funds for retirement at age ${f.retirementAge}.` }
           : { status: 'negative', headline: `⚠️ RETIREMENT GAP — Shortfall: ${fmtK(Math.abs(gap))}`, detail: `Additional monthly savings of ${fmt(additionalMonthlyNeeded)} required to close the gap by retirement.` },
         assumptions: `EPF ${f.epfDividend}% p.a.  ·  Investment ${f.investmentReturn}% p.a.  ·  Inflation ${f.inflationRate}% p.a.  ·  Retirement lasts ${f.retirementDuration} years`,
       });
@@ -470,7 +471,7 @@ function RetirementCalculator({ preloadClient }: { preloadClient?: ClientData | 
           <div className="section-header">
             <div className="section-title">
               <span className="section-dot" style={{ background: 'var(--accent)' }} />
-              Projection for {f.clientName}
+              Projection for {upperName(f.clientName)}
             </div>
             <DownloadButton onClick={handleDownload} loading={pdfLoading} />
           </div>
@@ -522,7 +523,7 @@ function EducationCalculator({ preloadClient }: { preloadClient?: ClientData | n
     try {
       await downloadPDF({
         reportType: 'Education Planning Report',
-        clientName: f.clientName || 'Client',
+        clientName: upperName(f.clientName) || 'Client',
         subtitle: f.childName ? `For ${f.childName}  ·  University in ${years} years` : `University in ${years} years`,
         sections: [
           {
@@ -667,7 +668,7 @@ function EmergencyFundCalculator({ preloadClient }: { preloadClient?: ClientData
     try {
       await downloadPDF({
         reportType: 'Emergency Fund Report',
-        clientName: f.clientName || 'Client',
+        clientName: upperName(f.clientName) || 'Client',
         subtitle: `${coverageMonths} months coverage  ·  Target: ${f.targetMonths} months`,
         sections: [
           {
@@ -701,7 +702,7 @@ function EmergencyFundCalculator({ preloadClient }: { preloadClient?: ClientData
           },
         ],
         summary: isOnTrack
-          ? { status: 'positive', headline: '✅ TARGET ACHIEVED — Emergency fund fully funded', detail: `${f.clientName || 'Client'} has ${coverageMonths} months of expenses covered.` }
+          ? { status: 'positive', headline: '✅ TARGET ACHIEVED — Emergency fund fully funded', detail: `${upperName(f.clientName) || 'Client'} has ${coverageMonths} months of expenses covered.` }
           : status === 'warning'
           ? { status: 'warning', headline: `🟡 PARTIAL COVERAGE — ${coverageMonths} of ${f.targetMonths} months covered`, detail: `Shortfall of ${fmt(gap)}. Monthly top-up of ${fmt(monthlyNeeded)} needed over ${f.buildUpMonths} months.` }
           : { status: 'negative', headline: `⚠️ UNDERFUNDED — ${coverageMonths} months coverage only`, detail: `Shortfall of ${fmt(gap)}. Prioritise building this fund before increasing investment exposure.` },
@@ -751,7 +752,7 @@ function EmergencyFundCalculator({ preloadClient }: { preloadClient?: ClientData
           <div className="section-header">
             <div className="section-title">
               <span className="section-dot" style={{ background: 'var(--gold)' }} />
-              {f.clientName || 'Client'} — Emergency Fund
+              {upperName(f.clientName) || 'Client'} — Emergency Fund
             </div>
             <DownloadButton onClick={handleDownload} loading={pdfLoading} />
           </div>
@@ -875,7 +876,7 @@ function InsurancePlanningCalculator({ preloadClient }: { preloadClient?: Client
     try {
       await downloadPDF({
         reportType: 'Insurance Planning Report',
-        clientName: f.clientName || 'Client',
+        clientName: upperName(f.clientName) || 'Client',
         subtitle:   `Age ${f.currentAge}  ·  ${f.dependents} dependent(s)  ·  Protection Score: ${overallScore}%`,
         sections: [
           {

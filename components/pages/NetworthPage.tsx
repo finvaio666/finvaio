@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useClients } from '@/components/useClients';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
+import { upperName } from '@/lib/displayName';
 
 interface AssetRow {
   id:       string;
@@ -138,7 +139,7 @@ export default function NetworthPage() {
     });
   };
 
-  const firstName   = selectedClient?.name?.split(' ')[0] ?? '';
+  const firstName   = upperName(selectedClient?.name?.split(' ')[0] ?? '');
   const clientReady = !loading && !clientsLoading && !!selectedId && filtered.length > 0;
 
   // Category-grouped rows for the selected client's breakdown panel
@@ -427,7 +428,7 @@ export default function NetworthPage() {
               Net Worth Form Ready
             </h3>
             <p style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', marginBottom: 20, lineHeight: 1.6 }}>
-              Send this link to <strong style={{ color: 'var(--text)' }}>{linkModal.clientName}</strong> via WhatsApp or Email.
+              Send this link to <strong style={{ color: 'var(--text)' }}>{upperName(linkModal.clientName)}</strong> via WhatsApp or Email.
               It expires in <strong style={{ color: 'var(--accent2)' }}>7 days</strong>.
             </p>
             <div style={{

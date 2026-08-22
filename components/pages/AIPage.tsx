@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import AIChat from '@/components/AIChat';
+import { upperName } from '@/lib/displayName';
 
 interface ClientData {
   id: string; name: string; aum: number; segment: string; risk: string; status: string;
@@ -68,7 +69,7 @@ export default function AIPage() {
     setSelectedClient(c);
     setClientSearch('');
     setDropdownOpen(false);
-    firePrompt(`Give me a full profile summary of ${c.name} — their portfolio, risk profile, goals, and top 3 action items for our next meeting.`);
+    firePrompt(`Give me a full profile summary of ${upperName(c.name)} — their portfolio, risk profile, goals, and top 3 action items for our next meeting.`);
   }
 
   const filteredClients = clientSearch.trim()
@@ -113,7 +114,7 @@ export default function AIPage() {
                   {selectedClient.name.split(' ').map(w => w[0]).slice(0, 2).join('')}
                 </div>
                 <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent2)' }}>
-                  {selectedClient.name}
+                  {upperName(selectedClient.name)}
                 </span>
                 {selectedClient.segment && (
                   <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {selectedClient.segment}</span>
@@ -171,15 +172,16 @@ export default function AIPage() {
                   {filteredClients.map(c => {
                     const q = clientSearch.toLowerCase();
                     const idx = q ? c.name.toLowerCase().indexOf(q) : -1;
+                    const dispName = upperName(c.name);
                     const nameDisplay = idx >= 0 ? (
                       <span>
-                        {c.name.slice(0, idx)}
+                        {dispName.slice(0, idx)}
                         <mark style={{ background: 'rgba(243,115,56,0.2)', color: 'var(--accent2)', borderRadius: 2, padding: '0 1px' }}>
-                          {c.name.slice(idx, idx + q.length)}
+                          {dispName.slice(idx, idx + q.length)}
                         </mark>
-                        {c.name.slice(idx + q.length)}
+                        {dispName.slice(idx + q.length)}
                       </span>
-                    ) : <span>{c.name}</span>;
+                    ) : <span>{dispName}</span>;
 
                     return (
                       <div
@@ -228,7 +230,7 @@ export default function AIPage() {
           initialMessage="🤖 Select a client above, then click a prompt or type your question. I'll pull their live data automatically."
           height="460px"
           quickPrompts={QUICK_PROMPTS}
-          placeholder={selectedClient ? `Ask anything about ${selectedClient.name}…` : 'Select a client above, or ask a general question…'}
+          placeholder={selectedClient ? `Ask anything about ${upperName(selectedClient.name)}…` : 'Select a client above, or ask a general question…'}
           promptTrigger={promptTrigger}
           clientName={selectedClient?.name}
           clientId={selectedClient?.id}
@@ -244,7 +246,7 @@ export default function AIPage() {
           </div>
           {selectedClient && (
             <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
-              ✓ Referencing {selectedClient.name}
+              ✓ Referencing {upperName(selectedClient.name)}
             </span>
           )}
         </div>
