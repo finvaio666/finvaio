@@ -264,6 +264,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     .map(h => clientById.get(h.clientId) ?? { id: h.clientId, name: h.clientName || 'Unknown' })
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // The search box shouldn't offer holdings with no linked client record — an
+  // "Unknown" stub isn't a real, searchable client. (Still visible as its own
+  // group in the "All Holdings" view below, which is a useful data-quality cue.)
+  const searchableClients = uniqueClients.filter(c => c.name !== 'Unknown');
+
   // Derive activeTab (name string) from id — preserves all existing filtering logic
   const activeTab: string | null = activeTabId === ''
     ? null
@@ -378,7 +383,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <div style={{ width: 300 }}>
           <ClientSearchCombobox
-            clients={uniqueClients}
+            clients={searchableClients}
             value={activeTabId === 'All' ? '' : activeTabId}
             onChange={c => setTabId(c?.id ?? '')}
             placeholder="Search client…"
