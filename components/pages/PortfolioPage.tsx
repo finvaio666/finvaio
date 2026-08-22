@@ -68,7 +68,19 @@ function sortByAssetClass(rows: Holding[]): Holding[] {
     const i = ASSET_CLASS_ORDER.indexOf(cls || 'Other');
     return i === -1 ? ASSET_CLASS_ORDER.length : i;
   };
-  return [...rows].sort((a, b) => rank(a.assetClass) - rank(b.assetClass));
+  return [...rows].sort((a, b) => {
+    const byClass = rank(a.assetClass) - rank(b.assetClass);
+    if (byClass !== 0) return byClass;
+    // Within Structured Products, soonest-maturing first — the FA is tracking
+    // upcoming autocall/maturity dates, not alphabetical note names. Other
+    // categories keep their existing (alphabetical) order.
+    if (a.assetClass === 'Structured Product' && b.assetClass === 'Structured Product') {
+      if (!a.maturity) return 1;
+      if (!b.maturity) return -1;
+      return a.maturity.localeCompare(b.maturity);
+    }
+    return 0;
+  });
 }
 
 // The worst-performing underlying relative to its Knock-Out level is the one
@@ -144,6 +156,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [pricesResult, setPricesResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
   const { clients: allClients }        = useClients();
+  // FAs propose changes to their book through the company admin rather than
+  // editing/deleting investment records themselves — seed from the cached role
+  // (same pattern Sidebar uses) so the buttons don't flash in before resolving.
+  const [isAdmin, setIsAdmin] = useState(() =>
+    typeof window !== 'undefined' && sessionStorage.getItem('aria-role') === 'Admin'
+  );
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => setIsAdmin(d.role === 'Admin')).catch(() => {});
+  }, []);
 
   const loadHoldings = (fresh = false) => {
     setLoading(true);
@@ -394,27 +415,23 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         {/* Action buttons — right-aligned, shown only when client selected */}
         {activeTab && (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowNav(true)} style={{
+            <button disabled title="Disabled — NAV values now come from the FAME/iFAST sync instead of manual updates." style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '9px 18px', borderRadius: 'var(--r-pill)',
-              background: 'var(--surface)', border: '1.5px solid var(--accent2)',
-              color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)', transition: 'opacity 0.15s',
+              background: 'var(--surface)', border: '1.5px solid var(--border)',
+              color: 'var(--text3)', fontSize: 13, fontWeight: 700, cursor: 'not-allowed',
+              opacity: 0.55,
             }}
-              onMouseOver={e => (e.currentTarget.style.opacity = '0.8')}
-              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
             >
               📊 Update NAV
             </button>
-            <button onClick={() => setShowSwitch(true)} style={{
+            <button disabled title="Disabled — fund switches/redemptions are now picked up via the FAME/iFAST sync instead of manual entry." style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '9px 18px', borderRadius: 'var(--r-pill)',
-              background: 'var(--accent2)', border: 'none',
-              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
+              background: 'var(--surface2)', border: '1.5px solid var(--border)',
+              color: 'var(--text3)', fontSize: 13, fontWeight: 700, cursor: 'not-allowed',
+              opacity: 0.55,
             }}
-              onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
-              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
             >
               🔄 Switch / Redeem
             </button>
@@ -585,7 +602,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                   // Structured Products drop the Value column outright (a blank
                   // slot read as awkward) rather than reflowing into the 5-column
                   // grid the other categories use.
-                  const colsStructured = '1fr 90px 120px 100px';
+                  const colsStructured = '1fr 140px 110px';
                   return acctGroups.map(acctGroup => {
                     const collapseKey = `${client}::${acctGroup.key}`;
                     const isCollapsed = showAcctHeaders && (collapsed[collapseKey] ?? true);
@@ -624,7 +641,6 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         </div>
                         {cls === 'Structured Product' ? (
                           <>
-                            <div style={{ textAlign: 'right' }}>Currency</div>
                             <div style={{ textAlign: 'right' }}>Purchase</div>
                             <div style={{ textAlign: 'right' }}>Worst vs KO</div>
                           </>
@@ -667,8 +683,14 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                               {h.underlyingDetails.couponRatePa}% p.a.
                             </span>
                           )}
-                          <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
-                          <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
+                          {isAdmin ? (
+                            <>
+                              <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
+                              <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
+                            </>
+                          ) : (
+                            <span title="Investment records can only be changed by an admin — contact your company admin to request an adjustment." style={{ fontSize: 11, color: 'var(--text3)', cursor: 'help' }}>🔒</span>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: showAcctHeaders ? 26 : 13 }}>
                           {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
@@ -690,12 +712,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           FA still gets one true aggregate AUM figure. */}
                       {h.assetClass === 'Structured Product' ? (
                         <>
-                          {/* Currency */}
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: ccyColor(h.currency || 'MYR') }}>
-                            {h.currency || 'MYR'}
-                          </div>
-
-                          {/* No Value column for Structured Products — secondary-
+                          {/* No Currency column — already tagged next to the note
+                              name above, and no Value column for Structured
+                              Products — secondary-
                               market bid-based mark-to-market isn't a meaningful
                               number here; revisit once there's a valuation basis
                               worth surfacing. */}
@@ -871,11 +890,16 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               padding: '12px 20px', background: 'var(--surface2)',
               borderTop: '2px solid var(--text)', fontSize: 13, fontWeight: 700,
             }}>
+              {/* Structured Products no longer carry a meaningful Value/Gain
+                  (purchase-basis by design — see the source-level fix), so a
+                  blended Value/Gain/Return total here would be part-real,
+                  part-not. Purchase is the one number that's fully meaningful
+                  across every asset class, so that's all this row shows. */}
               <div style={{ color: 'var(--text)' }}>TOTAL <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>(MYR equiv.)</span></div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(totalValue).toLocaleString()}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(totalPurchase).toLocaleString()}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalGain >= 0 ? '+' : ''}{Math.round(totalGain).toLocaleString()}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: Number(avgReturn) >= 0 ? 'var(--green)' : 'var(--red)' }}>{Number(avgReturn) >= 0 ? '+' : ''}{avgReturn}%</div>
+              <div />
+              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(totalPurchase).toLocaleString()}</div>
+              <div />
+              <div />
             </div>
           </div>
           </div>

@@ -95,6 +95,10 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const config = await ctx(req);
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
+  // FAs raise changes with the company admin rather than editing investment
+  // records themselves — enforced here, not just hidden in the UI, so it
+  // can't be bypassed by calling the API directly.
+  if (config.role !== 'Admin') return NextResponse.json({ error: 'Only an admin can edit investment records. Please contact your company admin.' }, { status: 403 });
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
@@ -121,6 +125,8 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const config = await ctx(req);
   if (!config?.notionApiKey) return NextResponse.json({ error: 'Not configured' }, { status: 401 });
+  // Same admin-only rule as PATCH — see comment there.
+  if (config.role !== 'Admin') return NextResponse.json({ error: 'Only an admin can delete investment records. Please contact your company admin.' }, { status: 403 });
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
