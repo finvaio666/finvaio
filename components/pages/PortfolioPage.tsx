@@ -68,7 +68,19 @@ function sortByAssetClass(rows: Holding[]): Holding[] {
     const i = ASSET_CLASS_ORDER.indexOf(cls || 'Other');
     return i === -1 ? ASSET_CLASS_ORDER.length : i;
   };
-  return [...rows].sort((a, b) => rank(a.assetClass) - rank(b.assetClass));
+  return [...rows].sort((a, b) => {
+    const byClass = rank(a.assetClass) - rank(b.assetClass);
+    if (byClass !== 0) return byClass;
+    // Within Structured Products, soonest-maturing first — the FA is tracking
+    // upcoming autocall/maturity dates, not alphabetical note names. Other
+    // categories keep their existing (alphabetical) order.
+    if (a.assetClass === 'Structured Product' && b.assetClass === 'Structured Product') {
+      if (!a.maturity) return 1;
+      if (!b.maturity) return -1;
+      return a.maturity.localeCompare(b.maturity);
+    }
+    return 0;
+  });
 }
 
 // The worst-performing underlying relative to its Knock-Out level is the one
