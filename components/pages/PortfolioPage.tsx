@@ -621,7 +621,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         {cls === 'Structured Product' ? (
                           <>
                             <div style={{ textAlign: 'right' }}>Currency</div>
-                            <div style={{ textAlign: 'right' }}>Value</div>
+                            <div />
                             <div style={{ textAlign: 'right' }}>Purchase</div>
                             <div style={{ textAlign: 'right' }}>Worst vs KO</div>
                           </>
@@ -692,10 +692,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             {h.currency || 'MYR'}
                           </div>
 
-                          {/* Value (original currency) */}
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
-                            {Math.round(h.valueOrig).toLocaleString()}
-                          </div>
+                          {/* Value — deliberately blank for now. Secondary-market
+                              bid-based mark-to-market isn't a meaningful number to
+                              show here; revisit once there's a valuation basis
+                              worth surfacing. */}
+                          <div />
 
                           {/* Purchase (original currency) */}
                           <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
