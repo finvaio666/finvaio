@@ -894,11 +894,16 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               padding: '12px 20px', background: 'var(--surface2)',
               borderTop: '2px solid var(--text)', fontSize: 13, fontWeight: 700,
             }}>
+              {/* Structured Products no longer carry a meaningful Value/Gain
+                  (purchase-basis by design — see the source-level fix), so a
+                  blended Value/Gain/Return total here would be part-real,
+                  part-not. Purchase is the one number that's fully meaningful
+                  across every asset class, so that's all this row shows. */}
               <div style={{ color: 'var(--text)' }}>TOTAL <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>(MYR equiv.)</span></div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(totalValue).toLocaleString()}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(totalPurchase).toLocaleString()}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: totalGain >= 0 ? 'var(--green)' : 'var(--red)' }}>{totalGain >= 0 ? '+' : ''}{Math.round(totalGain).toLocaleString()}</div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: Number(avgReturn) >= 0 ? 'var(--green)' : 'var(--red)' }}>{Number(avgReturn) >= 0 ? '+' : ''}{avgReturn}%</div>
+              <div />
+              <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{Math.round(totalPurchase).toLocaleString()}</div>
+              <div />
+              <div />
             </div>
           </div>
           </div>
