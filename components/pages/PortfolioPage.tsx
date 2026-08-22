@@ -156,6 +156,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [pricesResult, setPricesResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
   const { clients: allClients }        = useClients();
+  // FAs propose changes to their book through the company admin rather than
+  // editing/deleting investment records themselves — seed from the cached role
+  // (same pattern Sidebar uses) so the buttons don't flash in before resolving.
+  const [isAdmin, setIsAdmin] = useState(() =>
+    typeof window !== 'undefined' && sessionStorage.getItem('aria-role') === 'Admin'
+  );
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => setIsAdmin(d.role === 'Admin')).catch(() => {});
+  }, []);
 
   const loadHoldings = (fresh = false) => {
     setLoading(true);
@@ -678,8 +687,14 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                               {h.underlyingDetails.couponRatePa}% p.a.
                             </span>
                           )}
-                          <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
-                          <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
+                          {isAdmin ? (
+                            <>
+                              <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
+                              <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
+                            </>
+                          ) : (
+                            <span title="Investment records can only be changed by an admin — contact your company admin to request an adjustment." style={{ fontSize: 11, color: 'var(--text3)', cursor: 'help' }}>🔒</span>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: showAcctHeaders ? 26 : 13 }}>
                           {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
