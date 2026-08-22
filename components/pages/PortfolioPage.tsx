@@ -104,6 +104,52 @@ function worstVsKo(details: Holding['underlyingDetails']): { pct: number; ticker
   return worst;
 }
 
+// A note whose FAME/iFAST sync (or an admin) has confirmed Redeemed is done —
+// it no longer belongs in the working AUM view. This is the only source of
+// truth for "has it actually exited"; see deriveNoteFlag below for the
+// earlier, unconfirmed hint shown while that sync is still catching up.
+const isExitedNote = (h: Holding) => h.assetClass === 'Structured Product' && h.status === 'Redeemed';
+
+type NoteFlag = 'ki' | 'likely-ko' | 'likely-matured';
+
+// System-computed hint only — never written back automatically. It exists
+// because the FAME/iFAST sync that actually flips `status` to Redeemed can
+// lag by a day or more, so a note that's clearly past its KO trigger or
+// maturity date would otherwise sit unflagged in the Active list in the
+// meantime. KI is a different kind of event (principal-protection risk, not
+// an exit) and always reported separately even once the note is otherwise
+// past a KO observation.
+// One full UTC day after a schedule date, as a "YYYY-MM-DD" string. Used as
+// the flag threshold instead of the schedule date itself — whatever
+// timezone an underlying's own exchange actually settles in, that event has
+// definitely already happened by one full day later everywhere on Earth, so
+// this removes the remaining ambiguity that pinning to UTC alone doesn't
+// (an underlying trading many hours behind/ahead of UTC could otherwise
+// flag a day early from that exchange's point of view).
+function dayAfterUTC(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function deriveNoteFlag(h: Holding): NoteFlag | null {
+  const details = h.underlyingDetails;
+  if (h.assetClass !== 'Structured Product' || !details || !details.schedule?.length) return null;
+  // Compared as plain "YYYY-MM-DD" strings (UTC), one day past the schedule
+  // date — see dayAfterUTC. This is still an unconfirmed hint an admin has
+  // to act on anyway, never written automatically (see isExitedNote/confirmExit).
+  const todayUTC = new Date().toISOString().slice(0, 10);
+  const finalRow = details.schedule.find(s => s.label.startsWith('Final'));
+  if (finalRow && todayUTC >= dayAfterUTC(finalRow.date)) return 'likely-matured';
+  const worst = worstVsKo(details);
+  if (worst && worst.pct >= 0) {
+    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && todayUTC >= dayAfterUTC(s.date));
+    if (pastKoObs) return 'likely-ko';
+  }
+  if (details.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
+  return null;
+}
+
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
@@ -150,6 +196,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
   const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
   const [expandedNote, setExpandedNote] = useState<Record<string, boolean>>({});
+  const [exitedCollapsed, setExitedCollapsed] = useState(true);
   const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
   const [fxUpdating, setFxUpdating] = useState(false);
   const [fxResult, setFxResult] = useState<string>('');
@@ -183,6 +230,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   function editHolding(h: Holding) {
     setEditing({ id: h.id, clientId: h.clientId, clientName: h.clientName, holdingName: h.name, assetClass: h.assetClass, institution: h.institution, platform: h.platform, status: h.status, currency: h.currency, valueOrig: h.valueOrig, purchaseOrig: h.purchaseOrig, fxRate: h.fxRate, maturityDate: h.maturity });
     setFormOpen(true);
+  }
+
+  // Admin-only confirmation for a system-flagged "likely KO'd/matured" note —
+  // the flag itself never writes anything; this is the one place that does,
+  // and only when a human clicks it. Same admin-only PATCH route as edit/delete.
+  async function confirmExit(h: Holding) {
+    if (!confirm(`Confirm "${h.name}" has exited (KO'd or matured)? This marks it Redeemed and removes it from the active AUM view.`)) return;
+    await fetch('/api/portfolio', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: h.id, status: 'Redeemed' }),
+    });
+    loadHoldings(true);
   }
 
   async function updateFxRates() {
@@ -276,9 +336,18 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     ? 'All'
     : uniqueClients.find(c => c.id === activeTabId)?.name ?? null;
 
+  // Confirmed-exited structured notes are pulled out before anything below
+  // (totals, breakdowns, the active list) ever sees them — they get their own
+  // collapsed section further down instead.
+  const activeHoldings = holdings.filter(h => !isExitedNote(h));
+  const exitedHoldingsAll = holdings.filter(isExitedNote);
+
   const visible = activeTab === null ? [] : activeTab === 'All'
-    ? holdings
-    : holdings.filter(h => h.clientName === activeTab);
+    ? activeHoldings
+    : activeHoldings.filter(h => h.clientName === activeTab);
+  const exitedVisible = activeTab === null ? [] : activeTab === 'All'
+    ? exitedHoldingsAll
+    : exitedHoldingsAll.filter(h => h.clientName === activeTab);
 
   const totalValue    = visible.reduce((s, h) => s + h.value, 0);
   const totalPurchase = visible.reduce((s, h) => s + h.purchase, 0);
@@ -342,7 +411,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
 
   // Group rows by client for visual separation
   const grouped: { client: string; rows: Holding[] }[] = activeTab === 'All'
-    ? clientNames.map(c => ({ client: c, rows: holdings.filter(h => h.clientName === c) }))
+    ? clientNames.map(c => ({ client: c, rows: activeHoldings.filter(h => h.clientName === c) }))
     : activeTab ? [{ client: activeTab, rows: visible }] : [];
 
   return (
@@ -638,7 +707,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         padding: '7px 20px', fontSize: 10, fontWeight: 700,
                         letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
                         background: 'var(--surface2)',
-                        borderTop: `2px solid ${assetColor(cls)}`,
+                        borderTop: '1px solid var(--border)',
                         borderBottom: '1px solid var(--border)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -689,6 +758,30 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                               {h.underlyingDetails.couponRatePa}% p.a.
                             </span>
                           )}
+                          {(() => {
+                            const flag = deriveNoteFlag(h);
+                            if (!flag) return null;
+                            if (flag === 'ki') {
+                              return (
+                                <span title="An underlying has traded below its Knock-In level — principal protection may no longer apply. The note is still held." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: '#F59E0B22', color: '#F59E0B', border: '1px solid #F59E0B44' }}>
+                                  ⚠️ KI triggered
+                                </span>
+                              );
+                            }
+                            const label = flag === 'likely-matured' ? 'Likely matured' : 'Likely KO’d';
+                            return (
+                              <>
+                                <span title="System-computed from the observation schedule and today's prices — not yet confirmed by the FAME/iFAST sync or an admin." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
+                                  ⚠️ {label} — pending confirmation
+                                </span>
+                                {isAdmin && (
+                                  <button onClick={() => confirmExit(h)} title="Mark this note Redeemed" style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'none', color: 'var(--red)', border: '1px solid var(--red)' }}>
+                                    Confirm exit
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                           {isAdmin ? (
                             <>
                               <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
@@ -909,6 +1002,38 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               <div />
               <div />
             </div>
+
+            {/* Exited structured notes — confirmed Redeemed (by the FAME/iFAST
+                sync or an admin's "Confirm exit"). Kept out of every total/
+                breakdown above; collapsed by default since it's a record, not
+                something the FA needs to act on day to day. */}
+            {exitedVisible.length > 0 && (() => {
+              const sorted = [...exitedVisible].sort((a, b) => (b.maturity || '').localeCompare(a.maturity || ''));
+              return (
+                <div style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div
+                    onClick={() => setExitedCollapsed(v => !v)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: 'var(--bg2)', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', transform: exitedCollapsed ? 'none' : 'rotate(90deg)', display: 'inline-block' }}>▶</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text2)' }}>Exited Notes ({sorted.length})</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>— redeemed / matured / knocked-out, excluded from AUM above</span>
+                  </div>
+                  {!exitedCollapsed && sorted.map(h => (
+                    <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 20px', borderTop: '1px solid var(--border)', fontSize: 12 }}>
+                      <div>
+                        <span style={{ color: 'var(--text2)' }}>{h.name}</span>
+                        {activeTab === 'All' && <span style={{ color: 'var(--text3)', marginLeft: 8 }}>· {upperName(h.clientName)}</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        {h.maturity && <span style={{ color: 'var(--text3)' }}>{new Date(h.maturity).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>{Math.round(h.purchaseOrig || h.purchase).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           </div>
         )}
