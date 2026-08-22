@@ -140,6 +140,8 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
   const [fxUpdating, setFxUpdating] = useState(false);
   const [fxResult, setFxResult] = useState<string>('');
+  const [pricesUpdating, setPricesUpdating] = useState(false);
+  const [pricesResult, setPricesResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
   const { clients: allClients }        = useClients();
 
@@ -177,6 +179,25 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
       setFxResult('FX update failed — network error.');
     } finally {
       setFxUpdating(false);
+    }
+  }
+
+  async function updateUnderlyingPrices() {
+    setPricesUpdating(true);
+    setPricesResult('');
+    try {
+      const res = await fetch('/api/portfolio/update-underlying-prices', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) { setPricesResult(d.error ?? 'Price update failed.'); return; }
+      const parts = [`Updated ${d.holdingsUpdated} note${d.holdingsUpdated === 1 ? '' : 's'} as of ${d.date}`];
+      if (d.holdingsFailed) parts.push(`${d.holdingsFailed} failed`);
+      if (d.tickersMissing?.length) parts.push(`no quote for ${d.tickersMissing.join(', ')}`);
+      setPricesResult(parts.join(' · '));
+      if (d.holdingsUpdated > 0) loadHoldings(true);
+    } catch {
+      setPricesResult('Price update failed — network error.');
+    } finally {
+      setPricesUpdating(false);
     }
   }
 
@@ -465,6 +486,27 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
             {fxUpdating ? 'Updating…' : '🔄 Update FX rates'}
           </button>
           {fxResult && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fxResult}</span>}
+        </div>
+      )}
+
+      {/* ── Underlying-price bar — refreshes the "Today" price shown per
+             underlying on structured products, from live quotes. ── */}
+      {activeTab && !loading && visible.some(h => h.assetClass === 'Structured Product' && h.underlyingDetails) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={updateUnderlyingPrices}
+            disabled={pricesUpdating}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', borderRadius: 'var(--r-pill)',
+              background: 'none', border: '1px solid var(--gold)',
+              color: 'var(--gold)', fontSize: 12, fontWeight: 700,
+              cursor: pricesUpdating ? 'default' : 'pointer', opacity: pricesUpdating ? 0.6 : 1,
+            }}
+          >
+            {pricesUpdating ? 'Updating…' : '🔄 Update underlying prices'}
+          </button>
+          {pricesResult && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{pricesResult}</span>}
         </div>
       )}
 
