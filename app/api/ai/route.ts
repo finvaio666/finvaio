@@ -8,6 +8,12 @@ import { listPolicies } from '@/lib/insurance';
 import { listMeetings } from '@/lib/meetingNotes';
 import { logAiUsage } from '@/lib/aiUsage';
 import { DEMO_CLIENTS, DEMO_PORTFOLIO, DEMO_INSURANCE } from '@/lib/demoData';
+import {
+  fetchClients,
+  buildSharedContext,
+  handleTaskIntents,
+  SHARED_DATA_RULES,
+} from '@/lib/assistantContext';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
 const cache = new Map<string, { context: string; ts: number }>();
@@ -318,7 +324,12 @@ For calculations: use 3.5% inflation, 6–8% equity fund returns, 3–4% FD/bond
 
 SCOPE: Only help with the advisor's professional work — client analysis, financial/retirement/education planning, portfolio, insurance, cash flow, net worth, market/economy, and document drafting for the practice. If asked anything unrelated (general trivia, coding, personal chit-chat, entertainment), politely decline in one line: "I can only help with your financial advisory work." Do not answer the off-topic question.
 
-TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what to do", use ONLY the "OUTSTANDING TO-DOS" list in the client context. Meeting "Action items (historical)" are a past record and may already be completed — never present them as current/outstanding to-dos. If the outstanding list says "None", say the client is all caught up rather than repeating old meeting action items.`;
+TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what to do", use ONLY the "OUTSTANDING TO-DOS" list in the client context. Meeting "Action items (historical)" are a past record and may already be completed — never present them as current/outstanding to-dos. If the outstanding list says "None", say the client is all caught up rather than repeating old meeting action items.
+
+DATA SECTIONS:
+${SHARED_DATA_RULES}
+- Never invent clients, funds, plans or figures. If a section says nothing is on record, say so plainly.
+- NEVER assume a client's gender. Use the client's name or "they/their" unless the data explicitly states otherwise.`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -337,17 +348,47 @@ export async function POST(req: NextRequest) {
     const advisorId = req.headers.get('x-advisor-id') ?? '';
     const config    = advisorId ? await getAdvisorConfig(advisorId) : null;
 
-    // ── Build system prompt — inject live client context if selected ─────────
-    let systemPrompt = BASE_PROMPT;
-    if (clientName && typeof clientName === 'string' && clientName.trim() && config) {
-      try {
-        const idArg = typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined;
-        const clientContext = await buildClientContext(clientName.trim(), config, advisorId, idArg);
-        if (clientContext) systemPrompt = `${BASE_PROMPT}\n\n${clientContext}`;
-      } catch (notionErr) {
-        console.error('Notion context fetch failed:', notionErr);
+    const lastText: string = messages[messages.length - 1]?.content ?? '';
+    const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
+
+    // ── Task intents: "mark X done" / "remind me to …" ──────────────────────
+    // Same behaviour as the dashboard widget, so a task can be logged from any
+    // page via the launcher. Pending tasks come back for the caller to confirm.
+    if (config && lastText.trim()) {
+      const intent = await handleTaskIntents(config, lastText, GEMINI_KEY, today).catch(() => null);
+      if (intent?.kind === 'answer')  return NextResponse.json({ content: intent.answer });
+      if (intent?.kind === 'pending') return NextResponse.json({ pendingTasks: intent.pendingTasks });
+    }
+
+    // ── Build system prompt ─────────────────────────────────────────────────
+    // Deep dive on the selected client (if any) PLUS the shared lookups —
+    // client mentions, fund-holdings search and the company knowledge base —
+    // so this surface answers exactly like the dashboard widget.
+    const parts: string[] = [BASE_PROMPT];
+    if (config) {
+      const nameArg = typeof clientName === 'string' ? clientName.trim() : '';
+      const idArg   = typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined;
+      // An id alone is enough — the launcher scopes itself by id on a client
+      // page, where it has no name to hand.
+      if (nameArg || idArg) {
+        try {
+          const clientContext = await buildClientContext(nameArg, config, advisorId, idArg);
+          if (clientContext) parts.push(clientContext);
+        } catch (ctxErr) {
+          console.error('Client context fetch failed:', ctxErr);
+        }
+      }
+      if (lastText.trim()) {
+        try {
+          const clients   = await fetchClients(config);
+          const sharedCtx = await buildSharedContext(config, lastText, clients);
+          if (sharedCtx.trim()) parts.push(sharedCtx);
+        } catch (sharedErr) {
+          console.error('Shared context fetch failed:', sharedErr);
+        }
       }
     }
+    const systemPrompt = parts.join('\n\n');
 
     const genAI   = new GoogleGenerativeAI(GEMINI_KEY);
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({

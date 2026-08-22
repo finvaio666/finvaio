@@ -61,3 +61,6 @@ scripts/.nric-supabase-backup.csv
 /docs/
 # compiled launchd wrapper binary — rebuilt locally from the .swift source
 /scripts/FinvaSupabaseBackup
+
+# User OAuth-token migration plaintext backup — never commit
+scripts/.token-backup.csv

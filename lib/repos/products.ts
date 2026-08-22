@@ -61,30 +61,36 @@ function toFund(r: FundRow): Fund {
   };
 }
 
-/** Active insurance plans for this advisor (Admin sees all), ordered by insurer. */
+/**
+ * Active insurance plans, ordered by insurer. Company-wide catalogue — every
+ * advisor sees every Active row regardless of who (usually Admin) added it.
+ * `advisor` is kept as an attribution stamp on write, not a read filter: this
+ * is one shared house view, not per-advisor personal notes.
+ */
 export async function listPlans(config: AdvisorConfig): Promise<InsurancePlan[]> {
   const sb = getSupabase();
-  let q = sb
+  void config; // kept in the signature for parity with the Notion path
+  const { data, error } = await sb
     .from('insurance_plans')
     .select('id, name, insurer, type, min_age, max_age, min_sum_assured, max_sum_assured, est_monthly_premium, key_features, epf_approved, status')
     .eq('status', 'Active')
     .order('insurer', { ascending: true });
-  if (config.role !== 'Admin') q = q.eq('advisor', config.name);
-  const { data, error } = await q;
   if (error) throw new Error(`insurance_plans list failed: ${error.message}`);
   return (data as PlanRow[]).map(toPlan);
 }
 
-/** Active investment funds for this advisor (Admin sees all), ordered by fund house. */
+/**
+ * Active investment funds, ordered by fund house. Company-wide catalogue — see
+ * listPlans for why there's no per-advisor filter.
+ */
 export async function listFunds(config: AdvisorConfig): Promise<Fund[]> {
   const sb = getSupabase();
-  let q = sb
+  void config;
+  const { data, error } = await sb
     .from('funds')
     .select('id, name, fund_house, asset_class, region, risk_level, return_3y, min_investment, sales_charge, epf_approved, status, description')
     .eq('status', 'Active')
     .order('fund_house', { ascending: true });
-  if (config.role !== 'Admin') q = q.eq('advisor', config.name);
-  const { data, error } = await q;
   if (error) throw new Error(`funds list failed: ${error.message}`);
   return (data as FundRow[]).map(toFund);
 }

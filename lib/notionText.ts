@@ -68,8 +68,3 @@ export function toRichText(s: string | null | undefined): { text: { content: str
   }
   return chunks;
 }
-
-/** True when a value is short enough to sit in a single Notion text object. */
-export function fitsOneChunk(s: string): boolean {
-  return s.length <= MAX_CHARS_PER_CHUNK;
-}

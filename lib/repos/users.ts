@@ -12,6 +12,7 @@
 import { getSupabase } from '../supabase';
 import type { AdvisorConfig } from '../getAdvisorConfig';
 import { randomBytes } from 'crypto';
+import { encryptField, decryptField } from '../fieldCrypto';
 
 const TABLE = 'users';
 const dashless = (id: string) => id.replace(/-/g, '');
@@ -47,8 +48,10 @@ const USER_COLS =
  *  `stored || env.COMPANY_*` fallbacks so both sources return equal configs. */
 function toConfig(r: UserRow): AdvisorConfig {
   const env = process.env;
+  // Credentials are stored encrypted at rest (enc:v1:…); decryptField passes
+  // legacy plaintext through, so this works mid-migration too.
   return {
-    notionApiKey:     r.notion_api_key || env.NOTION_API_KEY            || '',
+    notionApiKey:     decryptField(r.notion_api_key ?? '') || env.NOTION_API_KEY || '',
     clientsDbId:      r.clients_db_id  || env.COMPANY_CLIENTS_DB_ID      || '',
     portfolioDbId:    r.portfolio_db_id|| env.COMPANY_PORTFOLIO_DB_ID    || '',
     insuranceDbId:    r.insurance_db_id|| env.COMPANY_INSURANCE_DB_ID    || '',
@@ -62,15 +65,15 @@ function toConfig(r: UserRow): AdvisorConfig {
     role:  r.role || 'Advisor',
     name:  r.name ?? '',
     emailProvider:        (r.email_provider || 'gmail').toLowerCase(),
-    gmailRefreshToken:    r.gmail_refresh_token ?? '',
+    gmailRefreshToken:    decryptField(r.gmail_refresh_token ?? ''),
     gmailAddress:         r.gmail_address ?? '',
-    outlookRefreshToken:  r.outlook_refresh_token ?? '',
+    outlookRefreshToken:  decryptField(r.outlook_refresh_token ?? ''),
     outlookAddress:       r.outlook_address ?? '',
     institutionsJson:     r.institutions_json ?? '',
     calendarProvider:     (r.calendar_provider ?? '').toLowerCase(),
-    calendarRefreshToken: r.calendar_refresh_token ?? '',
+    calendarRefreshToken: decryptField(r.calendar_refresh_token ?? ''),
     calendarAddress:      r.calendar_address ?? '',
-    driveRefreshToken:    env.COMPANY_DRIVE_REFRESH_TOKEN || r.drive_refresh_token || '',
+    driveRefreshToken:    env.COMPANY_DRIVE_REFRESH_TOKEN || decryptField(r.drive_refresh_token ?? ''),
   };
 }
 
@@ -128,10 +131,12 @@ async function patchByNotionId(advisorId: string, patch: Record<string, unknown>
   if (error) throw new Error(`users update failed: ${error.message}`);
 }
 
-export const setGmailToken   = (id: string, t: string, addr: string) => patchByNotionId(id, { gmail_refresh_token: t, gmail_address: addr });
-export const setOutlookToken = (id: string, t: string, addr: string) => patchByNotionId(id, { outlook_refresh_token: t, outlook_address: addr, email_provider: 'outlook' });
-export const setCalendarToken= (id: string, provider: string, t: string, addr: string) => patchByNotionId(id, { calendar_provider: provider, calendar_refresh_token: t, calendar_address: addr });
-export const setDriveToken   = (id: string, t: string) => patchByNotionId(id, { drive_refresh_token: t });
+// Refresh tokens are encrypted at rest. encryptField('') returns '' so passing an
+// empty token (disconnect) still clears the column.
+export const setGmailToken   = (id: string, t: string, addr: string) => patchByNotionId(id, { gmail_refresh_token: encryptField(t), gmail_address: addr });
+export const setOutlookToken = (id: string, t: string, addr: string) => patchByNotionId(id, { outlook_refresh_token: encryptField(t), outlook_address: addr, email_provider: 'outlook' });
+export const setCalendarToken= (id: string, provider: string, t: string, addr: string) => patchByNotionId(id, { calendar_provider: provider, calendar_refresh_token: encryptField(t), calendar_address: addr });
+export const setDriveToken   = (id: string, t: string) => patchByNotionId(id, { drive_refresh_token: encryptField(t) });
 export const setEmailProvider= (id: string, provider: string) => patchByNotionId(id, { email_provider: provider });
 // No truncation: institutions_json is a text column. slice() on JSON produces an
 // unparseable string that silently reads back as an empty list (Phase 3 carried

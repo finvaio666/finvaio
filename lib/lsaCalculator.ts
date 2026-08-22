@@ -34,9 +34,6 @@ export const LSA_COVERAGE_AGES: { age: CoverageAge; label: string; enabled: bool
   { age: 100, label: 'To age 100', enabled: true },
 ];
 
-/** True where the figures for that term are modelled rather than quoted. */
-export const LSA_TERM_IS_DERIVED: Record<number, boolean> = { 70: true, 80: false, 90: true, 100: false };
-
 /**
  * Prudential entry ages whose "to age 80" rate is really a to-age-90 quotation
  * (the source illustrations are literally named "Up to Age 90"). Those rows buy ten

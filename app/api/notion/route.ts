@@ -127,8 +127,16 @@ export async function GET(req: NextRequest) {
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(h => {
-          const value    = h.valueMyr    || h.valueOriginal    * h.fxRate;
           const purchase = h.purchaseMyr || h.purchaseOriginal * h.fxRate;
+          // Structured products: the FA's own read is that secondary-market
+          // bid-based mark-to-market isn't a meaningful figure right now, so
+          // every rollup (subtotals, donuts, total AUM) uses purchase/par
+          // instead of value_myr for this asset class until that changes.
+          // Gain/Return naturally read as flat for these — expected, since
+          // there's no valuation basis being compared against.
+          const value = h.assetClass === 'Structured Product'
+            ? purchase
+            : (h.valueMyr || h.valueOriginal * h.fxRate);
           const gain     = value - purchase;
           const client   = clientMap[h.clientNotionId];
           return {
@@ -155,6 +163,7 @@ export async function GET(req: NextRequest) {
             purchase,
             gain,
             returnPct:     purchase > 0 ? Math.round((gain / purchase) * 100) : 0,
+            underlyingDetails: h.underlyingDetails,
           };
         });
       return json({ data });

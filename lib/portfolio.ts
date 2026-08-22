@@ -40,6 +40,14 @@ export interface PortfolioHolding {
   fameAccountNo:    string;
   fundSource:       string;
   fameSyncDate:     string;
+  // Structured-product terms (FCN/autocallable underlyings + payment schedule).
+  // Supabase-only — no equivalent Notion property (pure UI enhancement, not a synced field).
+  underlyingDetails: {
+    couponRatePa?: number;
+    priceAsOf?: string;
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
+    schedule: { date: string; label: string }[];
+  } | null;
 }
 
 function useSupabase(): boolean {
@@ -118,6 +126,7 @@ export async function listHoldings(config: AdvisorConfig): Promise<PortfolioHold
         fameAccountNo:    rt(p, 'FAME Account No'),
         fundSource:       rt(p, 'Fund Source'),
         fameSyncDate:     dateOf(p, 'FAME Sync Date'),
+        underlyingDetails: null,
       });
     }
     cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
@@ -140,6 +149,21 @@ export async function setHoldingValue(config: AdvisorConfig, holdingId: string, 
       'Value (Original Currency)': { number: valueOriginal },
       'Value (MYR)':               { number: valueMyr },
     },
+  });
+}
+
+/**
+ * Write a holding's FX rate to MYR — used by the "Update FX rates" action.
+ * Deliberately narrow (rate only, never value_myr): this book stores value_myr
+ * as an independently-synced figure rather than a derived one, so a rate
+ * refresh must not silently reprice anyone's AUM. See app/api/portfolio/update-fx.
+ */
+export async function setFxRate(config: AdvisorConfig, holdingId: string, fxRate: number): Promise<void> {
+  if (useSupabase()) return sbPortfolio.updateHolding(config, holdingId, { fx_rate_to_myr: fxRate });
+  const notion = new Client({ auth: config.notionApiKey });
+  await notion.pages.update({
+    page_id: holdingId,
+    properties: { 'FX Rate to MYR': { number: fxRate } },
   });
 }
 

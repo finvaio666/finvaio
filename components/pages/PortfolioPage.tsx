@@ -29,6 +29,12 @@ interface Holding {
   fameAccountNo?: string;
   fundSource?: string;
   platform?: string;
+  underlyingDetails?: {
+    couponRatePa?: number;
+    priceAsOf?: string;
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
+    schedule: { date: string; label: string }[];
+  } | null;
 }
 
 const CCY_COLORS: Record<string, string> = {
@@ -38,7 +44,8 @@ const CCY_COLORS: Record<string, string> = {
 const ASSET_COLORS: Record<string, string> = {
   'EPF': '#4ADE80', 'Unit Trust': '#60A5FA', 'PRS': '#818CF8',
   'Fixed Deposit': '#F59E0B', 'Stocks': '#A78BFA', 'Bonds': '#F87171',
-  'Money Market': '#34D399',
+  'Money Market': '#34D399', 'Structured Product': '#F472B6', 'ETF': '#2DD4BF',
+  'Cash': '#FDE047',
 };
 const ccyColor   = (c: string) => CCY_COLORS[c]  ?? '#9CB8A0';
 const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
@@ -50,6 +57,39 @@ const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).m
 // they're not. Collapse to a single "PRS Acc" label; the account number
 // already distinguishes the group.
 const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
+
+// Fixed reading order (matches the Add Holding asset-class list) so a client's
+// funds cluster by what they are, not by insertion/creation order — an EPF
+// balance, three unit trusts, and two FCNs each read as one visual block
+// instead of interleaving. Unknown classes sort after all named ones.
+const ASSET_CLASS_ORDER = ['EPF', 'Unit Trust', 'PRS', 'Stocks', 'Bonds', 'Structured Product', 'Fixed Deposit', 'ETF', 'Cash', 'Other'];
+function sortByAssetClass(rows: Holding[]): Holding[] {
+  const rank = (cls: string) => {
+    const i = ASSET_CLASS_ORDER.indexOf(cls || 'Other');
+    return i === -1 ? ASSET_CLASS_ORDER.length : i;
+  };
+  return [...rows].sort((a, b) => rank(a.assetClass) - rank(b.assetClass));
+}
+
+// The worst-performing underlying relative to its Knock-Out level is the one
+// that actually determines whether this note is close to autocalling — 0%
+// or above means every underlying has cleared its KO and the note redeems at
+// the next observation; deeply negative means the worst one still has a long
+// way to climb. Requires at least one underlying with a live "today" price;
+// returns null otherwise so the caller falls back to ordinary Return %.
+function worstVsKo(details: Holding['underlyingDetails']): { pct: number; ticker: string } | null {
+  const unds = details?.underlyings;
+  if (!unds || unds.length === 0) return null;
+  let worst: { pct: number; ticker: string } | null = null;
+  for (const u of unds) {
+    if (typeof u.today !== 'number' || !u.ko) continue;
+    const pct = (u.today / u.ko - 1) * 100;
+    if (worst === null || pct < worst.pct) {
+      worst = { pct, ticker: u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name };
+    }
+  }
+  return worst;
+}
 
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
@@ -96,7 +136,12 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [formOpen,     setFormOpen]    = useState(false);
   const [editing,      setEditing]     = useState<HoldingDraft | null>(null);
   const [collapsed,    setCollapsed]   = useState<Record<string, boolean>>({});
+  const [expandedNote, setExpandedNote] = useState<Record<string, boolean>>({});
   const [platformGroups, setPlatformGroups] = useState<PlatformGroup[]>([]);
+  const [fxUpdating, setFxUpdating] = useState(false);
+  const [fxResult, setFxResult] = useState<string>('');
+  const [pricesUpdating, setPricesUpdating] = useState(false);
+  const [pricesResult, setPricesResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
   const { clients: allClients }        = useClients();
 
@@ -116,6 +161,44 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   function editHolding(h: Holding) {
     setEditing({ id: h.id, clientId: h.clientId, clientName: h.clientName, holdingName: h.name, assetClass: h.assetClass, institution: h.institution, platform: h.platform, status: h.status, currency: h.currency, valueOrig: h.valueOrig, purchaseOrig: h.purchaseOrig, fxRate: h.fxRate, maturityDate: h.maturity });
     setFormOpen(true);
+  }
+
+  async function updateFxRates() {
+    setFxUpdating(true);
+    setFxResult('');
+    try {
+      const res = await fetch('/api/portfolio/update-fx', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) { setFxResult(d.error ?? 'FX update failed.'); return; }
+      const parts = [`Updated ${d.updated} rate${d.updated === 1 ? '' : 's'} as of ${d.date}`];
+      if (d.failed)        parts.push(`${d.failed} failed`);
+      if (d.heldBackCount) parts.push(`${d.heldBackCount} held back — no stored value, ask an admin to check`);
+      setFxResult(parts.join(' · '));
+      if (d.updated > 0) loadHoldings(true);
+    } catch {
+      setFxResult('FX update failed — network error.');
+    } finally {
+      setFxUpdating(false);
+    }
+  }
+
+  async function updateUnderlyingPrices() {
+    setPricesUpdating(true);
+    setPricesResult('');
+    try {
+      const res = await fetch('/api/portfolio/update-underlying-prices', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) { setPricesResult(d.error ?? 'Price update failed.'); return; }
+      const parts = [`Updated ${d.holdingsUpdated} note${d.holdingsUpdated === 1 ? '' : 's'} as of ${d.date}`];
+      if (d.holdingsFailed) parts.push(`${d.holdingsFailed} failed`);
+      if (d.tickersMissing?.length) parts.push(`no quote for ${d.tickersMissing.join(', ')}`);
+      setPricesResult(parts.join(' · '));
+      if (d.holdingsUpdated > 0) loadHoldings(true);
+    } catch {
+      setPricesResult('Price update failed — network error.');
+    } finally {
+      setPricesUpdating(false);
+    }
   }
 
   useEffect(() => { loadHoldings(); }, []);
@@ -209,6 +292,23 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     visible.reduce<Record<string, number>>((acc, h) => {
       const cls = h.assetClass || 'Unclassified';
       acc[cls] = (acc[cls] ?? 0) + h.value;
+      return acc;
+    }, {}),
+  ).map(([name, value]) => ({ name, value }));
+
+  // Structured-note underlying exposure — each note's value is split evenly
+  // across its basket (a 3-stock note contributes 1/3 of its value to each),
+  // then aggregated across every structured product in view. Only appears
+  // where such holdings exist, so it's silent everywhere else in the app.
+  const underlyingBreakdown = Object.entries(
+    visible.reduce<Record<string, number>>((acc, h) => {
+      const unds = h.underlyingDetails?.underlyings;
+      if (!unds || unds.length === 0) return acc;
+      const share = h.value / unds.length;
+      for (const u of unds) {
+        const ticker = u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name;
+        acc[ticker] = (acc[ticker] ?? 0) + share;
+      }
       return acc;
     }, {}),
   ).map(([name, value]) => ({ name, value }));
@@ -352,12 +452,17 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               : 'No holdings to break down yet.'}
           />
           <DonutBreakdown title="AUM by asset class" items={assetBreakdown} />
+          {underlyingBreakdown.length > 0 && (
+            <DonutBreakdown title="Structured note underlying exposure" items={underlyingBreakdown} />
+          )}
         </div>
       )}
 
-      {/* ── FX bar ── */}
+      {/* ── FX bar — shown whenever there's foreign currency anywhere in this
+             view, and the button is always live so a stale rate can be
+             refreshed before it's the only currency left on screen. ── */}
       {activeTab && !loading && foreignCount > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           {holdings.filter(h => h.currency && h.currency !== 'MYR' && h.fxRate > 0)
             .filter((h, i, arr) => arr.findIndex(x => x.currency === h.currency) === i)
             .map(h => (
@@ -367,7 +472,41 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>RM {h.fxRate.toFixed(4)}</span>
               </div>
             ))}
-          <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>ℹ️ Update FX rates to refresh</div>
+          <button
+            onClick={updateFxRates}
+            disabled={fxUpdating}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', borderRadius: 'var(--r-pill)',
+              background: 'none', border: '1px solid var(--accent2)',
+              color: 'var(--accent2)', fontSize: 12, fontWeight: 700,
+              cursor: fxUpdating ? 'default' : 'pointer', opacity: fxUpdating ? 0.6 : 1,
+            }}
+          >
+            {fxUpdating ? 'Updating…' : '🔄 Update FX rates'}
+          </button>
+          {fxResult && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fxResult}</span>}
+        </div>
+      )}
+
+      {/* ── Underlying-price bar — refreshes the "Today" price shown per
+             underlying on structured products, from live quotes. ── */}
+      {activeTab && !loading && visible.some(h => h.assetClass === 'Structured Product' && h.underlyingDetails) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={updateUnderlyingPrices}
+            disabled={pricesUpdating}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', borderRadius: 'var(--r-pill)',
+              background: 'none', border: '1px solid var(--gold)',
+              color: 'var(--gold)', fontSize: 12, fontWeight: 700,
+              cursor: pricesUpdating ? 'default' : 'pointer', opacity: pricesUpdating ? 0.6 : 1,
+            }}
+          >
+            {pricesUpdating ? 'Updating…' : '🔄 Update underlying prices'}
+          </button>
+          {pricesResult && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{pricesResult}</span>}
         </div>
       )}
 
@@ -411,21 +550,6 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         ) : (
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ minWidth: 680 }}>
-            {/* Column headers */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 120px 120px 90px 80px',
-              padding: '8px 20px', fontSize: 11, fontWeight: 700,
-              color: 'var(--text3)', borderBottom: '1px solid var(--border)',
-              background: 'var(--bg2)', letterSpacing: '0.04em', textTransform: 'uppercase',
-            }}>
-              <div>Fund / Holding</div>
-              <div style={{ textAlign: 'right' }}>Value (MYR)</div>
-              <div style={{ textAlign: 'right' }}>Purchase (MYR)</div>
-              <div style={{ textAlign: 'right' }}>Gain / Loss</div>
-              <div style={{ textAlign: 'right' }}>Return</div>
-            </div>
-
             {/* Rows — grouped by client in "All" view */}
             {grouped.map(({ client, rows }) => (
               <div key={client}>
@@ -458,6 +582,10 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                   // client's funds should consistently read as "belonging to account X".
                   const showAcctHeaders = acctGroups.length > 0;
                   const cols = '1fr 120px 120px 90px 80px';
+                  // Structured Products drop the Value column outright (a blank
+                  // slot read as awkward) rather than reflowing into the 5-column
+                  // grid the other categories use.
+                  const colsStructured = '1fr 90px 120px 100px';
                   return acctGroups.map(acctGroup => {
                     const collapseKey = `${client}::${acctGroup.key}`;
                     const isCollapsed = showAcctHeaders && (collapsed[collapseKey] ?? true);
@@ -473,11 +601,47 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {acctGroup.rows.length} fund{acctGroup.rows.length === 1 ? '' : 's'}</span>
                         </div>
                       )}
-                      {!isCollapsed && acctGroup.rows.map((h, i) => (
-                    <div key={h.id} style={{
-                      display: 'grid', gridTemplateColumns: cols,
+                      {!isCollapsed && sortByAssetClass(acctGroup.rows).map((h, i, sortedRows) => {
+                        const hasUnderlyings = !!(h.underlyingDetails && h.underlyingDetails.underlyings?.length);
+                        const isNoteOpen = hasUnderlyings && !!expandedNote[h.id];
+                        const cls = h.assetClass || 'Other';
+                        const showClassLabel = i === 0 || (sortedRows[i - 1].assetClass || 'Other') !== cls;
+                        return (
+                    <div key={h.id}>
+                    {showClassLabel && (
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: cls === 'Structured Product' ? colsStructured : cols,
+                        marginTop: i === 0 ? 0 : 12,
+                        padding: '7px 20px', fontSize: 10, fontWeight: 700,
+                        letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
+                        background: 'var(--surface2)',
+                        borderTop: `2px solid ${assetColor(cls)}`,
+                        borderBottom: '1px solid var(--border)',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(cls), flexShrink: 0 }} />
+                          {cls}
+                        </div>
+                        {cls === 'Structured Product' ? (
+                          <>
+                            <div style={{ textAlign: 'right' }}>Currency</div>
+                            <div style={{ textAlign: 'right' }}>Purchase</div>
+                            <div style={{ textAlign: 'right' }}>Worst vs KO</div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ textAlign: 'right' }}>Value</div>
+                            <div style={{ textAlign: 'right' }}>Purchase</div>
+                            <div style={{ textAlign: 'right' }}>Gain / Loss</div>
+                            <div style={{ textAlign: 'right' }}>Return</div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: h.assetClass === 'Structured Product' ? colsStructured : cols,
                       padding: '13px 20px', alignItems: 'center',
-                      borderBottom: '1px solid var(--border)',
+                      borderBottom: isNoteOpen ? 'none' : '1px solid var(--border)',
                       transition: 'background 0.12s',
                     }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--surface2)')}
@@ -487,9 +651,21 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: 'var(--text)', flexWrap: 'wrap', paddingLeft: showAcctHeaders ? 13 : 0 }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: assetColor(h.assetClass), flexShrink: 0 }} />
+                          {hasUnderlyings && (
+                            <button
+                              onClick={() => setExpandedNote(prev => ({ ...prev, [h.id]: !prev[h.id] }))}
+                              title={isNoteOpen ? 'Hide underlying details' : 'Show underlying details'}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: 'var(--text3)', padding: '0 1px', transition: 'transform 0.15s', transform: isNoteOpen ? 'rotate(90deg)' : 'none' }}
+                            >▶</button>
+                          )}
                           {h.name}
                           {h.currency && h.currency !== 'MYR' && (
                             <span style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)', background: `${ccyColor(h.currency)}22`, color: ccyColor(h.currency), border: `1px solid ${ccyColor(h.currency)}44` }}>{h.currency}</span>
+                          )}
+                          {typeof h.underlyingDetails?.couponRatePa === 'number' && (
+                            <span title="Coupon rate p.a." style={{ padding: '1px 5px', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)', background: '#F79E1B22', color: 'var(--gold)', border: '1px solid #F79E1B44' }}>
+                              {h.underlyingDetails.couponRatePa}% p.a.
+                            </span>
                           )}
                           <button onClick={() => editHolding(h)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>✎</button>
                           <button onClick={() => deleteHolding(h)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text3)', padding: '0 2px' }}>🗑</button>
@@ -505,27 +681,153 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         )}
                       </div>
 
-                      {/* Value */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
-                        {Math.round(h.value).toLocaleString()}
-                      </div>
+                      {/* Structured Products show raw original-currency figures (a USD
+                          note's value in MYR is a distraction, not the number an FA
+                          is actually tracking against Entry/Strike/KO) and drop
+                          Gain/Loss in favour of Worst vs KO — the only two other
+                          categories keep the MYR/Gain/Return layout. Account and
+                          client subtotals below stay MYR-only either way, so the
+                          FA still gets one true aggregate AUM figure. */}
+                      {h.assetClass === 'Structured Product' ? (
+                        <>
+                          {/* Currency */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: ccyColor(h.currency || 'MYR') }}>
+                            {h.currency || 'MYR'}
+                          </div>
 
-                      {/* Purchase */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
-                        {Math.round(h.purchase).toLocaleString()}
-                      </div>
+                          {/* No Value column for Structured Products — secondary-
+                              market bid-based mark-to-market isn't a meaningful
+                              number here; revisit once there's a valuation basis
+                              worth surfacing. */}
 
-                      {/* Gain */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12, color: h.gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {h.gain >= 0 ? '+' : ''}{Math.round(h.gain).toLocaleString()}
-                      </div>
+                          {/* Purchase (original currency) */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
+                            {Math.round(h.purchaseOrig).toLocaleString()}
+                          </div>
 
-                      {/* Return % */}
-                      <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
-                      </div>
+                          {/* Worst vs KO */}
+                          {(() => {
+                            const worstKo = worstVsKo(h.underlyingDetails);
+                            if (!worstKo) return <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text3)' }}>—</div>;
+                            return (
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: worstKo.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                  {worstKo.pct >= 0 ? '+' : ''}{worstKo.pct.toFixed(1)}%
+                                </div>
+                                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 1 }}>
+                                  {worstKo.ticker} vs KO
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      ) : (() => {
+                        // Foreign-currency holdings display in their own currency
+                        // (a USD/AUD/GBP bond's MYR-converted number isn't what the
+                        // FA is actually tracking it against). MYR-denominated
+                        // holdings are unaffected — valueOrig/purchaseOrig are often
+                        // just unset for those, so h.value/h.purchase (already MYR)
+                        // stay the source of truth there.
+                        const isForeign = !!h.currency && h.currency !== 'MYR';
+                        const dispValue    = isForeign ? h.valueOrig    : h.value;
+                        const dispPurchase = isForeign ? h.purchaseOrig : h.purchase;
+                        const dispGain     = dispValue - dispPurchase;
+                        return (
+                        <>
+                          {/* Value */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
+                            {Math.round(dispValue).toLocaleString()}
+                          </div>
+
+                          {/* Purchase */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
+                            {Math.round(dispPurchase).toLocaleString()}
+                          </div>
+
+                          {/* Gain */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12, color: dispGain >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            {dispGain >= 0 ? '+' : ''}{Math.round(dispGain).toLocaleString()}
+                          </div>
+
+                          {/* Return % — a ratio, so it reads the same regardless of
+                              which currency Value/Purchase above are shown in. */}
+                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: h.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            {h.returnPct >= 0 ? '+' : ''}{h.returnPct}%
+                          </div>
+                        </>
+                        );
+                      })()}
                     </div>
-                      ))}
+                    {isNoteOpen && h.underlyingDetails && (
+                      <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
+                        {typeof h.underlyingDetails.couponRatePa === 'number' && (
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                            Coupon rate: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--gold)' }}>{h.underlyingDetails.couponRatePa}% p.a.</span>
+                            {h.underlyingDetails.priceAsOf && (
+                              <span style={{ marginLeft: 10, color: 'var(--text3)' }}>· prices as of {h.underlyingDetails.priceAsOf}</span>
+                            )}
+                          </div>
+                        )}
+                        {(() => {
+                          const worst = worstVsKo(h.underlyingDetails);
+                          if (!worst) return null;
+                          return (
+                            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                              Worst Asset vs KO: <span style={{ fontWeight: 700, color: 'var(--text)' }}>{worst.ticker}</span>{' '}
+                              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: worst.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                {worst.pct >= 0 ? '+' : ''}{worst.pct.toFixed(1)}%
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
+                            <thead>
+                              <tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
+                                <th style={{ textAlign: 'left', fontWeight: 600, padding: '4px 8px' }}>Underlying</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>Today</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>Entry</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>Strike</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>KI</th>
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>KO</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {h.underlyingDetails.underlyings.map((u, ui) => {
+                                const breached = typeof u.today === 'number' && u.today < u.ki;
+                                return (
+                                <tr key={ui} style={{ borderTop: '1px solid var(--border)' }}>
+                                  <td style={{ padding: '5px 8px', fontWeight: 500, color: 'var(--text)' }}>{u.name}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: typeof u.today !== 'number' ? 'var(--text3)' : breached ? 'var(--red)' : 'var(--green)' }}>
+                                    {typeof u.today === 'number' ? u.today.toLocaleString() : '—'}
+                                  </td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.entry.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.strike.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ki.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ko.toLocaleString()}</td>
+                                </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        {h.underlyingDetails.schedule?.length > 0 && (
+                          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {h.underlyingDetails.schedule.map((s, si) => (
+                              <div key={si} style={{ padding: '4px 8px', borderRadius: 6, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 11 }}>
+                                <span style={{ color: 'var(--text3)' }}>{s.label}: </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
+                                  {new Date(s.date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </div>
+                        );
+                      })}
                       {showAcctHeaders && (
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Subtotal — {acctGroup.label}</span>
