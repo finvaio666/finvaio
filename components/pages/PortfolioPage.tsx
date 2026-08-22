@@ -6,6 +6,7 @@ import NavUpdatePanel from '@/components/NavUpdatePanel';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
+import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
@@ -557,7 +558,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         <div className="section-header">
           <div className="section-title">
             <span className="section-dot" style={{ background: 'var(--blue)' }} />
-            {activeTab === 'All' ? 'All Holdings' : `${activeTab}`}
+            {activeTab === 'All' ? 'All Holdings' : upperName(activeTab)}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>{visible.length} holdings</div>
         </div>
@@ -584,7 +585,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 10, fontWeight: 800, flexShrink: 0,
                     }}>{initials(client)}</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{client}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{upperName(client)}</span>
                     <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 2 }}>· {rows.length} holdings</span>
                     <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
                       {fmtK(rows.reduce((s, h) => s + h.value, 0))}

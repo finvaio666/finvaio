@@ -13,6 +13,7 @@ import NetWorthFormModal from '@/components/NetWorthFormModal';
 import DonutBreakdown from '@/components/DonutBreakdown';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { MedicalDetail } from '@/components/MedicalDetail';
+import { upperName } from '@/lib/displayName';
 import MaskedValue from '@/components/MaskedValue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ function OverviewTab({ client }: { client: ReturnType<typeof useClients>['client
       <div className="section">
         <SectionHeader dot="var(--accent)" title="Personal Information" />
         <div style={{ padding: '0 20px 16px' }}>
-          <InfoRow label="Full Name" value={client.name} />
+          <InfoRow label="Full Name" value={upperName(client.name)} />
           <InfoRow label="NRIC / Reg No" mono value={
             client.nricMasked
               ? <MaskedValue masked={client.nricMasked} onReveal={async () => {
@@ -1174,7 +1175,7 @@ export default function ClientDetailPage({ clientId }: { clientId: string }) {
 
           {/* Name + meta */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 20, color: 'var(--text)', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{client.name}</div>
+            <div style={{ fontWeight: 700, fontSize: 20, color: 'var(--text)', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{upperName(client.name)}</div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               <span className={`badge ${statusClass(client.status)}`}>{client.status || 'Unknown'}</span>
               {client.segment && <span className={`badge ${segmentClass(client.segment)}`}>{segmentLabel(client.segment)}</span>}

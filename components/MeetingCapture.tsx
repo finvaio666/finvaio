@@ -12,6 +12,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import ClientSearchCombobox, { ComboboxClient } from '@/components/ClientSearchCombobox';
+import { upperName } from '@/lib/displayName';
 
 export interface CaptureClient extends ComboboxClient {
   email?: string;
@@ -336,7 +337,7 @@ export default function MeetingCapture({
                 />
                 {isNonClient && (
                   <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 5, lineHeight: 1.45 }}>
-                    👤 Logging against <strong>{clientName}</strong> as a non-client — the note is saved,
+                    👤 Logging against <strong>{upperName(clientName)}</strong> as a non-client — the note is saved,
                     but no CRM record, review date or follow-up email.
                   </div>
                 )}
@@ -453,7 +454,7 @@ export default function MeetingCapture({
 
             {isNonClient && (
               <div style={{ padding: '10px 13px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5 }}>
-                👤 <strong>{clientName}</strong> isn&apos;t in your client list. The note and tasks will be
+                👤 <strong>{upperName(clientName)}</strong> isn&apos;t in your client list. The note and tasks will be
                 saved, but the review date and follow-up email need a CRM record — go back and use
                 <em> Add &quot;{clientName}&quot; as a prospect</em> if you want those.
               </div>

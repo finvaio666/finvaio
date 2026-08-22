@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { TASK_STATUSES, daysSince, type Task, type TaskStatus } from '@/lib/taskModel';
+import { upperName } from '@/lib/displayName';
 
 function fmtDate(d: string) {
   if (!d) return '';
@@ -212,7 +213,7 @@ export default function TasksPage() {
                       <span style={{ width: 5, height: 5, borderRadius: '50%', background: st.dot }} />
                       {t.status}
                     </span>
-                    {t.client && <span>👤 {t.client}</span>}
+                    {t.client && <span>👤 {upperName(t.client)}</span>}
                     {t.due && <span>📅 {fmtDate(t.due)}</span>}
                     {t.progress.length > 0 && <span>🗒 {t.progress.length} update{t.progress.length === 1 ? '' : 's'}</span>}
                     {isStale && <span style={{ color: 'var(--gold)', fontWeight: 600 }}>⚠ no movement in {idle}d</span>}

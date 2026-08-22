@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
+import { upperName } from '@/lib/displayName';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 import MeetingCapture, { CapturePrefill } from '@/components/MeetingCapture';
 import MarkReviewDone from '@/components/MarkReviewDone';
@@ -647,7 +648,7 @@ export default function DashboardPage() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{a.clientName}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{upperName(a.clientName)}</span>
                   {!a.isRead && (
                     <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--accent2)', background: 'var(--accent-dim)', padding: '1px 6px', borderRadius: 99, letterSpacing: '0.04em' }}>NEW</span>
                   )}
@@ -810,7 +811,7 @@ export default function DashboardPage() {
                   {initials(c.name)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{c.name}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{upperName(c.name)}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>Review: {formatDate(c.nextReview)}</div>
                 </div>
                 <div style={pillStyle(overdue, !overdue && days <= 7)}>
@@ -854,7 +855,7 @@ export default function DashboardPage() {
                       alignItems: 'center', justifyContent: 'center', fontSize: 18,
                     }}>🎂</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{c.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{upperName(c.name)}</div>
                       <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtShort(c.dob)}</div>
                     </div>
                     <div style={{
@@ -923,7 +924,7 @@ export default function DashboardPage() {
                   {/* Content */}
                   <div style={{ flex: 1, minWidth: 0, paddingBottom: idx < recentMeetings.length - 1 ? 8 : 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{m.clientName || '—'}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{upperName(m.clientName) || '—'}</span>
                       <span style={{
                         fontSize: 11, padding: '1px 8px', borderRadius: 'var(--r-pill)',
                         background: 'var(--surface2)', fontWeight: 600,

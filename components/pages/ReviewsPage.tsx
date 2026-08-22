@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import MarkReviewDone from '@/components/MarkReviewDone';
+import { upperName } from '@/lib/displayName';
 
 interface Client {
   id: string; name: string; nextReview: string; lastReview: string;
@@ -188,7 +189,7 @@ function LogMeetingModal({
               disabled={isNonClient} style={{ ...inputStyle, opacity: isNonClient ? 0.5 : 1 }} />
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
               {isNonClient
-                ? <>👤 <strong>{form.clientName}</strong> isn&apos;t in your client list — the note is saved, but there&apos;s no CRM record to set a review date on. Use <em>Add &quot;{form.clientName}&quot; as a prospect</em> above if you want one.</>
+                ? <>👤 <strong>{upperName(form.clientName)}</strong> isn&apos;t in your client list — the note is saved, but there&apos;s no CRM record to set a review date on. Use <em>Add &quot;{form.clientName}&quot; as a prospect</em> above if you want one.</>
                 : <>This will update the client&apos;s next review date in your CRM</>}
             </div>
           </div>
@@ -438,7 +439,7 @@ export default function ReviewsPage() {
                     <div className="review-month">{d.toLocaleString('en', { month: 'short' }).toUpperCase()}</div>
                   </div>
                   <div className="review-content">
-                    <div className="review-client">{c.name}</div>
+                    <div className="review-client">{upperName(c.name)}</div>
                     <div className="review-type">
                       {c.risk} · {c.segment} · RM {(c.aum / 1000).toFixed(0)}K AUM
                       {c.lastReview && <span style={{ marginLeft: 8, color: 'var(--text3)' }}>· Last seen: {fmt(c.lastReview)}</span>}
@@ -511,7 +512,7 @@ export default function ReviewsPage() {
                       <div className="review-month">{d.toLocaleString('en', { month: 'short' }).toUpperCase()}</div>
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', marginBottom: 3 }}>{m.clientName}</div>
+                      <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', marginBottom: 3 }}>{upperName(m.clientName)}</div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 'var(--r-pill)', background: 'var(--surface2)', color: TYPE_COLORS[m.meetingType] || 'var(--text3)', fontWeight: 600, border: `1px solid ${TYPE_COLORS[m.meetingType] || 'var(--border)'}20` }}>
                           {m.meetingType}
@@ -561,7 +562,7 @@ export default function ReviewsPage() {
                       )}
                       <button onClick={(e) => { e.stopPropagation(); openLog(clients.find(c => c.id === m.clientId) ?? undefined); }}
                         style={{ alignSelf: 'flex-start', padding: '6px 14px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
-                        + Log follow-up for {m.clientName.split(' ')[0]}
+                        + Log follow-up for {upperName(m.clientName.split(' ')[0])}
                       </button>
                     </div>
                   )}

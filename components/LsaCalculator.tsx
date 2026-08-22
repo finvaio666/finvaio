@@ -6,6 +6,7 @@ import {
   type CoverageAge, type Gender, type LsaInsurer, type LsaResult,
 } from '@/lib/lsaCalculator';
 import { LSA_BENEFITS, LSA_PLAN_LABEL } from '@/lib/lsaBenefits';
+import { upperName } from '@/lib/displayName';
 import {
   Section, Grid, Field, Segmented, Btn, Pill, Notice, FinePrint,
   inp, money, fmtRM, fmtRMShort,
@@ -77,7 +78,7 @@ export default function LsaCalculator() {
 
     const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}  -  Sum Assured ${fmtRM(saN)}`;
     doc.setFontSize(10); doc.setTextColor(40, 40, 40);
-    if (clientName) doc.text('Client: ' + clientName, 40, 84);
+    if (clientName) doc.text('Client: ' + upperName(clientName), 40, 84);
     doc.text(prof, 40, clientName ? 98 : 84);
 
     let y = (clientName ? 98 : 84) + 18;
@@ -325,7 +326,7 @@ export default function LsaCalculator() {
 
       {showProposal && chosen.length > 0 && (
         <Section
-          title={`Legacy Proposal${clientName ? ` — ${clientName}` : ''}`}
+          title={`Legacy Proposal${clientName ? ` — ${upperName(clientName)}` : ''}`}
           dot="var(--blue)"
           action={<Btn variant="ghost" onClick={downloadPdf}>⬇ Download PDF</Btn>}
         >
