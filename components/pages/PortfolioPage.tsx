@@ -415,27 +415,23 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         {/* Action buttons — right-aligned, shown only when client selected */}
         {activeTab && (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowNav(true)} style={{
+            <button disabled title="Disabled — NAV values now come from the FAME/iFAST sync instead of manual updates." style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '9px 18px', borderRadius: 'var(--r-pill)',
-              background: 'var(--surface)', border: '1.5px solid var(--accent2)',
-              color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)', transition: 'opacity 0.15s',
+              background: 'var(--surface)', border: '1.5px solid var(--border)',
+              color: 'var(--text3)', fontSize: 13, fontWeight: 700, cursor: 'not-allowed',
+              opacity: 0.55,
             }}
-              onMouseOver={e => (e.currentTarget.style.opacity = '0.8')}
-              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
             >
               📊 Update NAV
             </button>
-            <button onClick={() => setShowSwitch(true)} style={{
+            <button disabled title="Disabled — fund switches/redemptions are now picked up via the FAME/iFAST sync instead of manual entry." style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '9px 18px', borderRadius: 'var(--r-pill)',
-              background: 'var(--accent2)', border: 'none',
-              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'opacity 0.15s',
+              background: 'var(--surface2)', border: '1.5px solid var(--border)',
+              color: 'var(--text3)', fontSize: 13, fontWeight: 700, cursor: 'not-allowed',
+              opacity: 0.55,
             }}
-              onMouseOver={e => (e.currentTarget.style.opacity = '0.88')}
-              onMouseOut={e => (e.currentTarget.style.opacity = '1')}
             >
               🔄 Switch / Redeem
             </button>
