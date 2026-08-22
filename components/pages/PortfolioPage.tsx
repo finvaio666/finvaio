@@ -582,6 +582,10 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                   // client's funds should consistently read as "belonging to account X".
                   const showAcctHeaders = acctGroups.length > 0;
                   const cols = '1fr 120px 120px 90px 80px';
+                  // Structured Products drop the Value column outright (a blank
+                  // slot read as awkward) rather than reflowing into the 5-column
+                  // grid the other categories use.
+                  const colsStructured = '1fr 90px 120px 100px';
                   return acctGroups.map(acctGroup => {
                     const collapseKey = `${client}::${acctGroup.key}`;
                     const isCollapsed = showAcctHeaders && (collapsed[collapseKey] ?? true);
@@ -606,7 +610,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                     <div key={h.id}>
                     {showClassLabel && (
                       <div style={{
-                        display: 'grid', gridTemplateColumns: cols,
+                        display: 'grid', gridTemplateColumns: cls === 'Structured Product' ? colsStructured : cols,
                         marginTop: i === 0 ? 0 : 12,
                         padding: '7px 20px', fontSize: 10, fontWeight: 700,
                         letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
@@ -621,7 +625,6 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         {cls === 'Structured Product' ? (
                           <>
                             <div style={{ textAlign: 'right' }}>Currency</div>
-                            <div />
                             <div style={{ textAlign: 'right' }}>Purchase</div>
                             <div style={{ textAlign: 'right' }}>Worst vs KO</div>
                           </>
@@ -636,7 +639,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                       </div>
                     )}
                     <div style={{
-                      display: 'grid', gridTemplateColumns: cols,
+                      display: 'grid', gridTemplateColumns: h.assetClass === 'Structured Product' ? colsStructured : cols,
                       padding: '13px 20px', alignItems: 'center',
                       borderBottom: isNoteOpen ? 'none' : '1px solid var(--border)',
                       transition: 'background 0.12s',
@@ -692,11 +695,10 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             {h.currency || 'MYR'}
                           </div>
 
-                          {/* Value — deliberately blank for now. Secondary-market
-                              bid-based mark-to-market isn't a meaningful number to
-                              show here; revisit once there's a valuation basis
+                          {/* No Value column for Structured Products — secondary-
+                              market bid-based mark-to-market isn't a meaningful
+                              number here; revisit once there's a valuation basis
                               worth surfacing. */}
-                          <div />
 
                           {/* Purchase (original currency) */}
                           <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text3)', fontSize: 12 }}>
