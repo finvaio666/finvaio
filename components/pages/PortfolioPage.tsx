@@ -638,7 +638,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         padding: '7px 20px', fontSize: 10, fontWeight: 700,
                         letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)',
                         background: 'var(--surface2)',
-                        borderTop: `2px solid ${assetColor(cls)}`,
+                        borderTop: '1px solid var(--border)',
                         borderBottom: '1px solid var(--border)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
