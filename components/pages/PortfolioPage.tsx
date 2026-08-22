@@ -8,6 +8,7 @@ import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFor
 import { useClients } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
 interface Holding {
@@ -638,7 +639,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
         ) : (
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ minWidth: 680 }}>

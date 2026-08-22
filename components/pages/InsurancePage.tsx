@@ -5,6 +5,7 @@ import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import InsuranceFormModal, { type PolicyDraft } from '@/components/InsuranceFormModal';
 import { MedicalDetail } from '@/components/MedicalDetail';
 import { upperName } from '@/lib/displayName';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface Policy {
   id: string;
@@ -450,7 +451,7 @@ export default function InsurancePage() {
       {/* ── Loading / error / no policies ── */}
       {filterClient && loading && (
         <div className="section" style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>
-          <div style={{ fontSize: 13 }}>Loading…</div>
+          <div style={{ fontSize: 13 }}><LoadingSpinner /></div>
           <div style={{ fontSize: 11, marginTop: 8, color: 'var(--text3)' }}>This may take a few seconds</div>
         </div>
       )}

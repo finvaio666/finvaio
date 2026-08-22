@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Overlay, Grid, Field, Select, Footer, fieldInput as inp } from '@/components/PortfolioFormModal';
 import { useClients } from '@/components/useClients';
 import { CLIENT_DATA_KEYS, FORM_CATEGORIES, FieldMapping } from '@/lib/formsLibrary';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface HubForm {
   id: string; name: string; provider: string; category: string; tags: string[]; formType: string;
@@ -128,7 +129,7 @@ export default function FormsHubPage() {
         {!provider ? (
           <div style={{ padding: '12px 20px' }}>
             {loading ? (
-              <div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+              <div style={{ color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
             ) : providers.length === 0 ? (
               <div style={{ color: 'var(--text3)', fontSize: 13 }}>No forms available yet.</div>
             ) : (
@@ -168,7 +169,7 @@ export default function FormsHubPage() {
 
         <div style={{ padding: '12px 20px' }}>
           {loading ? (
-            <div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+            <div style={{ color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
           ) : visible.length === 0 ? (
             <div style={{ color: 'var(--text3)', fontSize: 13 }}>No forms found.</div>
           ) : (

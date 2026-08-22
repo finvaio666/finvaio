@@ -162,6 +162,12 @@ body {
   animation: pulse 2s infinite;
 }
 @keyframes pulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);} }
+/* Defined globally so every "spin 0.7s linear infinite" spinner across the
+   app works reliably — several components previously relied on some OTHER
+   mounted component happening to also inject this same keyframe via its own
+   inline <style> tag, which only worked by accident. Those inline copies are
+   harmless now (last definition wins) but no longer load-bearing. */
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── PAGE ─────────────────────────────────────────────────────────────────── */
 .page-content { padding: 32px 32px 80px; animation: fadeIn 0.2s ease; }

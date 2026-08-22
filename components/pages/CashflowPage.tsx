@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useClients } from '@/components/useClients';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import { upperName } from '@/lib/displayName';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface CashflowBreakdown {
   income:   Record<string, number>;
@@ -307,7 +308,7 @@ export default function CashflowPage() {
         )}
 
         {loading && (
-          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>Loading…</div>
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}><LoadingSpinner /></div>
         )}
 
         {!loading && filtered.length === 0 && selectedId && (

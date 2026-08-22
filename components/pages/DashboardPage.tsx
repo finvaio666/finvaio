@@ -8,6 +8,7 @@ import { useClients, formatAUM, formatDate, initials } from '@/components/useCli
 import { upperName } from '@/lib/displayName';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
 import MeetingCapture, { CapturePrefill } from '@/components/MeetingCapture';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import MarkReviewDone from '@/components/MarkReviewDone';
 
 // ─── Ask FINVA — dashboard daily co-pilot ─────────────────────────────────────
@@ -792,7 +793,7 @@ export default function DashboardPage() {
           </div>
 
           {loading ? (
-            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
           ) : reviewAlerts.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--text3)' }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
@@ -834,7 +835,7 @@ export default function DashboardPage() {
           </div>
 
           {loading ? (
-            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
           ) : upcomingBirthdays.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--text3)' }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>🎂</div>
@@ -888,7 +889,7 @@ export default function DashboardPage() {
           </div>
 
           {dataLoading ? (
-            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
           ) : recentMeetings.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--text3)' }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>📝</div>
@@ -956,7 +957,7 @@ export default function DashboardPage() {
           </div>
 
           {dataLoading ? (
-            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+            <div style={{ padding: '24px', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
           ) : expiringPolicies.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--text3)' }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>🛡️</div>

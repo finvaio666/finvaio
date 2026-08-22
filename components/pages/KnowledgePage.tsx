@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 const KB_ITEMS = [
   { tag: 'EPF / KWSP', title: 'EPF i-Saraan Guide', desc: 'Voluntary contribution scheme, eligibility, tax relief up to RM 4,000, how to advise clients.', date: 'Ask AI for full guide →', prompt: 'Explain EPF i-Saraan voluntary contribution scheme for a Malaysian financial consultant to advise clients on — include eligibility, contribution limits, tax relief, and how to apply' },
@@ -55,7 +56,7 @@ export default function KnowledgePage() {
   }
 
   if (allowed !== true) {
-    return <div style={{ padding: '64px 32px', textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}>Loading…</div>;
+    return <div style={{ padding: '64px 32px', textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}><LoadingSpinner /></div>;
   }
 
   const generatedLabel = digest?.generatedAt

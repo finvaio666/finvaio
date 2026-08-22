@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Institution } from '@/app/api/email/institutions/route';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 // ── Shared UI helpers ─────────────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ function ProfileTab({ advisorId }: { advisorId: string }) {
     setSaving(false);
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>;
 
   // Show the address of whichever provider is active
   const activeAddr = provider === 'outlook' ? outlookAddr : gmailAddr;
@@ -317,7 +318,7 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
     setSaving(false);
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>;
 
   return (
     <div>
@@ -613,7 +614,7 @@ function CalendarTab() {
 
   const providerLabel = provider === 'microsoft' ? 'Microsoft / Outlook' : 'Google Calendar';
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>;
 
   return (
     <div>
