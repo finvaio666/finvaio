@@ -837,13 +837,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           </table>
                         </div>
                         {h.underlyingDetails.schedule?.length > 0 && (
-                          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          // Fixed 6-per-row grid — a 12-month schedule reads as two even
+                          // rows instead of ragged flex-wrap that reflows with column width.
+                          <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
                             {h.underlyingDetails.schedule.map((s, si) => (
                               <div key={si} style={{ padding: '4px 8px', borderRadius: 6, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 11 }}>
-                                <span style={{ color: 'var(--text3)' }}>{s.label}: </span>
-                                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
+                                <div style={{ color: 'var(--text3)' }}>{s.label}</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
                                   {new Date(s.date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </span>
+                                </div>
                               </div>
                             ))}
                           </div>
