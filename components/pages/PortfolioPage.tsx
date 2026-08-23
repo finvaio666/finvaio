@@ -963,10 +963,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         );
                       })}
                       {showAcctHeaders && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: cols,
+                          padding: '8px 20px', alignItems: 'center',
+                          background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
+                        }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Subtotal — {acctGroup.label}</span>
-                          <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
-                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
+                          <div />
+                          {/* Purchase, not Value — same column TOTAL uses below, and
+                              the same reasoning: Structured Products carry no
+                              meaningful Value (purchase-basis by design), so a
+                              blended Value sum here would be part-real, part-not. */}
+                          <span style={{ textAlign: 'right', fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.purchase, 0)).toLocaleString()}
                           </span>
                         </div>
                       )}
