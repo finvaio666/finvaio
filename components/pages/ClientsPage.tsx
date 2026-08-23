@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useClients, formatAUM, formatDate, initials, riskClass, segmentClass, segmentLabel, statusClass } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function ClientsPage() {
   const router = useRouter();
@@ -168,7 +169,7 @@ export default function ClientsPage() {
           </div>
           {loading && (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-              Loading…
+              <LoadingSpinner />
             </div>
           )}
           {error && (

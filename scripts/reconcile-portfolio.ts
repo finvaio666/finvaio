@@ -26,6 +26,16 @@ type P = Record<string, unknown>;
 const rt = (p: P, k: string) => { const v = p[k] as { type: string; rich_text?: { plain_text: string }[] }; return v?.type === 'rich_text' ? (v.rich_text?.[0]?.plain_text ?? '') : ''; };
 const sel = (p: P, k: string) => { const v = p[k] as { type: string; select?: { name: string } | null }; return v?.type === 'select' ? (v.select?.name ?? '') : ''; };
 const selN = (p: P, k: string): string | null => sel(p, k) || null;
+// Notion's "Asset class" select option is literally named "Structured
+// Products" (plural), but every reader of this column (PortfolioPage.tsx's
+// Worst-vs-KO layout, deriveNoteFlag, isExitedNote, …) checks the singular
+// "Structured Product". Supabase had been silently patched to the singular
+// at some point outside this script; a plain reconcile --apply overwrote all
+// 35 rows back to the raw Notion plural and broke every one of those checks
+// (found 2026-08-23). Normalize here so this can't recur — see
+// MEMORY finva_asset_class_singular_plural for the incident writeup.
+const ASSET_CLASS_ALIASES: Record<string, string> = { 'Structured Products': 'Structured Product' };
+const normAssetClass = (v: string | null): string | null => v ? (ASSET_CLASS_ALIASES[v] ?? v) : v;
 const nnum = (p: P, k: string): number | null => { const v = p[k] as { type: string; number?: number | null }; return v?.type === 'number' ? (v.number ?? null) : null; };
 const dt = (p: P, k: string): string | null => { const v = p[k] as { type: string; date?: { start: string } | null }; return v?.type === 'date' ? ((v.date?.start ?? '').slice(0, 10) || null) : null; };
 const title = (p: P, k: string) => { const v = p[k] as { type: string; title?: { plain_text: string }[] }; return v?.type === 'title' ? (v.title?.[0]?.plain_text ?? '') : ''; };
@@ -53,7 +63,7 @@ function recFromNotion(pg: PageObjectResponse): Rec {
   return {
     holding_name:            title(p, 'Holding Name'),
     client_notion_id:        relFirst(p, '👥 Clients'),
-    asset_class:             selN(p, 'Asset class'),
+    asset_class:             normAssetClass(selN(p, 'Asset class')),
     product_name:            rt(p, 'Product name'),
     institution:             rt(p, 'Institution'),
     currency:                selN(p, 'Currency'),

@@ -8,6 +8,7 @@ import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFor
 import { useClients } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
 interface Holding {
@@ -34,7 +35,7 @@ interface Holding {
     couponRatePa?: number;
     priceAsOf?: string;
     underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
-    schedule: { date: string; label: string }[];
+    schedule: { date: string; label: string; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
 
@@ -50,6 +51,11 @@ const ASSET_COLORS: Record<string, string> = {
 };
 const ccyColor   = (c: string) => CCY_COLORS[c]  ?? '#9CB8A0';
 const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
+// "Structured Product" as a sub-label under every note's name is a given
+// (the category header above already says it) — the note TYPE is the more
+// useful thing to show there instead, read off the issuer's own naming in
+// the holding name (e.g. "Barclays Bank PLC FCN — …").
+const noteType = (name: string) => name.match(/\b(FCN|ELN|DCN|BEN)\b/)?.[1] ?? 'Other';
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
@@ -126,9 +132,9 @@ type NoteFlag = 'ki' | 'likely-ko' | 'likely-matured';
 // this removes the remaining ambiguity that pinning to UTC alone doesn't
 // (an underlying trading many hours behind/ahead of UTC could otherwise
 // flag a day early from that exchange's point of view).
-function dayAfterUTC(dateStr: string): string {
+function daysAfterUTC(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -136,16 +142,20 @@ function deriveNoteFlag(h: Holding): NoteFlag | null {
   const details = h.underlyingDetails;
   if (h.assetClass !== 'Structured Product' || !details || !details.schedule?.length) return null;
   // Compared as plain "YYYY-MM-DD" strings (UTC), one day past the schedule
-  // date — see dayAfterUTC. This is still an unconfirmed hint an admin has
+  // date — see daysAfterUTC. This is still an unconfirmed hint an admin has
   // to act on anyway, never written automatically (see isExitedNote/confirmExit).
   const todayUTC = new Date().toISOString().slice(0, 10);
   const finalRow = details.schedule.find(s => s.label.startsWith('Final'));
-  if (finalRow && todayUTC >= dayAfterUTC(finalRow.date)) return 'likely-matured';
-  const worst = worstVsKo(details);
-  if (worst && worst.pct >= 0) {
-    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && todayUTC >= dayAfterUTC(s.date));
-    if (pastKoObs) return 'likely-ko';
-  }
+  if (finalRow && todayUTC >= daysAfterUTC(finalRow.date, 1)) return 'likely-matured';
+  // KO obs dates are resolved server-side against their ACTUAL historical
+  // closing price (app/api/portfolio/update-underlying-prices), not guessed
+  // from today's live price — a note trading above KO today says nothing
+  // about whether it cleared KO on a past observation date (found 2026-08-23:
+  // a live-price heuristic falsely flagged notes for months after a missed
+  // observation, since price naturally drifts back above KO in between
+  // dates). `resolved` stays false until that check has actually run once
+  // for a given date — "Update underlying prices" triggers it.
+  if (details.schedule.some(s => s.label.startsWith('KO obs') && s.resolved && s.cleared)) return 'likely-ko';
   if (details.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
   return null;
 }
@@ -638,7 +648,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         </div>
 
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
         ) : (
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ minWidth: 680 }}>
@@ -763,7 +773,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             if (!flag) return null;
                             if (flag === 'ki') {
                               return (
-                                <span title="An underlying has traded below its Knock-In level — principal protection may no longer apply. The note is still held." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: '#F59E0B22', color: '#F59E0B', border: '1px solid #F59E0B44' }}>
+                                <span title="An underlying has traded below its Knock-In level (Below Strike Level) — principal protection may no longer apply. The note is still held." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
                                   ⚠️ KI triggered
                                 </span>
                               );
@@ -771,7 +781,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             const label = flag === 'likely-matured' ? 'Likely matured' : 'Likely KO’d';
                             return (
                               <>
-                                <span title="System-computed from the observation schedule and today's prices — not yet confirmed by the FAME/iFAST sync or an admin." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
+                                <span title="Needs to be confirmed by an admin." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
                                   ⚠️ {label} — pending confirmation
                                 </span>
                                 {isAdmin && (
@@ -792,10 +802,14 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: showAcctHeaders ? 26 : 13 }}>
-                          {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
+                          {[h.assetClass === 'Structured Product' ? noteType(h.name) : h.assetClass, h.institution].filter(Boolean).join(' · ')}
                           {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(h.maturity).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                         </div>
-                        {h.currency && h.currency !== 'MYR' && h.valueOrig > 0 && (
+                        {/* Meaningless for Structured Products — h.valueOrig there is
+                            just the purchase basis restated (Value column is dropped
+                            for this asset class by design), so this line duplicated
+                            the Purchase figure already shown to the right. */}
+                        {h.currency && h.currency !== 'MYR' && h.valueOrig > 0 && h.assetClass !== 'Structured Product' && (
                           <div style={{ fontSize: 10, color: ccyColor(h.currency), fontFamily: 'var(--font-mono)', marginTop: 2, paddingLeft: showAcctHeaders ? 26 : 13 }}>
                             {h.currency} {h.valueOrig.toLocaleString()} @ {h.fxRate.toFixed(4)}
                           </div>
@@ -949,10 +963,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                         );
                       })}
                       {showAcctHeaders && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 20px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: cols,
+                          padding: '8px 20px', alignItems: 'center',
+                          background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
+                        }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>Subtotal — {acctGroup.label}</span>
-                          <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
-                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.value, 0)).toLocaleString()}
+                          <div />
+                          {/* Purchase, not Value — same column TOTAL uses below, and
+                              the same reasoning: Structured Products carry no
+                              meaningful Value (purchase-basis by design), so a
+                              blended Value sum here would be part-real, part-not. */}
+                          <span style={{ textAlign: 'right', fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+                            {Math.round(acctGroup.rows.reduce((s, h) => s + h.purchase, 0)).toLocaleString()}
                           </span>
                         </div>
                       )}

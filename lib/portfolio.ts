@@ -46,7 +46,12 @@ export interface PortfolioHolding {
     couponRatePa?: number;
     priceAsOf?: string;
     underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
-    schedule: { date: string; label: string }[];
+    // resolved/cleared: once a KO obs date has passed, its actual historical
+    // closing price (not a live-price guess) determines whether the worst-of
+    // basket cleared KO that day — see app/api/portfolio/update-underlying-prices.
+    // Undefined until checked; resolved=true, cleared=false means it was
+    // checked and did NOT trigger (client should just move on to the next date).
+    schedule: { date: string; label: string; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
 

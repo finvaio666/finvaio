@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface TaskItem {
   id: string; task: string; client: string;
@@ -93,7 +94,7 @@ export default function AdminHomePage() {
         </div>
 
         {loading ? (
-          <div style={{ padding: 24, color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+          <div style={{ padding: 24, color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
         ) : tasks.length === 0 ? (
           <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--text3)' }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>

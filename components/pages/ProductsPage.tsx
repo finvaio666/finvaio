@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AddProductModal from '@/components/AddProductModal';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 interface InsurancePlan {
@@ -310,7 +311,7 @@ export default function ProductsPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {loading ? (
-              <span style={{ fontSize: 12, color: 'var(--text3)' }}>Loading…</span>
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}><LoadingSpinner size={11} /></span>
             ) : (
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>
                 {plans.length} plans · {funds.length} funds
@@ -407,7 +408,7 @@ export default function ProductsPage() {
 
         {/* ── Grid ── */}
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}><LoadingSpinner /></div>
         ) : tab === 'insurance' ? (
           filteredPlans.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
