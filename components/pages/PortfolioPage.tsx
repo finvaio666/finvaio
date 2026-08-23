@@ -51,6 +51,11 @@ const ASSET_COLORS: Record<string, string> = {
 };
 const ccyColor   = (c: string) => CCY_COLORS[c]  ?? '#9CB8A0';
 const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
+// "Structured Product" as a sub-label under every note's name is a given
+// (the category header above already says it) — the note TYPE is the more
+// useful thing to show there instead, read off the issuer's own naming in
+// the holding name (e.g. "Barclays Bank PLC FCN — …").
+const noteType = (name: string) => name.match(/\b(FCN|ELN|DCN|BEN)\b/)?.[1] ?? 'Other';
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
@@ -797,7 +802,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: showAcctHeaders ? 26 : 13 }}>
-                          {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
+                          {[h.assetClass === 'Structured Product' ? noteType(h.name) : h.assetClass, h.institution].filter(Boolean).join(' · ')}
                           {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(h.maturity).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                         </div>
                         {/* Meaningless for Structured Products — h.valueOrig there is
