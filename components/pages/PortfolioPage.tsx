@@ -55,7 +55,23 @@ const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 // (the category header above already says it) — the note TYPE is the more
 // useful thing to show there instead, read off the issuer's own naming in
 // the holding name (e.g. "Barclays Bank PLC FCN — …").
-const noteType = (name: string) => name.match(/\b(FCN|ELN|DCN|BEN)\b/)?.[1] ?? 'Other';
+// A few notes' holding names don't carry the type token (unlike every other
+// note in the book), so the regex alone can't tell — confirmed by reading
+// their actual term sheets 2026-08-23: CSI's single-share barrier note is a
+// DCN (digital coupon, single observation at maturity — no autocall
+// schedule); both UBS notes are literally self-titled "ELNs" in the term
+// sheet header. Keyed on ISIN (the "(XS...)" in the holding name) so this
+// still works if either note gets renamed later.
+const NOTE_TYPE_OVERRIDE: Record<string, string> = {
+  XS3308648263: 'DCN', // CSI Financial Products — NVO
+  XS3432570078: 'ELN', // UBS — ARM/NBIS
+  XS3432735762: 'ELN', // UBS — ORCL/ARM/NBIS
+};
+const noteType = (name: string) => {
+  const isin = name.match(/\(([A-Z0-9]{12})\)/)?.[1];
+  if (isin && NOTE_TYPE_OVERRIDE[isin]) return NOTE_TYPE_OVERRIDE[isin];
+  return name.match(/\b(FCN|ELN|DCN|BEN)\b/)?.[1] ?? 'Other';
+};
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
