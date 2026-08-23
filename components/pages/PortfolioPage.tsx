@@ -127,25 +127,41 @@ type NoteFlag = 'ki' | 'likely-ko' | 'likely-matured';
 // this removes the remaining ambiguity that pinning to UTC alone doesn't
 // (an underlying trading many hours behind/ahead of UTC could otherwise
 // flag a day early from that exchange's point of view).
-function dayAfterUTC(dateStr: string): string {
+function daysAfterUTC(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// How long after its most recent KO observation a note stays flagged, once
+// the 1-day timezone buffer has passed. A note only actually autocalls ON an
+// observation date — trading above KO in between observations is completely
+// normal and must NOT flag (found 2026-08-23: checking "any past obs date"
+// instead of "the most recent one, recently" meant a note stayed flagged for
+// its entire remaining life after its first passed observation, regardless
+// of today's price just happening to be up). This window is how long we give
+// the FAME/iFAST sync to confirm an actual autocall before treating the flag
+// as stale; past it, silence just means that observation didn't trigger.
+const KO_OBS_GRACE_DAYS = 7;
 
 function deriveNoteFlag(h: Holding): NoteFlag | null {
   const details = h.underlyingDetails;
   if (h.assetClass !== 'Structured Product' || !details || !details.schedule?.length) return null;
   // Compared as plain "YYYY-MM-DD" strings (UTC), one day past the schedule
-  // date — see dayAfterUTC. This is still an unconfirmed hint an admin has
+  // date — see daysAfterUTC. This is still an unconfirmed hint an admin has
   // to act on anyway, never written automatically (see isExitedNote/confirmExit).
   const todayUTC = new Date().toISOString().slice(0, 10);
   const finalRow = details.schedule.find(s => s.label.startsWith('Final'));
-  if (finalRow && todayUTC >= dayAfterUTC(finalRow.date)) return 'likely-matured';
+  if (finalRow && todayUTC >= daysAfterUTC(finalRow.date, 1)) return 'likely-matured';
   const worst = worstVsKo(details);
   if (worst && worst.pct >= 0) {
-    const pastKoObs = details.schedule.some(s => s.label.startsWith('KO obs') && todayUTC >= dayAfterUTC(s.date));
-    if (pastKoObs) return 'likely-ko';
+    const koObsDates = details.schedule.filter(s => s.label.startsWith('KO obs')).map(s => s.date).sort();
+    const mostRecentPast = [...koObsDates].reverse().find(d => todayUTC >= d);
+    if (mostRecentPast
+      && todayUTC >= daysAfterUTC(mostRecentPast, 1)
+      && todayUTC <= daysAfterUTC(mostRecentPast, 1 + KO_OBS_GRACE_DAYS)) {
+      return 'likely-ko';
+    }
   }
   if (details.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
   return null;
