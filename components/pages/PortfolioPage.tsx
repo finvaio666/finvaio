@@ -773,7 +773,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             if (!flag) return null;
                             if (flag === 'ki') {
                               return (
-                                <span title="An underlying has traded below its Knock-In level (Below Strike Level) — principal protection may no longer apply. The note is still held." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: '#F59E0B22', color: '#F59E0B', border: '1px solid #F59E0B44' }}>
+                                <span title="An underlying has traded below its Knock-In level (Below Strike Level) — principal protection may no longer apply. The note is still held." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
                                   ⚠️ KI triggered
                                 </span>
                               );
