@@ -800,7 +800,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           {[h.assetClass, h.institution].filter(Boolean).join(' · ')}
                           {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(h.maturity).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                         </div>
-                        {h.currency && h.currency !== 'MYR' && h.valueOrig > 0 && (
+                        {/* Meaningless for Structured Products — h.valueOrig there is
+                            just the purchase basis restated (Value column is dropped
+                            for this asset class by design), so this line duplicated
+                            the Purchase figure already shown to the right. */}
+                        {h.currency && h.currency !== 'MYR' && h.valueOrig > 0 && h.assetClass !== 'Structured Product' && (
                           <div style={{ fontSize: 10, color: ccyColor(h.currency), fontFamily: 'var(--font-mono)', marginTop: 2, paddingLeft: showAcctHeaders ? 26 : 13 }}>
                             {h.currency} {h.valueOrig.toLocaleString()} @ {h.fxRate.toFixed(4)}
                           </div>
