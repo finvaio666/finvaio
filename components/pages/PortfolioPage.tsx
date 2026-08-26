@@ -70,7 +70,7 @@ const NOTE_TYPE_OVERRIDE: Record<string, string> = {
 const noteType = (name: string) => {
   const isin = name.match(/\(([A-Z0-9]{12})\)/)?.[1];
   if (isin && NOTE_TYPE_OVERRIDE[isin]) return NOTE_TYPE_OVERRIDE[isin];
-  return name.match(/\b(FCN|ELN|DCN|BEN)\b/)?.[1] ?? 'Other';
+  return name.match(/\b(FCN|ELN|DCN|BEN|CRAN)\b/)?.[1] ?? 'Other';
 };
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
