@@ -51,7 +51,12 @@ export interface PortfolioHolding {
     // basket cleared KO that day — see app/api/portfolio/update-underlying-prices.
     // Undefined until checked; resolved=true, cleared=false means it was
     // checked and did NOT trigger (client should just move on to the next date).
-    schedule: { date: string; label: string; resolved?: boolean; cleared?: boolean }[];
+    // triggerPct: this observation's autocall barrier as a % of the Initial
+    // Fixing Level. Step-down notes lower it each observation (100, 95, 90…),
+    // so the barrier is per-DATE, not the single `ko` on the underlying.
+    // Absent on older rows whose term wasn't recorded — readers fall back to
+    // `ko` there (see koBarrier in PortfolioPage.tsx).
+    schedule: { date: string; label: string; triggerPct?: number; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
 

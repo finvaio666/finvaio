@@ -35,7 +35,7 @@ interface Holding {
     couponRatePa?: number;
     priceAsOf?: string;
     underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
-    schedule: { date: string; label: string; resolved?: boolean; cleared?: boolean }[];
+    schedule: { date: string; label: string; triggerPct?: number; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
 
@@ -112,13 +112,38 @@ function sortByAssetClass(rows: Holding[]): Holding[] {
 // the next observation; deeply negative means the worst one still has a long
 // way to climb. Requires at least one underlying with a live "today" price;
 // returns null otherwise so the caller falls back to ordinary Return %.
+// This observation's autocall barrier for one underlying. Step-down notes
+// lower it each date (100%, 95%, 90%…), so it's derived from the Initial
+// Fixing Level; `ko` is only the fallback for older rows that never recorded
+// a triggerPct (it holds a single barrier with no date attached, which for a
+// step-down note is right for at most one observation).
+function koBarrier(u: { entry: number; ko: number }, triggerPct?: number): number {
+  return typeof triggerPct === 'number' ? u.entry * triggerPct / 100 : u.ko;
+}
+
+/** The next observation whose barrier the note will actually be tested against. */
+function nextKoObs(details: Holding['underlyingDetails']) {
+  const today = new Date().toISOString().slice(0, 10);
+  return details?.schedule?.find(s => s.label.startsWith('KO obs') && s.date >= today) ?? null;
+}
+
+// The worst-performing underlying relative to the barrier of the NEXT
+// observation is the one that actually determines whether this note is close
+// to autocalling — 0% or above means every underlying has cleared it and the
+// note redeems at that observation; deeply negative means the worst one still
+// has a long way to climb. Measuring against the initial 100% level instead
+// would understate a step-down note as its barrier ratchets down.
+// Requires at least one underlying with a live "today" price; returns null
+// otherwise so the caller falls back to ordinary Return %.
 function worstVsKo(details: Holding['underlyingDetails']): { pct: number; ticker: string } | null {
   const unds = details?.underlyings;
   if (!unds || unds.length === 0) return null;
+  const trigger = nextKoObs(details)?.triggerPct;
   let worst: { pct: number; ticker: string } | null = null;
   for (const u of unds) {
-    if (typeof u.today !== 'number' || !u.ko) continue;
-    const pct = (u.today / u.ko - 1) * 100;
+    const barrier = koBarrier(u, trigger);
+    if (typeof u.today !== 'number' || !barrier) continue;
+    const pct = (u.today / barrier - 1) * 100;
     if (worst === null || pct < worst.pct) {
       worst = { pct, ticker: u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name };
     }
@@ -937,7 +962,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>Entry</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>Strike</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>KI</th>
-                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>KO</th>
+                                {/* Step-down notes lower the KO barrier each observation, so
+                                    label which one this column is actually showing. */}
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }} title={(() => {
+                                  const n = nextKoObs(h.underlyingDetails);
+                                  return n && typeof n.triggerPct === 'number'
+                                    ? `Barrier at the next observation (${n.date}, ${n.triggerPct}% of initial)`
+                                    : 'Knock-Out barrier';
+                                })()}>
+                                  {(() => {
+                                    const n = nextKoObs(h.underlyingDetails);
+                                    return n && typeof n.triggerPct === 'number' ? `KO (${n.triggerPct}%)` : 'KO';
+                                  })()}
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -952,7 +989,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.entry.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.strike.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ki.toLocaleString()}</td>
-                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ko.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                                    {koBarrier(u, nextKoObs(h.underlyingDetails)?.triggerPct).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                                  </td>
                                 </tr>
                                 );
                               })}

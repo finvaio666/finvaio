@@ -158,7 +158,13 @@ export async function POST(req: NextRequest) {
         return closes ? closeOnOrBefore(closes, s.date) : null;
       });
       if (closesOnDate.some(c => c === null)) return s; // missing data — leave unresolved, retry next run
-      const cleared = details.underlyings.every((u, i) => (closesOnDate[i] as number) >= u.ko);
+      // Step-down notes lower the autocall barrier at each observation, so the
+      // test is against THIS date's barrier (entry x triggerPct), not the single
+      // `ko` on the underlying — comparing a later, lower step against the
+      // initial 100% level silently misses real knock-outs. Rows with no
+      // recorded triggerPct keep the old `ko` comparison.
+      const cleared = details.underlyings.every((u, i) =>
+        (closesOnDate[i] as number) >= (typeof s.triggerPct === 'number' ? u.entry * s.triggerPct / 100 : u.ko));
       changed = true;
       koObsResolved++;
       if (cleared) stillOpen = false;
