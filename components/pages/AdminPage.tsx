@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AdminOverview, FAStats, AttentionNote } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
+import type { DataQualityReport } from '@/app/api/admin/data-quality/route';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
@@ -34,6 +35,120 @@ function StatCard({ label, value, sub, color = '#F37338' }: { label: string; val
 
 function StatusDot({ active }: { active: boolean }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: active ? '#22c55e' : 'var(--text3)', marginRight: 6 }} />;
+}
+
+// ── Data quality tab ──────────────────────────────────────────────────────────
+
+/**
+ * Standing checks over the whole book. Passing checks stay on screen rather
+ * than being hidden: "0 duplicate rows" is the reassurance an admin comes here
+ * for, and a list that only ever shows problems can't be distinguished from one
+ * that failed to load.
+ */
+function DataQualityTab() {
+  const [report,   setReport]   = useState<DataQualityReport | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [err,      setErr]      = useState('');
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch('/api/admin/data-quality');
+      const data = await res.json();
+      if (data.error) { setErr(data.error); return; }
+      setReport(data);
+      setErr('');
+    } catch { setErr('Failed to run the data-quality checks.'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Scanning the book…</div>;
+  if (err)     return <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{err}</div>;
+  if (!report) return null;
+
+  const failing = report.checks.filter(c => c.findings.length > 0);
+  const passing = report.checks.filter(c => c.findings.length === 0);
+  const errors  = failing.filter(c => c.severity === 'error').reduce((n, c) => n + c.findings.length, 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+          Scanned {report.holdingsScanned.toLocaleString('en-MY')} holdings and {report.clientsScanned.toLocaleString('en-MY')} clients ·{' '}
+          {report.totalFindings === 0
+            ? 'no issues found'
+            : `${report.totalFindings} finding${report.totalFindings === 1 ? '' : 's'}${errors ? ` (${errors} needing correction)` : ''}`}
+        </div>
+        <button onClick={load} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 99, background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>⟳ Re-scan</button>
+      </div>
+
+      {report.totalFindings === 0 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '28px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 22, marginBottom: 6 }}>✓</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Every check passed</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Nothing in the book is missing data these checks look for.</div>
+        </div>
+      )}
+
+      {failing.map(c => {
+        const isOpen = expanded[c.id] ?? false;
+        const tone   = c.severity === 'error' ? '#ef4444' : '#d97706';
+        const shown  = isOpen ? c.findings : c.findings.slice(0, 5);
+        return (
+          <div key={c.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: `3px solid ${tone}`, borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{c.title}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, color: tone, background: `${tone}1f`, border: `1px solid ${tone}59` }}>
+                  {c.findings.length}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>{c.impact}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 3 }}>Fix: {c.fix}</div>
+            </div>
+            <div style={{ borderTop: '1px solid var(--border)' }}>
+              {shown.map(fd => (
+                <div key={`${c.id}-${fd.id}`} style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.6fr', gap: 12, padding: '10px 20px', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, overflowWrap: 'anywhere' }}>{fd.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                    {fd.clientName || '—'}
+                    {fd.advisor && <div style={{ fontSize: 11 }}>{fd.advisor}</div>}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)' }}>{fd.detail}</div>
+                </div>
+              ))}
+              {c.findings.length > 5 && (
+                <button
+                  onClick={() => setExpanded(p => ({ ...p, [c.id]: !isOpen }))}
+                  style={{ width: '100%', padding: '9px 20px', fontSize: 12, fontWeight: 600, border: 'none', background: 'none', color: '#F37338', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  {isOpen ? 'Show less' : `Show all ${c.findings.length}`}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {passing.length > 0 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+            Passing ({passing.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {passing.map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text3)' }}>
+                <span style={{ color: '#22c55e' }}>✓</span>{c.title}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Advisors tab ──────────────────────────────────────────────────────────────
@@ -333,7 +448,7 @@ function PlatformsTab() {
   );
 }
 
-type AdminTab = 'overview' | 'advisors' | 'clients' | 'platforms';
+type AdminTab = 'overview' | 'advisors' | 'clients' | 'platforms' | 'quality';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -435,6 +550,7 @@ export default function AdminPage() {
               { id: 'advisors',  label: '👥 Advisors'  },
               { id: 'clients',   label: '📋 All Clients' },
               { id: 'platforms', label: '🏦 Platforms' },
+              { id: 'quality',   label: '🩺 Data Quality' },
             ] as { id: AdminTab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -576,6 +692,8 @@ export default function AdminPage() {
           )}
 
           {tab === 'platforms' && <PlatformsTab />}
+
+          {tab === 'quality' && <DataQualityTab />}
 
           {tab === 'clients' && (
             <ClientsTab
