@@ -151,6 +151,51 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   Admin Dashboard
                 </Link>
               </div>
+
+              {/* ── Monitoring: the same two books an advisor works in, but
+                     unscoped. The Admin Dashboard aggregates them; these browse
+                     them row by row, filtered by FA. ── */}
+              <div>
+                <div className="nav-label">Monitoring</div>
+                <div>
+                  <Link href="/portfolio" className={`nav-item ${isActive('/portfolio') ? 'active' : ''}`} onClick={onClose}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    Investment
+                  </Link>
+                  {/* Platform groups, same as the advisor nav — shown only while
+                      under /portfolio so the nav stays compact elsewhere. */}
+                  {platformGroups.length > 0 && isActive('/portfolio') && (
+                    <div style={{ marginLeft: 20, marginTop: 2, marginBottom: 4 }}>
+                      {platformGroups.map(g => {
+                        const groupActive = pathname === `/portfolio/${g.id}`;
+                        return (
+                          <Link
+                            key={g.id}
+                            href={`/portfolio/${g.id}`}
+                            onClick={onClose}
+                            className={`nav-item ${groupActive ? 'active' : ''}`}
+                            style={{ fontSize: 12, padding: '6px 10px', gap: 8 }}
+                          >
+                            <span
+                              aria-hidden
+                              style={{
+                                width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+                                background: 'currentColor', opacity: groupActive ? 1 : 0.45,
+                              }}
+                            />
+                            {g.name}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <Link href="/insurance" className={`nav-item ${isActive('/insurance') ? 'active' : ''}`} onClick={onClose}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Insurance
+                </Link>
+              </div>
+
               <div>
                 <div className="nav-label">Management</div>
                 <Link href="/settings"  className={`nav-item ${isActive('/settings') ? 'active' : ''}`}  onClick={onClose}>

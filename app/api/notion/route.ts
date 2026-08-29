@@ -213,6 +213,10 @@ export async function GET(req: NextRequest) {
             tpdCover:         pol.tpdCover,
             medicalClass:     pol.medicalClass,
             medicalCard:      pol.medicalCard,
+            // Only meaningful to an Admin, whose response spans every advisor —
+            // it's what the Insurance page's FA filter narrows on. An advisor's
+            // own response is already scoped to them, so it's constant there.
+            advisorName:      pol.advisorName,
           };
         });
       return json({ data });
