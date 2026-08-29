@@ -208,6 +208,56 @@ function deriveNoteFlag(h: Holding): NoteFlag | null {
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
+/**
+ * Filter dropdown for the Investment page's FA and Platform pickers.
+ *
+ * These were rows of pill buttons, which read well at three or four options and
+ * turn into a wrapping block of colour as the firm adds advisors and
+ * custodians. A select stays one line at any count, and keeps the per-option
+ * client counts that made the pills worth having.
+ *
+ * The control is tinted while a filter is active, because a narrowed page
+ * otherwise looks identical to the whole book with fewer clients in it.
+ */
+function FilterSelect({ label, value, onChange, allLabel, allCount, options }: {
+  label:    string;
+  value:    string;
+  onChange: (v: string) => void;
+  allLabel: string;
+  allCount: number;
+  options:  { value: string; count: number }[];
+}) {
+  const active = value !== '';
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)' }}>
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          padding: '7px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+          fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+          border: `1.5px solid ${active ? 'var(--accent2)' : 'var(--border)'}`,
+          background: active ? 'var(--accent2)' : 'var(--surface)',
+          color: active ? '#fff' : 'var(--text2)',
+          outline: 'none', minWidth: 170, transition: 'all 0.15s',
+        }}
+      >
+        <option value="" style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+          {allLabel} ({allCount})
+        </option>
+        {options.map(o => (
+          <option key={o.value} value={o.value} style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+            {o.value} ({o.count})
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Holding[] }[] {
   const byAccount = new Map<string, Holding[]>();   // holdings that carry an account no
   const byPlatform = new Map<string, Holding[]>();  // no account no — bucket per platform
@@ -497,67 +547,37 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
 
   return (
     <>
-      {/* ── FA filter — admin-only overview of every advisor's book, one at a time ── */}
-      {isAdmin && advisorOptions.length > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginRight: 2 }}>
-            FA
-          </span>
-          {['', ...advisorOptions].map(a => {
-            const on = advisorFilter === a;
-            const count = a
-              ? new Set(groupHoldings.filter(h => h.advisorName === a).map(h => h.clientId)).size
-              : new Set(groupHoldings.map(h => h.clientId)).size;
-            return (
-              <button
-                key={a || 'all'}
-                onClick={() => setAdvisorFilter(a)}
-                style={{
-                  padding: '7px 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
-                  fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
-                  border: `1.5px solid ${on ? 'var(--accent2)' : 'var(--border)'}`,
-                  background: on ? 'var(--accent2)' : 'var(--surface)',
-                  color: on ? '#fff' : 'var(--text3)',
-                  transition: 'all 0.15s', whiteSpace: 'nowrap',
-                }}
-              >
-                {a || 'All FAs'}
-                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 11 }}>{count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* ── Filters — FA (admin-only) and Platform, on one line so adding
+             advisors or custodians never reflows the page ── */}
+      {((isAdmin && advisorOptions.length > 1) || platformOptions.length > 1) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
+          {isAdmin && advisorOptions.length > 1 && (
+            <FilterSelect
+              label="FA"
+              value={advisorFilter}
+              onChange={setAdvisorFilter}
+              allLabel="All FAs"
+              allCount={new Set(groupHoldings.map(h => h.clientId)).size}
+              options={advisorOptions.map(a => ({
+                value: a,
+                count: new Set(groupHoldings.filter(h => h.advisorName === a).map(h => h.clientId)).size,
+              }))}
+            />
+          )}
 
-      {/* ── Platform filter — narrows holdings AND who's searchable below ── */}
-      {platformOptions.length > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginRight: 2 }}>
-            Platform
-          </span>
-          {['', ...platformOptions].map(p => {
-            const on = platformFilter === p;
-            const count = p
-              ? new Set(groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()).map(h => h.clientId)).size
-              : new Set(groupHoldings.map(h => h.clientId)).size;
-            return (
-              <button
-                key={p || 'all'}
-                onClick={() => setPlatformFilter(p)}
-                style={{
-                  padding: '7px 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
-                  fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
-                  border: `1.5px solid ${on ? 'var(--accent2)' : 'var(--border)'}`,
-                  background: on ? 'var(--accent2)' : 'var(--surface)',
-                  color: on ? '#fff' : 'var(--text3)',
-                  transition: 'all 0.15s', whiteSpace: 'nowrap',
-                }}
-              >
-                {p || 'All platforms'}
-                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 11 }}>{count}</span>
-              </button>
-            );
-          })}
+          {platformOptions.length > 1 && (
+            <FilterSelect
+              label="Platform"
+              value={platformFilter}
+              onChange={setPlatformFilter}
+              allLabel="All platforms"
+              allCount={new Set(groupHoldings.map(h => h.clientId)).size}
+              options={platformOptions.map(p => ({
+                value: p,
+                count: new Set(groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()).map(h => h.clientId)).size,
+              }))}
+            />
+          )}
         </div>
       )}
 
