@@ -45,7 +45,18 @@ export interface PortfolioHolding {
   underlyingDetails: {
     couponRatePa?: number;
     priceAsOf?: string;
-    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
+    // kiTouchedOn: earliest date this underlying's DAILY CLOSE was seen at or
+    // below its KI level, stamped once and never cleared. `today` is overwritten
+    // on every price refresh, so without this a dip below KI that recovered left
+    // no trace at all and "% of notes that knocked in" would silently undercount
+    // (found 2026-08-29). Recorded from actual historical closes, never guessed
+    // from the live price — same rule as KO observations.
+    //
+    // It is a barrier TOUCH, not by itself a contractual knock-in: these notes
+    // mostly observe KI at maturity, where only the final level counts, and the
+    // observation style isn't stored per note. Read it as "went below the
+    // barrier at some point", which is the analysable fact.
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number; kiTouchedOn?: string }[];
     // resolved/cleared: once a KO obs date has passed, its actual historical
     // closing price (not a live-price guess) determines whether the worst-of
     // basket cleared KO that day — see app/api/portfolio/update-underlying-prices.

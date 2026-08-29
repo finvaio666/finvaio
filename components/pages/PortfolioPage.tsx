@@ -35,7 +35,10 @@ interface Holding {
   underlyingDetails?: {
     couponRatePa?: number;
     priceAsOf?: string;
-    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
+    // kiTouchedOn: earliest close at/below KI, stamped once and never cleared —
+    // a durable record, unlike `today` which each price refresh overwrites.
+    // See lib/portfolio.ts for why it's a barrier touch, not a contractual KI.
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number; kiTouchedOn?: string }[];
     schedule: { date: string; label: string; triggerPct?: number; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
@@ -1050,7 +1053,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                                   </td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.entry.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.strike.toLocaleString()}</td>
-                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ki.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                                    {u.ki.toLocaleString()}
+                                    {/* A past touch stays visible after the price recovers —
+                                        `today` alone would show nothing ever happened. */}
+                                    {u.kiTouchedOn && (
+                                      <span
+                                        title={`Closed at or below the KI level on ${u.kiTouchedOn}. Recorded permanently — these notes mostly observe KI at maturity, so a touch is not by itself a knock-in.`}
+                                        style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', border: '1px solid #F79E1B66', background: '#F79E1B1A', borderRadius: 3, padding: '0 4px', cursor: 'help', fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap' }}
+                                      >
+                                        touched {u.kiTouchedOn.slice(2)}
+                                      </span>
+                                    )}
+                                  </td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
                                     {koBarrier(u, nextKoObs(h.underlyingDetails)?.triggerPct).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                                   </td>
