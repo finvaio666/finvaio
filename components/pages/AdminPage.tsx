@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import type { AdminOverview, FAStats } from '@/app/api/admin/overview/route';
+import type { AdminOverview, FAStats, AttentionNote } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { upperName } from '@/lib/displayName';
@@ -342,6 +342,7 @@ export default function AdminPage() {
   const [loading,  setLoading]  = useState(true);
   const [err,      setErr]      = useState('');
   const [selectedFA, setSelectedFA] = useState<FAStats | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string>('');
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -355,6 +356,39 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
+
+  /**
+   * Confirm a flagged note has actually exited. This is the only thing that
+   * writes the exit: the KO/maturity flag itself is a system hint and never
+   * changes status on its own, so nothing leaves an advisor's book without an
+   * admin saying so here. Marking it Redeemed drops it from active AUM.
+   *
+   * Deliberately offered for KO/maturity only — a KI is a principal-protection
+   * warning on a note that is still held, so there is nothing to confirm.
+   */
+  async function confirmExit(n: AttentionNote) {
+    const label = n.flag === 'likely-matured' ? 'matured' : 'knocked out';
+    if (!confirm(
+      `Confirm this note has ${label}?\n\n${n.name}\n` +
+      `Client: ${n.clientName || '—'}\nAdvisor: ${n.advisor || '—'}\nValue: ${fmt(n.valueMyr)}\n\n` +
+      `It will be marked Redeemed and removed from ${n.advisor || 'the advisor'}'s active AUM.`
+    )) return;
+    setConfirmingId(n.id);
+    try {
+      const res = await fetch('/api/portfolio', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id: n.id, status: 'Redeemed' }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error ?? 'Could not confirm this note.'); return; }
+      await loadOverview();
+    } catch {
+      alert('Could not confirm this note — network error.');
+    } finally {
+      setConfirmingId('');
+    }
+  }
 
   function handleSelectFA(fa: FAStats) {
     setSelectedFA(fa);
@@ -481,7 +515,7 @@ export default function AdminPage() {
                     Structured notes needing action ({overview.attention.length})
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
-                    Knock-out and maturity are confirmed on the Investment page — open the note there and click “Confirm exit”. Knock-in is a risk warning, not an exit.
+                    Confirming an exit marks the note Redeemed and removes it from that advisor&apos;s active AUM. Knock-in is a risk warning on a note still held — there is nothing to confirm.
                   </div>
                   {overview.attention.slice(0, 12).map(n => (
                     <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
@@ -499,6 +533,25 @@ export default function AdminPage() {
                         }}>
                           {n.flag === 'ki' ? 'KI breached' : n.flag === 'likely-ko' ? 'Likely KO' : 'Matured'}
                         </span>
+                        {n.flag === 'ki' ? (
+                          <span style={{ fontSize: 11, color: 'var(--text3)', width: 96, textAlign: 'right' }}>Monitor only</span>
+                        ) : (
+                          <button
+                            onClick={() => confirmExit(n)}
+                            disabled={confirmingId === n.id}
+                            title="Mark this note Redeemed and remove it from active AUM"
+                            style={{
+                              width: 96, padding: '5px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6,
+                              cursor: confirmingId === n.id ? 'wait' : 'pointer',
+                              background: confirmingId === n.id ? 'var(--surface)' : '#ef4444',
+                              color: confirmingId === n.id ? 'var(--text3)' : '#fff',
+                              border: '1px solid #ef4444',
+                              opacity: confirmingId === n.id ? 0.6 : 1,
+                            }}
+                          >
+                            {confirmingId === n.id ? 'Saving…' : 'Confirm exit'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
