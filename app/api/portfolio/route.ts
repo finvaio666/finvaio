@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
-import { resolveClientNotionId } from '@/lib/clients';
+import { resolveClientNotionId, getClientById } from '@/lib/clients';
 import { buildPortfolioPatch } from '@/lib/portfolio';
 import * as sbPortfolio from '@/lib/repos/portfolio';
 
@@ -76,9 +76,19 @@ export async function POST(req: NextRequest) {
   const b = await req.json() as Body;
   if (!b.holdingName?.trim()) return NextResponse.json({ error: 'Holding name is required' }, { status: 400 });
 
+  // A holding belongs to whichever FA owns the client, not whoever clicked
+  // "Add" — matters when an Admin adds a holding from the all-FAs overview
+  // for a client that isn't their own. Stamping config.name there would
+  // attribute the record to Admin and hide it from the owning FA's book.
+  let advisorName = config.name;
+  if (config.role === 'Admin' && b.clientId) {
+    const client = await getClientById(config, b.clientId);
+    if (client?.advisorName) advisorName = client.advisorName;
+  }
+
   if (useSupabase()) {
     try {
-      const patch = buildPortfolioPatch(b, config.name, true);
+      const patch = buildPortfolioPatch(b, advisorName, true);
       if (b.clientId) patch.client_notion_id = await resolveClientNotionId(b.clientId);
       const { id } = await sbPortfolio.createHolding(patch);
       return NextResponse.json({ success: true, id });
@@ -87,7 +97,7 @@ export async function POST(req: NextRequest) {
 
   const notion = new Client({ auth: config.notionApiKey });
   try {
-    const page = await notion.pages.create({ parent: { database_id: config.portfolioDbId }, properties: buildProps(b, config.name, true) as never });
+    const page = await notion.pages.create({ parent: { database_id: config.portfolioDbId }, properties: buildProps(b, advisorName, true) as never });
     return NextResponse.json({ success: true, id: page.id });
   } catch (e: unknown) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
 }

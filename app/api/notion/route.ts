@@ -120,8 +120,8 @@ export async function GET(req: NextRequest) {
       // Clients + holdings via the data-source abstraction; join on notion_id so
       // clientId is consistent across Notion (page id) and Supabase (uuid).
       const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
-      const clientMap: Record<string, { id: string; name: string }> = {};
-      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { id: c.id, name: c.name };
+      const clientMap: Record<string, { id: string; name: string; advisorName: string }> = {};
+      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { id: c.id, name: c.name, advisorName: c.advisorName };
 
       const data = holdings
         .slice()
@@ -145,6 +145,11 @@ export async function GET(req: NextRequest) {
             units:         h.units,
             name:          h.name,
             clientName:    client?.name ?? '',
+            // The holding's own Advisor field is the source of truth for who
+            // owns this record (what scoping/PATCH/DELETE actually check) —
+            // the client's advisor is only a fallback for older rows that
+            // never had it stamped.
+            advisorName:   h.advisorName || client?.advisorName || '',
             assetClass:    h.assetClass,
             institution:   h.institution,
             // What the Investment page groups AUM by. Falls back to deriving it

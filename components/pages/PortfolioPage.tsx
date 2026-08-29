@@ -16,6 +16,7 @@ interface Holding {
   clientId: string;
   name: string;
   clientName: string;
+  advisorName: string;
   assetClass: string;
   institution: string;
   status: string;
@@ -254,6 +255,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [pricesUpdating, setPricesUpdating] = useState(false);
   const [pricesResult, setPricesResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
+  const [advisorFilter, setAdvisorFilter] = useState<string>('');     // '' = every FA — admin-only
   const { clients: allClients }        = useClients();
   // FAs propose changes to their book through the company admin rather than
   // editing/deleting investment records themselves — seed from the cached role
@@ -350,20 +352,32 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     ? allHoldings.filter(h => activeGroup.platforms.some(p => p.toLowerCase() === (h.platform ?? '').toLowerCase()))
     : allHoldings;
 
+  // Admin-only: the whole book naturally pools every FA's clients together
+  // (listHoldings has no advisor filter for Admin — see lib/repos/portfolio.ts),
+  // so this is what gives Admin an actual "one FA at a time" overview instead
+  // of one long undifferentiated client list. A non-admin's own holdings are
+  // already server-scoped to themselves, so this is a no-op for them.
+  const advisorOptions = isAdmin
+    ? [...new Set(groupHoldings.map(h => h.advisorName).filter(Boolean))].sort()
+    : [];
+  const advisorScoped = (isAdmin && advisorFilter)
+    ? groupHoldings.filter(h => h.advisorName === advisorFilter)
+    : groupHoldings;
+
   // Platforms an advisor can narrow to. On a group page that's the group's own
   // list; at the top level it's every platform actually present in the book.
   const platformOptions = (activeGroup
     ? activeGroup.platforms
-    : [...new Set(allHoldings.map(h => h.platform).filter(Boolean) as string[])]
-  ).filter(p => groupHoldings.some(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()))
+    : [...new Set(advisorScoped.map(h => h.platform).filter(Boolean) as string[])]
+  ).filter(p => advisorScoped.some(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()))
    .sort();
 
   // Applied before the client list is derived, so picking a platform also
   // narrows who is searchable — an advisor working an iFAST book shouldn't have
   // to wade through Phillip-only clients.
   const holdings = platformFilter
-    ? groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === platformFilter.toLowerCase())
-    : groupHoldings;
+    ? advisorScoped.filter(h => (h.platform ?? '').toLowerCase() === platformFilter.toLowerCase())
+    : advisorScoped;
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
 
@@ -443,6 +457,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     }, {}),
   ).map(([name, value]) => ({ name, value }));
 
+  // Admin's overview of AUM by FA — only meaningful when Admin hasn't already
+  // narrowed to one FA via advisorFilter (at that point every row shares the
+  // same advisor, so the ring would just be one full slice).
+  const advisorBreakdown = isAdmin && !advisorFilter
+    ? Object.entries(
+        visible.reduce<Record<string, number>>((acc, h) => {
+          const name = h.advisorName || 'Unassigned';
+          acc[name] = (acc[name] ?? 0) + h.value;
+          return acc;
+        }, {}),
+      ).map(([name, value]) => ({ name, value }))
+    : [];
+
   // Structured-note underlying exposure — each note's value is split evenly
   // across its basket (a 3-stock note contributes 1/3 of its value to each),
   // then aggregated across every structured product in view. Only appears
@@ -467,6 +494,38 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
 
   return (
     <>
+      {/* ── FA filter — admin-only overview of every advisor's book, one at a time ── */}
+      {isAdmin && advisorOptions.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginRight: 2 }}>
+            FA
+          </span>
+          {['', ...advisorOptions].map(a => {
+            const on = advisorFilter === a;
+            const count = a
+              ? new Set(groupHoldings.filter(h => h.advisorName === a).map(h => h.clientId)).size
+              : new Set(groupHoldings.map(h => h.clientId)).size;
+            return (
+              <button
+                key={a || 'all'}
+                onClick={() => setAdvisorFilter(a)}
+                style={{
+                  padding: '7px 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+                  fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                  border: `1.5px solid ${on ? 'var(--accent2)' : 'var(--border)'}`,
+                  background: on ? 'var(--accent2)' : 'var(--surface)',
+                  color: on ? '#fff' : 'var(--text3)',
+                  transition: 'all 0.15s', whiteSpace: 'nowrap',
+                }}
+              >
+                {a || 'All FAs'}
+                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 11 }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Platform filter — narrows holdings AND who's searchable below ── */}
       {platformOptions.length > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -595,6 +654,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               : 'No holdings to break down yet.'}
           />
           <DonutBreakdown title="AUM by asset class" items={assetBreakdown} />
+          {advisorBreakdown.length > 0 && (
+            <DonutBreakdown title="AUM by FA" items={advisorBreakdown} />
+          )}
           {underlyingBreakdown.length > 0 && (
             <DonutBreakdown title="Structured note underlying exposure" items={underlyingBreakdown} />
           )}
