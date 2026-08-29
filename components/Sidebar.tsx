@@ -142,13 +142,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <>
               <div>
                 <div className="nav-label">Platform</div>
+                {/* One entry — the admin dashboard IS the dashboard. /admin
+                    redirects to "/" so old links still resolve. */}
                 <Link href="/"       className={`nav-item ${isActive('/') ? 'active' : ''}`}      onClick={onClose}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                   Dashboard
-                </Link>
-                <Link href="/admin"  className={`nav-item ${isActive('/admin') ? 'active' : ''}`} onClick={onClose}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-                  Admin Dashboard
                 </Link>
               </div>
 
