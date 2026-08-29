@@ -136,10 +136,12 @@ export async function GET(req: NextRequest) {
 
   // ── Warnings: a question FINVA cannot answer yet ────────────────────────
 
+  // A perpetual bond has no maturity by definition, so a blank date is correct
+  // there and flagging it would be a finding no one can ever clear.
   // "Bonds" is the stored asset-class label; the detail line reads as prose
   // about one row, so it needs the singular.
   const noMaturity = maturing
-    .filter(h => !h.maturityDate)
+    .filter(h => !h.maturityDate && !/perpetual/i.test(h.name))
     .map(h => f(h, `${h.assetClass === 'Bonds' ? 'Bond' : 'Note'} with no maturity date recorded`));
 
   const noTerms = notes
