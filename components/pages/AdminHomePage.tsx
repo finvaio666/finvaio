@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import type { AdminOverview } from '@/app/api/admin/overview/route';
+import type { InsuranceOverview } from '@/app/api/admin/insurance-overview/route';
+import type { DataQualityReport } from '@/app/api/admin/data-quality/route';
 
 interface TaskItem {
   id: string; task: string; client: string;
@@ -12,6 +15,117 @@ interface TaskItem {
 function daysUntil(dateStr: string): number | null {
   if (!dateStr) return null;
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000);
+}
+
+// Whole ringgit — these are rollups of many records, so cents read as false
+// precision. Same rule as the Admin Dashboard.
+const money = (n: number) => `RM ${Math.round(n).toLocaleString('en-MY')}`;
+
+/** Compact figure for the at-a-glance strip; `href` deep-links to the tab that explains it. */
+function Figure({ label, value, sub, color = 'var(--text)', href }: {
+  label: string; value: string; sub?: string; color?: string; href?: string;
+}) {
+  const body = (
+    <>
+      <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color, marginTop: 5, lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{sub}</div>}
+    </>
+  );
+  const style: React.CSSProperties = {
+    flex: '1 1 150px', minWidth: 150, padding: '14px 18px',
+    borderRight: '1px solid var(--border)', textDecoration: 'none', display: 'block',
+  };
+  return href ? <Link href={href} style={style}>{body}</Link> : <div style={style}>{body}</div>;
+}
+
+/**
+ * Company position at a glance, above the admin's own task list.
+ *
+ * Deliberately figures only — the charts and tables stay on the Admin
+ * Dashboard. This answers "is anything wrong this morning"; the other page
+ * answers "why". Every figure links to the tab that explains it, so the two
+ * pages stay one story rather than two copies of it.
+ */
+function CompanyGlance() {
+  const [inv, setInv] = useState<AdminOverview | null>(null);
+  const [ins, setIns] = useState<InsuranceOverview | null>(null);
+  const [dq,  setDq]  = useState<DataQualityReport | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const grab = <T,>(url: string, set: (v: T) => void) =>
+      fetch(url, { cache: 'no-store' }).then(r => r.json())
+        .then(d => { if (alive && !d.error) set(d); else if (alive) setFailed(true); })
+        .catch(() => { if (alive) setFailed(true); });
+    // Independent requests, rendered as each lands — the data-quality scan
+    // walks the whole book and shouldn't hold up the AUM figure.
+    grab<AdminOverview>('/api/admin/overview', setInv);
+    grab<InsuranceOverview>('/api/admin/insurance-overview', setIns);
+    grab<DataQualityReport>('/api/admin/data-quality', setDq);
+    return () => { alive = false; };
+  }, []);
+
+  const notesToConfirm = inv?.attention.length ?? 0;
+  const dqErrors = dq?.checks.filter(c => c.severity === 'error').reduce((n, c) => n + c.findings.length, 0) ?? 0;
+
+  if (failed && !inv && !ins && !dq) return null;   // stay silent rather than show a broken strip
+
+  return (
+    <div className="section" style={{ marginBottom: 20 }}>
+      <div className="section-header">
+        <div className="section-title">
+          <span className="section-dot" style={{ background: '#F37338' }} />
+          Company at a glance
+          <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }}>
+            across every advisor
+          </span>
+        </div>
+        <Link href="/admin" style={{ fontSize: 12, fontWeight: 600, color: '#F37338', textDecoration: 'none' }}>
+          Full dashboard →
+        </Link>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+        <Figure
+          label="Combined AUM"
+          value={inv ? money(inv.totalAUM) : '…'}
+          sub={inv ? `${inv.totalHoldings.toLocaleString('en-MY')} holdings` : undefined}
+          color="#22c55e"
+          href="/admin"
+        />
+        <Figure
+          label="In-force Premium"
+          value={ins ? money(ins.inForcePremium) : '…'}
+          sub={ins ? `${ins.inForceCount} policies · ${ins.lapseRate.toFixed(1)}% lapsed` : undefined}
+          color="#38bdf8"
+          href="/admin"
+        />
+        <Figure
+          label="Clients"
+          value={inv ? String(inv.totalClients) : '…'}
+          sub={inv ? `${inv.investedClients} invested` : undefined}
+          color="#818cf8"
+          href="/admin"
+        />
+        <Figure
+          label="Notes to confirm"
+          value={inv ? String(notesToConfirm) : '…'}
+          sub={inv ? (notesToConfirm ? 'KI/KO awaiting sign-off' : 'all clear') : undefined}
+          color={notesToConfirm ? '#ef4444' : 'var(--text3)'}
+          href="/admin"
+        />
+        <Figure
+          label="Data issues"
+          value={dq ? String(dq.totalFindings) : '…'}
+          sub={dq ? (dqErrors ? `${dqErrors} need correction` : dq.totalFindings ? 'gaps to fill' : 'book is clean') : undefined}
+          color={dqErrors ? '#ef4444' : dq?.totalFindings ? '#d97706' : 'var(--text3)'}
+          href="/admin"
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function AdminHomePage() {
@@ -61,10 +175,11 @@ export default function AdminHomePage() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Admin Home</h1>
         <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
-          Your daily admin work and FA enquiries. For platform-wide stats, see{' '}
-          <Link href="/admin" style={{ color: '#F37338', fontWeight: 600 }}>Admin Dashboard</Link>.
+          Where the firm stands today, and your own admin work.
         </div>
       </div>
+
+      <CompanyGlance />
 
       {/* ── Admin Tasks ── */}
       <div className="section" style={{ marginBottom: 20 }}>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { AdminOverview, FAStats, AttentionNote } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
 import type { DataQualityReport } from '@/app/api/admin/data-quality/route';
+import type { InsuranceOverview } from '@/app/api/admin/insurance-overview/route';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
@@ -35,6 +36,109 @@ function StatCard({ label, value, sub, color = '#F37338' }: { label: string; val
 
 function StatusDot({ active }: { active: boolean }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: active ? '#22c55e' : 'var(--text3)', marginRight: 6 }} />;
+}
+
+// ── Insurance tab ─────────────────────────────────────────────────────────────
+
+function MiniStat({ label, value, sub, color = 'var(--text)' }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div style={{ flex: 1, minWidth: 130 }}>
+      <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color, marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+/**
+ * Company insurance book. Everything headline is measured in force, because a
+ * lapsed policy keeps its premium and sum assured on the record — the lapsed
+ * figures are shown beside them as what was lost, not blended in.
+ */
+function InsuranceTab({ data: d, error: err }: { data: InsuranceOverview | null; error: string }) {
+  if (err)  return <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{err}</div>;
+  if (!d)   return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading insurance book…</div>;
+
+  if (d.totalPolicies === 0) {
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '36px 20px', textAlign: 'center', color: 'var(--text3)' }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🛡️</div>
+        <div style={{ fontSize: 13 }}>No policies recorded yet.</div>
+      </div>
+    );
+  }
+
+  const lapseTone = d.lapseRate >= 20 ? '#ef4444' : d.lapseRate >= 10 ? '#d97706' : '#22c55e';
+  const maxYear   = Math.max(...d.newByYear.map(y => y.count), 1);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* In force vs lost, side by side — the second is the reason to look. */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 340px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 20px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>In force</div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <MiniStat label="Annual premium" value={fmt(d.inForcePremium)} color="#22c55e" sub={`${d.inForceCount} policies`} />
+            <MiniStat label="Sum assured"    value={fmt(d.inForceSumAssured)} sub={`${d.clientsCovered} clients covered`} />
+          </div>
+        </div>
+        <div style={{ flex: '1 1 340px', background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: `3px solid ${lapseTone}`, borderRadius: 10, padding: '18px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>No longer in force</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: lapseTone }}>{d.lapseRate.toFixed(1)}% lapse rate</div>
+          </div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <MiniStat label="Lapsed" value={fmt(d.lapsedPremium)} color={lapseTone} sub={`${d.lapsedCount} policies · premium/yr lost`} />
+            <MiniStat label="Surrendered" value={fmt(d.surrenderedPremium)} sub={`${d.surrenderedCount} policies`} />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <DonutBreakdown title="In-force premium by insurer" items={d.byInsurer} emptyHint="No in-force policies." />
+        <DonutBreakdown title="Protection in force by type" items={d.coverMix} emptyHint="No cover recorded." />
+      </div>
+
+      {/* Per-advisor, with lapse rate beside the book it belongs to. */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px 12px', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Insurance book by advisor</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1.3fr 1.3fr 1fr', padding: '8px 20px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+          {['Advisor', 'In force', 'Annual premium', 'Sum assured', 'Lapse rate'].map(h => (
+            <div key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>
+          ))}
+        </div>
+        {d.advisors.map(a => {
+          const tone = a.lapseRate >= 20 ? '#ef4444' : a.lapseRate >= 10 ? '#d97706' : 'var(--text3)';
+          return (
+            <div key={a.name} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1.3fr 1.3fr 1fr', padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{a.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--text)' }}>{a.policies}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{fmt(a.premium)}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>{fmt(a.sumAssured)}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: tone }}>{a.lapseRate.toFixed(1)}%<span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}> ({a.lapsed})</span></div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Policies written per year — the only new-business trend the record supports. */}
+      {d.newByYear.length > 1 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 20px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Policies written per year</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 14 }}>By commencement date, all statuses</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 110 }}>
+            {d.newByYear.map(y => (
+              <div key={y.year} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)' }}>{y.count}</div>
+                <div style={{ width: '100%', maxWidth: 46, height: `${Math.max((y.count / maxYear) * 74, 3)}px`, background: '#F37338', borderRadius: '4px 4px 0 0' }} />
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{y.year}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Data quality tab ──────────────────────────────────────────────────────────
@@ -448,26 +552,40 @@ function PlatformsTab() {
   );
 }
 
-type AdminTab = 'overview' | 'advisors' | 'clients' | 'platforms' | 'quality';
+type AdminTab = 'investment' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality';
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab,      setTab]      = useState<AdminTab>('overview');
-  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [tab,      setTab]      = useState<AdminTab>('investment');
+  const [overview,  setOverview]  = useState<AdminOverview | null>(null);
+  const [insurance, setInsurance] = useState<InsuranceOverview | null>(null);
+  const [insErr,    setInsErr]    = useState('');
   const [loading,  setLoading]  = useState(true);
   const [err,      setErr]      = useState('');
   const [selectedFA, setSelectedFA] = useState<FAStats | null>(null);
   const [confirmingId, setConfirmingId] = useState<string>('');
 
+  /**
+   * Both books load in parallel: the headline row spans investment and
+   * insurance, so waiting for one to finish before starting the other would
+   * delay the whole page for no reason. Insurance failing is reported inside
+   * its own tab rather than blanking the page — the investment side is still
+   * perfectly usable without it.
+   */
   const loadOverview = useCallback(async () => {
     setLoading(true);
-    try {
-      const res  = await fetch('/api/admin/overview');
-      const data = await res.json();
-      if (data.error) { setErr(data.error); return; }
-      setOverview(data);
-    } catch { setErr('Failed to load admin data.'); }
-    finally { setLoading(false); }
+    const [inv, ins] = await Promise.allSettled([
+      fetch('/api/admin/overview').then(r => r.json()),
+      fetch('/api/admin/insurance-overview').then(r => r.json()),
+    ]);
+
+    if (inv.status === 'fulfilled' && !inv.value.error) { setOverview(inv.value); setErr(''); }
+    else setErr(inv.status === 'fulfilled' ? inv.value.error : 'Failed to load admin data.');
+
+    if (ins.status === 'fulfilled' && !ins.value.error) { setInsurance(ins.value); setInsErr(''); }
+    else setInsErr(ins.status === 'fulfilled' ? ins.value.error : 'Failed to load the insurance book.');
+
+    setLoading(false);
   }, []);
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
@@ -528,11 +646,18 @@ export default function AdminPage() {
 
       {!loading && !err && overview && (
         <>
-          {/* Stat cards — the company's investment position, most important first.
-              Gmail connection is an ops detail, not an investment figure; it
-              lives on the Advisors tab where it belongs. */}
+          {/* Headline row — both books the firm runs, side by side. Premium is
+              in force only, so it can't be read against AUM as if lapsed
+              policies still earned. Gmail connection is an ops detail, not a
+              company figure; it lives on the Advisors tab where it belongs. */}
           <div style={{ display: 'flex', gap: 14, marginBottom: 28, flexWrap: 'wrap' }}>
             <StatCard label="Combined AUM"  value={overview.totalAUM > 0 ? fmt(overview.totalAUM) : '—'} sub={`across ${overview.totalHoldings.toLocaleString('en-MY')} holdings`} color="#22c55e" />
+            <StatCard
+              label="In-force Premium"
+              value={insurance ? fmt(insurance.inForcePremium) : '—'}
+              sub={insurance ? `${insurance.inForceCount} active policies` : 'insurance book unavailable'}
+              color="#38bdf8"
+            />
             <StatCard label="Invested Clients" value={String(overview.investedClients)} sub={`of ${overview.totalClients} total clients`} color="#818cf8" />
             <StatCard label="Advisors"      value={String(overview.activeFAs)} sub={`${overview.totalFAs - overview.activeFAs} inactive`} />
             <StatCard
@@ -546,11 +671,12 @@ export default function AdminPage() {
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
             {([
-              { id: 'overview',  label: '📊 Overview'  },
-              { id: 'advisors',  label: '👥 Advisors'  },
-              { id: 'clients',   label: '📋 All Clients' },
-              { id: 'platforms', label: '🏦 Platforms' },
-              { id: 'quality',   label: '🩺 Data Quality' },
+              { id: 'investment', label: '📈 Investment' },
+              { id: 'insurance',  label: '🛡️ Insurance'  },
+              { id: 'advisors',   label: '👥 Advisors'   },
+              { id: 'clients',    label: '📋 All Clients' },
+              { id: 'platforms',  label: '🏦 Platforms'  },
+              { id: 'quality',    label: '🩺 Data Quality' },
             ] as { id: AdminTab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -567,7 +693,7 @@ export default function AdminPage() {
           </div>
 
           {/* Tab content */}
-          {tab === 'overview' && (
+          {tab === 'investment' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* What the company's money is actually in, and where it's custodied. */}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -690,6 +816,8 @@ export default function AdminPage() {
           {tab === 'advisors' && (
             <AdvisorsTab advisors={overview.advisors} onSelectFA={handleSelectFA} />
           )}
+
+          {tab === 'insurance' && <InsuranceTab data={insurance} error={insErr} />}
 
           {tab === 'platforms' && <PlatformsTab />}
 
