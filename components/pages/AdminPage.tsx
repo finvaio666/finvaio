@@ -6,10 +6,13 @@ import type { AdminOverview, FAStats } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
 import type { PlatformGroup } from '@/lib/platformGroups';
 import { upperName } from '@/lib/displayName';
+import DonutBreakdown from '@/components/DonutBreakdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(n: number) { return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 0 })}`; }
+// Whole ringgit only — AUM rollups are summed from many holdings, so trailing
+// cents ("RM 64,772,314.88") read as false precision rather than useful detail.
+function fmt(n: number) { return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
 function fmtDate(d: string) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -333,6 +336,7 @@ function PlatformsTab() {
 type AdminTab = 'overview' | 'advisors' | 'clients' | 'platforms';
 
 export default function AdminPage() {
+  const router = useRouter();
   const [tab,      setTab]      = useState<AdminTab>('overview');
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [loading,  setLoading]  = useState(true);
@@ -375,12 +379,19 @@ export default function AdminPage() {
 
       {!loading && !err && overview && (
         <>
-          {/* Stat cards */}
+          {/* Stat cards — the company's investment position, most important first.
+              Gmail connection is an ops detail, not an investment figure; it
+              lives on the Advisors tab where it belongs. */}
           <div style={{ display: 'flex', gap: 14, marginBottom: 28, flexWrap: 'wrap' }}>
-            <StatCard label="Total Advisors"  value={String(overview.totalFAs)}     sub={`${overview.activeFAs} active`} />
-            <StatCard label="Total Clients"   value={String(overview.totalClients)} sub="across all advisors" color="#818cf8" />
-            <StatCard label="Combined AUM"    value={overview.totalAUM > 0 ? fmt(overview.totalAUM) : '—'} sub="managed assets" color="#22c55e" />
-            <StatCard label="Gmail Connected" value={String(overview.advisors.filter(a => a.hasGmail).length)} sub={`of ${overview.activeFAs} active FAs`} color="#3b82f6" />
+            <StatCard label="Combined AUM"  value={overview.totalAUM > 0 ? fmt(overview.totalAUM) : '—'} sub={`across ${overview.totalHoldings.toLocaleString('en-MY')} holdings`} color="#22c55e" />
+            <StatCard label="Invested Clients" value={String(overview.investedClients)} sub={`of ${overview.totalClients} total clients`} color="#818cf8" />
+            <StatCard label="Advisors"      value={String(overview.activeFAs)} sub={`${overview.totalFAs - overview.activeFAs} inactive`} />
+            <StatCard
+              label="Needs Action"
+              value={String(overview.attention.length)}
+              sub={overview.attention.length ? 'notes to confirm' : 'all clear'}
+              color={overview.attention.length ? '#ef4444' : 'var(--text3)'}
+            />
           </div>
 
           {/* Tabs */}
@@ -407,59 +418,102 @@ export default function AdminPage() {
 
           {/* Tab content */}
           {tab === 'overview' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {/* Advisor breakdown */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 20px' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Advisor Breakdown</div>
-                {overview.advisors.map(fa => (
-                  <div key={fa.id} onClick={() => handleSelectFA(fa)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(243,115,56,0.04)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(243,115,56,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#F37338', flexShrink: 0 }}>
-                        {fa.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{fa.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fa.clientCount} clients</div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{fa.totalAUM > 0 ? fmt(fa.totalAUM) : '—'}</div>
-                      <StatusDot active={fa.active} />
-                    </div>
-                  </div>
-                ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* What the company's money is actually in, and where it's custodied. */}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <DonutBreakdown title="AUM by asset class" items={overview.byAssetClass} emptyHint="No holdings recorded yet." />
+                <DonutBreakdown title="AUM by platform group" items={overview.byPlatformGroup} emptyHint="No holdings recorded yet." />
               </div>
 
-              {/* Quick stats */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Platform Health</div>
-                  {[
-                    { label: 'Active Advisors',   value: `${overview.activeFAs} / ${overview.totalFAs}`, ok: overview.activeFAs > 0 },
-                    { label: 'Gmail Connected',   value: `${overview.advisors.filter(a => a.hasGmail).length} / ${overview.activeFAs}`, ok: overview.advisors.filter(a => a.hasGmail && a.active).length > 0 },
-                    { label: 'Total Clients',     value: String(overview.totalClients), ok: overview.totalClients > 0 },
-                    { label: 'Combined AUM',      value: fmt(overview.totalAUM), ok: overview.totalAUM > 0 },
-                  ].map(item => (
-                    <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)' }}>
-                        <span style={{ color: item.ok ? '#22c55e' : 'var(--text3)' }}>●</span>
-                        {item.label}
+              {/* Who holds it. Sorted by AUM with a share bar, so the split across
+                  the firm reads at a glance instead of as a flat list. */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>AUM by advisor</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>Click an advisor to see their clients</div>
+                </div>
+                {overview.advisors.filter(fa => fa.totalAUM > 0 || fa.clientCount > 0).map(fa => {
+                  const share = overview.totalAUM > 0 ? (fa.totalAUM / overview.totalAUM) * 100 : 0;
+                  return (
+                    <div key={fa.id} onClick={() => handleSelectFA(fa)}
+                      style={{ padding: '10px 8px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(243,115,56,0.04)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(243,115,56,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#F37338', flexShrink: 0 }}>
+                            {fa.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {fa.name}
+                              {!fa.active && <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>inactive</span>}
+                              {fa.needsAction > 0 && (
+                                <span title={`${fa.needsAction} note(s) awaiting your confirmation`} style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 4, padding: '0 5px' }}>
+                                  ⚠ {fa.needsAction}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                              {fa.investedClients} invested · {fa.clientCount} clients · {fa.holdingCount} holdings
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{fa.totalAUM > 0 ? fmt(fa.totalAUM) : '—'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{share >= 0.1 ? `${share.toFixed(1)}%` : '—'}</div>
+                        </div>
                       </div>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.value}</span>
+                      <div style={{ height: 5, borderRadius: 3, background: 'var(--bg)', overflow: 'hidden' }}>
+                        <div style={{ width: `${share}%`, height: '100%', background: '#F37338', borderRadius: 3 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* The one thing on this page that needs a decision, not just a read.
+                  Confirming an exit happens on the Investment page next to the note. */}
+              {overview.attention.length > 0 && (
+                <div style={{ background: 'var(--surface)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#ef4444', marginBottom: 4 }}>
+                    Structured notes needing action ({overview.attention.length})
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+                    Knock-out and maturity are confirmed on the Investment page — open the note there and click “Confirm exit”. Knock-in is a risk warning, not an exit.
+                  </div>
+                  {overview.attention.slice(0, 12).map(n => (
+                    <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{[n.clientName, n.advisor].filter(Boolean).join(' · ')}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{fmt(n.valueMyr)}</span>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap',
+                          color: n.flag === 'ki' ? '#d97706' : '#ef4444',
+                          background: n.flag === 'ki' ? 'rgba(217,119,6,0.12)' : 'rgba(239,68,68,0.12)',
+                          border: `1px solid ${n.flag === 'ki' ? 'rgba(217,119,6,0.35)' : 'rgba(239,68,68,0.35)'}`,
+                        }}>
+                          {n.flag === 'ki' ? 'KI breached' : n.flag === 'likely-ko' ? 'Likely KO' : 'Matured'}
+                        </span>
+                      </div>
                     </div>
                   ))}
+                  {overview.attention.length > 12 && (
+                    <div style={{ fontSize: 11, color: 'var(--text3)', paddingTop: 10 }}>
+                      +{overview.attention.length - 12} more — see the Investment page.
+                    </div>
+                  )}
                 </div>
+              )}
 
-                <div style={{ background: 'rgba(243,115,56,0.06)', border: '1px solid rgba(243,115,56,0.2)', borderRadius: 10, padding: '16px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#F37338', marginBottom: 8 }}>Quick Actions</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <button onClick={() => { setTab('advisors'); }} style={{ padding: '8px 14px', fontSize: 13, background: '#F37338', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}>👥 Manage Advisors</button>
-                    <button onClick={() => { setTab('clients'); setSelectedFA(null); }} style={{ padding: '8px 14px', fontSize: 13, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}>📋 View All Clients</button>
-                  </div>
-                </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setTab('advisors')} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: '#F37338', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>👥 Manage Advisors</button>
+                <button onClick={() => { setTab('clients'); setSelectedFA(null); }} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>📋 View All Clients</button>
+                <button onClick={() => router.push('/portfolio')} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>📈 Open Investments</button>
               </div>
             </div>
           )}

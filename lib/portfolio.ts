@@ -64,6 +64,30 @@ function useSupabase(): boolean {
   return process.env.DATA_SOURCE_PORTFOLIO === 'supabase';
 }
 
+/**
+ * A holding's MYR value as every rollup counts it — Investment-page totals and
+ * donuts, and the admin company-wide overview.
+ *
+ * Structured products are marked at purchase/par rather than the secondary-market
+ * bid: the FA's read is that a bid-based mark isn't a meaningful figure for these
+ * right now. Gain/Return therefore read flat for that class, which is expected —
+ * there's no valuation basis being compared against.
+ *
+ * Defined once here rather than inlined per call site so two screens can't
+ * quietly report different company AUM (the admin dashboard did exactly that
+ * until 2026-08-29 by summing the stale clients.aum_myr field instead).
+ */
+export function holdingValueMyr(h: PortfolioHolding): number {
+  const purchase = h.purchaseMyr || h.purchaseOriginal * h.fxRate;
+  if (h.assetClass === 'Structured Product') return purchase;
+  return h.valueMyr || h.valueOriginal * h.fxRate;
+}
+
+/** A structured note an admin has confirmed exited — excluded from active AUM. */
+export function isExitedHolding(h: PortfolioHolding): boolean {
+  return h.assetClass === 'Structured Product' && h.status === 'Redeemed';
+}
+
 // ── Notion property readers (real property types of the Portfolio DB) ──
 function rt(p: Record<string, unknown>, k: string): string {
   const v = p[k] as { type: string; rich_text?: { plain_text: string }[] } | undefined;
