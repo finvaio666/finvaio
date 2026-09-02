@@ -1,13 +1,10 @@
-import { Suspense } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
-import AdminPage from '@/components/pages/AdminPage';
+import { redirect } from 'next/navigation';
 
+/**
+ * The admin dashboard merged into the main dashboard — an admin lands on it at
+ * "/" and the nav carries a single Dashboard entry. This route stays as a
+ * redirect so bookmarks and older links keep working.
+ */
 export default function Page() {
-  return (
-    <DashboardLayout>
-      <Suspense>
-        <AdminPage />
-      </Suspense>
-    </DashboardLayout>
-  );
+  redirect('/');
 }

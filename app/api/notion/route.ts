@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
-import { listHoldings } from '@/lib/portfolio';
+import { listHoldings, holdingValueMyr } from '@/lib/portfolio';
 import { derivePlatform } from '@/lib/platformGroups';
 import { listPolicies } from '@/lib/insurance';
 import { listAssets } from '@/lib/assets';
@@ -120,23 +120,17 @@ export async function GET(req: NextRequest) {
       // Clients + holdings via the data-source abstraction; join on notion_id so
       // clientId is consistent across Notion (page id) and Supabase (uuid).
       const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
-      const clientMap: Record<string, { id: string; name: string }> = {};
-      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { id: c.id, name: c.name };
+      const clientMap: Record<string, { id: string; name: string; advisorName: string }> = {};
+      for (const c of clients) if (c.notionId) clientMap[c.notionId] = { id: c.id, name: c.name, advisorName: c.advisorName };
 
       const data = holdings
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(h => {
           const purchase = h.purchaseMyr || h.purchaseOriginal * h.fxRate;
-          // Structured products: the FA's own read is that secondary-market
-          // bid-based mark-to-market isn't a meaningful figure right now, so
-          // every rollup (subtotals, donuts, total AUM) uses purchase/par
-          // instead of value_myr for this asset class until that changes.
-          // Gain/Return naturally read as flat for these — expected, since
-          // there's no valuation basis being compared against.
-          const value = h.assetClass === 'Structured Product'
-            ? purchase
-            : (h.valueMyr || h.valueOriginal * h.fxRate);
+          // Shared with the admin company-wide overview so both report the same
+          // AUM — see holdingValueMyr for why structured products mark at par.
+          const value    = holdingValueMyr(h);
           const gain     = value - purchase;
           const client   = clientMap[h.clientNotionId];
           return {
@@ -145,6 +139,11 @@ export async function GET(req: NextRequest) {
             units:         h.units,
             name:          h.name,
             clientName:    client?.name ?? '',
+            // The holding's own Advisor field is the source of truth for who
+            // owns this record (what scoping/PATCH/DELETE actually check) —
+            // the client's advisor is only a fallback for older rows that
+            // never had it stamped.
+            advisorName:   h.advisorName || client?.advisorName || '',
             assetClass:    h.assetClass,
             institution:   h.institution,
             // What the Investment page groups AUM by. Falls back to deriving it
@@ -214,6 +213,10 @@ export async function GET(req: NextRequest) {
             tpdCover:         pol.tpdCover,
             medicalClass:     pol.medicalClass,
             medicalCard:      pol.medicalCard,
+            // Only meaningful to an Admin, whose response spans every advisor —
+            // it's what the Insurance page's FA filter narrows on. An advisor's
+            // own response is already scoped to them, so it's constant there.
+            advisorName:      pol.advisorName,
           };
         });
       return json({ data });

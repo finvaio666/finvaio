@@ -18,7 +18,6 @@ const pageTitles: Record<string, string> = {
   '/ai': 'AI Assistant',
   '/emails': 'Email Hub',
   '/settings': 'Settings',
-  '/admin': 'Admin Dashboard',
   '/products': 'Products',
   '/premium-calculator': 'Premium Calculator',
 };

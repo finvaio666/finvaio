@@ -109,18 +109,33 @@ export async function POST(req: NextRequest) {
     return today >= d.toISOString().slice(0, 10);
   };
 
+  /** When a note's own life starts — closes before it existed say nothing. */
+  const noteStart = (h: typeof structured[number]): string =>
+    h.startDate || h.underlyingDetails!.schedule.map(s => s.date).sort()[0] || '';
+
   // Earliest date each ticker needs historical data from, across every
   // holding's unresolved past KO obs entries — one fetch per ticker covers
   // every holding that shares it, instead of re-fetching per holding.
   const earliestNeeded = new Map<string, string>();
+  const need = (ticker: string, from: string) => {
+    if (!from) return;
+    const prev = earliestNeeded.get(ticker);
+    if (!prev || from < prev) earliestNeeded.set(ticker, from);
+  };
   for (const h of structured) {
     for (const s of h.underlyingDetails!.schedule) {
       if (!s.label.startsWith('KO obs') || s.resolved || !isPast(s.date)) continue;
       for (const u of h.underlyingDetails!.underlyings) {
-        const ticker = u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name;
-        const prev = earliestNeeded.get(ticker);
-        if (!prev || s.date < prev) earliestNeeded.set(ticker, s.date);
+        need(u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name, s.date);
       }
+    }
+    // A KI touch can happen on ANY day, not just an observation date, so an
+    // underlying that hasn't been stamped yet needs its whole life fetched.
+    // Once stamped it's never re-checked, so this widens the fetch only until
+    // the first touch is found (and only for notes that have never touched).
+    for (const u of h.underlyingDetails!.underlyings) {
+      if (u.kiTouchedOn || !u.ki) continue;
+      need(u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name, noteStart(h));
     }
   }
   const historicalByTicker = new Map<string, Map<string, number>>();
@@ -133,16 +148,36 @@ export async function POST(req: NextRequest) {
 
   let updated = 0;
   let koObsResolved = 0;
+  let kiTouchesFound = 0;
   const failures: string[] = [];
   for (const h of structured) {
     const details = h.underlyingDetails!;
     let changed = false;
+    const start = noteStart(h);
     const newUnderlyings = details.underlyings.map(u => {
       const ticker = u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name;
+      let next = u;
+
+      // Stamp the first close at/below KI, once, from real historical closes.
+      // Write-once: an already-stamped underlying is never re-examined, so a
+      // later recovery can't erase the record (that erasure is exactly what
+      // made KI unanalysable before — see kiTouchedOn in lib/portfolio.ts).
+      if (!u.kiTouchedOn && u.ki) {
+        const closes = historicalByTicker.get(ticker);
+        if (closes) {
+          let first = '';
+          for (const [date, close] of closes) {
+            if (start && date < start) continue;   // before the note existed
+            if (close > u.ki) continue;
+            if (!first || date < first) first = date;
+          }
+          if (first) { next = { ...next, kiTouchedOn: first }; changed = true; kiTouchesFound++; }
+        }
+      }
+
       const price = prices[ticker];
-      if (price === undefined) return u;
-      changed = true;
-      return { ...u, today: price };
+      if (price !== undefined) { next = { ...next, today: price }; changed = true; }
+      return next;
     });
 
     // Resolve KO obs dates chronologically against ACTUAL historical closes.
@@ -158,7 +193,13 @@ export async function POST(req: NextRequest) {
         return closes ? closeOnOrBefore(closes, s.date) : null;
       });
       if (closesOnDate.some(c => c === null)) return s; // missing data — leave unresolved, retry next run
-      const cleared = details.underlyings.every((u, i) => (closesOnDate[i] as number) >= u.ko);
+      // Step-down notes lower the autocall barrier at each observation, so the
+      // test is against THIS date's barrier (entry x triggerPct), not the single
+      // `ko` on the underlying — comparing a later, lower step against the
+      // initial 100% level silently misses real knock-outs. Rows with no
+      // recorded triggerPct keep the old `ko` comparison.
+      const cleared = details.underlyings.every((u, i) =>
+        (closesOnDate[i] as number) >= (typeof s.triggerPct === 'number' ? u.entry * s.triggerPct / 100 : u.ko));
       changed = true;
       koObsResolved++;
       if (cleared) stillOpen = false;
@@ -178,6 +219,7 @@ export async function POST(req: NextRequest) {
     date: today,
     tickersFetched: Object.keys(prices).length,
     koObsResolved,
+    kiTouchesFound,
     tickersMissing: missing,
     holdingsUpdated: updated,
     holdingsFailed: failures.length,

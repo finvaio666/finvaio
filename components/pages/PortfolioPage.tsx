@@ -16,6 +16,7 @@ interface Holding {
   clientId: string;
   name: string;
   clientName: string;
+  advisorName: string;
   assetClass: string;
   institution: string;
   status: string;
@@ -34,8 +35,11 @@ interface Holding {
   underlyingDetails?: {
     couponRatePa?: number;
     priceAsOf?: string;
-    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
-    schedule: { date: string; label: string; resolved?: boolean; cleared?: boolean }[];
+    // kiTouchedOn: earliest close at/below KI, stamped once and never cleared —
+    // a durable record, unlike `today` which each price refresh overwrites.
+    // See lib/portfolio.ts for why it's a barrier touch, not a contractual KI.
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number; kiTouchedOn?: string }[];
+    schedule: { date: string; label: string; triggerPct?: number; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
 
@@ -55,7 +59,23 @@ const assetColor = (a: string) => ASSET_COLORS[a] ?? '#9CB8A0';
 // (the category header above already says it) — the note TYPE is the more
 // useful thing to show there instead, read off the issuer's own naming in
 // the holding name (e.g. "Barclays Bank PLC FCN — …").
-const noteType = (name: string) => name.match(/\b(FCN|ELN|DCN|BEN)\b/)?.[1] ?? 'Other';
+// A few notes' holding names don't carry the type token (unlike every other
+// note in the book), so the regex alone can't tell — confirmed by reading
+// their actual term sheets 2026-08-23: CSI's single-share barrier note is a
+// DCN (digital coupon, single observation at maturity — no autocall
+// schedule); both UBS notes are literally self-titled "ELNs" in the term
+// sheet header. Keyed on ISIN (the "(XS...)" in the holding name) so this
+// still works if either note gets renamed later.
+const NOTE_TYPE_OVERRIDE: Record<string, string> = {
+  XS3308648263: 'DCN', // CSI Financial Products — NVO
+  XS3432570078: 'ELN', // UBS — ARM/NBIS
+  XS3432735762: 'ELN', // UBS — ORCL/ARM/NBIS
+};
+const noteType = (name: string) => {
+  const isin = name.match(/\(([A-Z0-9]{12})\)/)?.[1];
+  if (isin && NOTE_TYPE_OVERRIDE[isin]) return NOTE_TYPE_OVERRIDE[isin];
+  return name.match(/\b(FCN|ELN|DCN|BEN|CRAN)\b/)?.[1] ?? 'Other';
+};
 const fmtK = (n: number) => n >= 1_000_000 ? `RM ${(n/1_000_000).toFixed(2)}M` : n >= 1000 ? `RM ${(n/1000).toFixed(1)}K` : `RM ${Math.round(n)}`;
 const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
@@ -96,13 +116,38 @@ function sortByAssetClass(rows: Holding[]): Holding[] {
 // the next observation; deeply negative means the worst one still has a long
 // way to climb. Requires at least one underlying with a live "today" price;
 // returns null otherwise so the caller falls back to ordinary Return %.
+// This observation's autocall barrier for one underlying. Step-down notes
+// lower it each date (100%, 95%, 90%…), so it's derived from the Initial
+// Fixing Level; `ko` is only the fallback for older rows that never recorded
+// a triggerPct (it holds a single barrier with no date attached, which for a
+// step-down note is right for at most one observation).
+function koBarrier(u: { entry: number; ko: number }, triggerPct?: number): number {
+  return typeof triggerPct === 'number' ? u.entry * triggerPct / 100 : u.ko;
+}
+
+/** The next observation whose barrier the note will actually be tested against. */
+function nextKoObs(details: Holding['underlyingDetails']) {
+  const today = new Date().toISOString().slice(0, 10);
+  return details?.schedule?.find(s => s.label.startsWith('KO obs') && s.date >= today) ?? null;
+}
+
+// The worst-performing underlying relative to the barrier of the NEXT
+// observation is the one that actually determines whether this note is close
+// to autocalling — 0% or above means every underlying has cleared it and the
+// note redeems at that observation; deeply negative means the worst one still
+// has a long way to climb. Measuring against the initial 100% level instead
+// would understate a step-down note as its barrier ratchets down.
+// Requires at least one underlying with a live "today" price; returns null
+// otherwise so the caller falls back to ordinary Return %.
 function worstVsKo(details: Holding['underlyingDetails']): { pct: number; ticker: string } | null {
   const unds = details?.underlyings;
   if (!unds || unds.length === 0) return null;
+  const trigger = nextKoObs(details)?.triggerPct;
   let worst: { pct: number; ticker: string } | null = null;
   for (const u of unds) {
-    if (typeof u.today !== 'number' || !u.ko) continue;
-    const pct = (u.today / u.ko - 1) * 100;
+    const barrier = koBarrier(u, trigger);
+    if (typeof u.today !== 'number' || !barrier) continue;
+    const pct = (u.today / barrier - 1) * 100;
     if (worst === null || pct < worst.pct) {
       worst = { pct, ticker: u.name.match(/\(([^)]+)\)/)?.[1] ?? u.name };
     }
@@ -163,6 +208,56 @@ function deriveNoteFlag(h: Holding): NoteFlag | null {
 // Group a client's holdings by FAME account no (e.g. a "PMART" wrapper account holds
 // several underlying funds) so the wrapper and its funds read as one account, not
 // unrelated duplicated line items. Holdings without an account no fall into one bucket.
+/**
+ * Filter dropdown for the Investment page's FA and Platform pickers.
+ *
+ * These were rows of pill buttons, which read well at three or four options and
+ * turn into a wrapping block of colour as the firm adds advisors and
+ * custodians. A select stays one line at any count, and keeps the per-option
+ * client counts that made the pills worth having.
+ *
+ * The control is tinted while a filter is active, because a narrowed page
+ * otherwise looks identical to the whole book with fewer clients in it.
+ */
+function FilterSelect({ label, value, onChange, allLabel, allCount, options }: {
+  label:    string;
+  value:    string;
+  onChange: (v: string) => void;
+  allLabel: string;
+  allCount: number;
+  options:  { value: string; count: number }[];
+}) {
+  const active = value !== '';
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)' }}>
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          padding: '7px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+          fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+          border: `1.5px solid ${active ? 'var(--accent2)' : 'var(--border)'}`,
+          background: active ? 'var(--accent2)' : 'var(--surface)',
+          color: active ? '#fff' : 'var(--text2)',
+          outline: 'none', minWidth: 170, transition: 'all 0.15s',
+        }}
+      >
+        <option value="" style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+          {allLabel} ({allCount})
+        </option>
+        {options.map(o => (
+          <option key={o.value} value={o.value} style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+            {o.value} ({o.count})
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function groupByAccount(rows: Holding[]): { key: string; label: string; rows: Holding[] }[] {
   const byAccount = new Map<string, Holding[]>();   // holdings that carry an account no
   const byPlatform = new Map<string, Holding[]>();  // no account no — bucket per platform
@@ -213,6 +308,7 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   const [pricesUpdating, setPricesUpdating] = useState(false);
   const [pricesResult, setPricesResult] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');   // '' = every platform
+  const [advisorFilter, setAdvisorFilter] = useState<string>('');     // '' = every FA — admin-only
   const { clients: allClients }        = useClients();
   // FAs propose changes to their book through the company admin rather than
   // editing/deleting investment records themselves — seed from the cached role
@@ -309,20 +405,32 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     ? allHoldings.filter(h => activeGroup.platforms.some(p => p.toLowerCase() === (h.platform ?? '').toLowerCase()))
     : allHoldings;
 
+  // Admin-only: the whole book naturally pools every FA's clients together
+  // (listHoldings has no advisor filter for Admin — see lib/repos/portfolio.ts),
+  // so this is what gives Admin an actual "one FA at a time" overview instead
+  // of one long undifferentiated client list. A non-admin's own holdings are
+  // already server-scoped to themselves, so this is a no-op for them.
+  const advisorOptions = isAdmin
+    ? [...new Set(groupHoldings.map(h => h.advisorName).filter(Boolean))].sort()
+    : [];
+  const advisorScoped = (isAdmin && advisorFilter)
+    ? groupHoldings.filter(h => h.advisorName === advisorFilter)
+    : groupHoldings;
+
   // Platforms an advisor can narrow to. On a group page that's the group's own
   // list; at the top level it's every platform actually present in the book.
   const platformOptions = (activeGroup
     ? activeGroup.platforms
-    : [...new Set(allHoldings.map(h => h.platform).filter(Boolean) as string[])]
-  ).filter(p => groupHoldings.some(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()))
+    : [...new Set(advisorScoped.map(h => h.platform).filter(Boolean) as string[])]
+  ).filter(p => advisorScoped.some(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()))
    .sort();
 
   // Applied before the client list is derived, so picking a platform also
   // narrows who is searchable — an advisor working an iFAST book shouldn't have
   // to wade through Phillip-only clients.
   const holdings = platformFilter
-    ? groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === platformFilter.toLowerCase())
-    : groupHoldings;
+    ? advisorScoped.filter(h => (h.platform ?? '').toLowerCase() === platformFilter.toLowerCase())
+    : advisorScoped;
 
   const clientNames = Array.from(new Set(holdings.map(h => h.clientName || 'Unknown'))).sort();
 
@@ -402,6 +510,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
     }, {}),
   ).map(([name, value]) => ({ name, value }));
 
+  // Admin's overview of AUM by FA — only meaningful when Admin hasn't already
+  // narrowed to one FA via advisorFilter (at that point every row shares the
+  // same advisor, so the ring would just be one full slice).
+  const advisorBreakdown = isAdmin && !advisorFilter
+    ? Object.entries(
+        visible.reduce<Record<string, number>>((acc, h) => {
+          const name = h.advisorName || 'Unassigned';
+          acc[name] = (acc[name] ?? 0) + h.value;
+          return acc;
+        }, {}),
+      ).map(([name, value]) => ({ name, value }))
+    : [];
+
   // Structured-note underlying exposure — each note's value is split evenly
   // across its basket (a 3-stock note contributes 1/3 of its value to each),
   // then aggregated across every structured product in view. Only appears
@@ -426,35 +547,37 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
 
   return (
     <>
-      {/* ── Platform filter — narrows holdings AND who's searchable below ── */}
-      {platformOptions.length > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)', marginRight: 2 }}>
-            Platform
-          </span>
-          {['', ...platformOptions].map(p => {
-            const on = platformFilter === p;
-            const count = p
-              ? new Set(groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()).map(h => h.clientId)).size
-              : new Set(groupHoldings.map(h => h.clientId)).size;
-            return (
-              <button
-                key={p || 'all'}
-                onClick={() => setPlatformFilter(p)}
-                style={{
-                  padding: '7px 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
-                  fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
-                  border: `1.5px solid ${on ? 'var(--accent2)' : 'var(--border)'}`,
-                  background: on ? 'var(--accent2)' : 'var(--surface)',
-                  color: on ? '#fff' : 'var(--text3)',
-                  transition: 'all 0.15s', whiteSpace: 'nowrap',
-                }}
-              >
-                {p || 'All platforms'}
-                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 11 }}>{count}</span>
-              </button>
-            );
-          })}
+      {/* ── Filters — FA (admin-only) and Platform, on one line so adding
+             advisors or custodians never reflows the page ── */}
+      {((isAdmin && advisorOptions.length > 1) || platformOptions.length > 1) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
+          {isAdmin && advisorOptions.length > 1 && (
+            <FilterSelect
+              label="FA"
+              value={advisorFilter}
+              onChange={setAdvisorFilter}
+              allLabel="All FAs"
+              allCount={new Set(groupHoldings.map(h => h.clientId)).size}
+              options={advisorOptions.map(a => ({
+                value: a,
+                count: new Set(groupHoldings.filter(h => h.advisorName === a).map(h => h.clientId)).size,
+              }))}
+            />
+          )}
+
+          {platformOptions.length > 1 && (
+            <FilterSelect
+              label="Platform"
+              value={platformFilter}
+              onChange={setPlatformFilter}
+              allLabel="All platforms"
+              allCount={new Set(groupHoldings.map(h => h.clientId)).size}
+              options={platformOptions.map(p => ({
+                value: p,
+                count: new Set(groupHoldings.filter(h => (h.platform ?? '').toLowerCase() === p.toLowerCase()).map(h => h.clientId)).size,
+              }))}
+            />
+          )}
         </div>
       )}
 
@@ -554,6 +677,9 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
               : 'No holdings to break down yet.'}
           />
           <DonutBreakdown title="AUM by asset class" items={assetBreakdown} />
+          {advisorBreakdown.length > 0 && (
+            <DonutBreakdown title="AUM by FA" items={advisorBreakdown} />
+          )}
           {underlyingBreakdown.length > 0 && (
             <DonutBreakdown title="Structured note underlying exposure" items={underlyingBreakdown} />
           )}
@@ -921,7 +1047,19 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>Entry</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>Strike</th>
                                 <th style={{ fontWeight: 600, padding: '4px 8px' }}>KI</th>
-                                <th style={{ fontWeight: 600, padding: '4px 8px' }}>KO</th>
+                                {/* Step-down notes lower the KO barrier each observation, so
+                                    label which one this column is actually showing. */}
+                                <th style={{ fontWeight: 600, padding: '4px 8px' }} title={(() => {
+                                  const n = nextKoObs(h.underlyingDetails);
+                                  return n && typeof n.triggerPct === 'number'
+                                    ? `Barrier at the next observation (${n.date}, ${n.triggerPct}% of initial)`
+                                    : 'Knock-Out barrier';
+                                })()}>
+                                  {(() => {
+                                    const n = nextKoObs(h.underlyingDetails);
+                                    return n && typeof n.triggerPct === 'number' ? `KO (${n.triggerPct}%)` : 'KO';
+                                  })()}
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -935,8 +1073,22 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                                   </td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.entry.toLocaleString()}</td>
                                   <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.strike.toLocaleString()}</td>
-                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ki.toLocaleString()}</td>
-                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{u.ko.toLocaleString()}</td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                                    {u.ki.toLocaleString()}
+                                    {/* A past touch stays visible after the price recovers —
+                                        `today` alone would show nothing ever happened. */}
+                                    {u.kiTouchedOn && (
+                                      <span
+                                        title={`Closed at or below the KI level on ${u.kiTouchedOn}. Recorded permanently — these notes mostly observe KI at maturity, so a touch is not by itself a knock-in.`}
+                                        style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', border: '1px solid #F79E1B66', background: '#F79E1B1A', borderRadius: 3, padding: '0 4px', cursor: 'help', fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap' }}
+                                      >
+                                        touched {u.kiTouchedOn.slice(2)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                                    {koBarrier(u, nextKoObs(h.underlyingDetails)?.triggerPct).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                                  </td>
                                 </tr>
                                 );
                               })}

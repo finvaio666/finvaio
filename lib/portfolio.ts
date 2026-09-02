@@ -45,18 +45,58 @@ export interface PortfolioHolding {
   underlyingDetails: {
     couponRatePa?: number;
     priceAsOf?: string;
-    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number }[];
+    // kiTouchedOn: earliest date this underlying's DAILY CLOSE was seen at or
+    // below its KI level, stamped once and never cleared. `today` is overwritten
+    // on every price refresh, so without this a dip below KI that recovered left
+    // no trace at all and "% of notes that knocked in" would silently undercount
+    // (found 2026-08-29). Recorded from actual historical closes, never guessed
+    // from the live price — same rule as KO observations.
+    //
+    // It is a barrier TOUCH, not by itself a contractual knock-in: these notes
+    // mostly observe KI at maturity, where only the final level counts, and the
+    // observation style isn't stored per note. Read it as "went below the
+    // barrier at some point", which is the analysable fact.
+    underlyings: { name: string; entry: number; strike: number; ki: number; ko: number; today?: number; kiTouchedOn?: string }[];
     // resolved/cleared: once a KO obs date has passed, its actual historical
     // closing price (not a live-price guess) determines whether the worst-of
     // basket cleared KO that day — see app/api/portfolio/update-underlying-prices.
     // Undefined until checked; resolved=true, cleared=false means it was
     // checked and did NOT trigger (client should just move on to the next date).
-    schedule: { date: string; label: string; resolved?: boolean; cleared?: boolean }[];
+    // triggerPct: this observation's autocall barrier as a % of the Initial
+    // Fixing Level. Step-down notes lower it each observation (100, 95, 90…),
+    // so the barrier is per-DATE, not the single `ko` on the underlying.
+    // Absent on older rows whose term wasn't recorded — readers fall back to
+    // `ko` there (see koBarrier in PortfolioPage.tsx).
+    schedule: { date: string; label: string; triggerPct?: number; resolved?: boolean; cleared?: boolean }[];
   } | null;
 }
 
 function useSupabase(): boolean {
   return process.env.DATA_SOURCE_PORTFOLIO === 'supabase';
+}
+
+/**
+ * A holding's MYR value as every rollup counts it — Investment-page totals and
+ * donuts, and the admin company-wide overview.
+ *
+ * Structured products are marked at purchase/par rather than the secondary-market
+ * bid: the FA's read is that a bid-based mark isn't a meaningful figure for these
+ * right now. Gain/Return therefore read flat for that class, which is expected —
+ * there's no valuation basis being compared against.
+ *
+ * Defined once here rather than inlined per call site so two screens can't
+ * quietly report different company AUM (the admin dashboard did exactly that
+ * until 2026-08-29 by summing the stale clients.aum_myr field instead).
+ */
+export function holdingValueMyr(h: PortfolioHolding): number {
+  const purchase = h.purchaseMyr || h.purchaseOriginal * h.fxRate;
+  if (h.assetClass === 'Structured Product') return purchase;
+  return h.valueMyr || h.valueOriginal * h.fxRate;
+}
+
+/** A structured note an admin has confirmed exited — excluded from active AUM. */
+export function isExitedHolding(h: PortfolioHolding): boolean {
+  return h.assetClass === 'Structured Product' && h.status === 'Redeemed';
 }
 
 // ── Notion property readers (real property types of the Portfolio DB) ──

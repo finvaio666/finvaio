@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
+import { listHoldings, holdingValueMyr, isExitedHolding, type PortfolioHolding } from '@/lib/portfolio';
+import { getPlatformGroups, derivePlatform } from '@/lib/platformGroups';
 import * as sbUsers from '@/lib/repos/users';
 
 const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
@@ -14,22 +16,65 @@ function rt(props: Record<string, unknown>, key: string): string {
 }
 
 export interface FAStats {
-  id:           string;
-  name:         string;
-  username:     string;
-  active:       boolean;
-  clientCount:  number;
-  totalAUM:     number;
-  hasGmail:     boolean;
-  lastActivity: string; // ISO date or ''
+  id:              string;
+  name:            string;
+  username:        string;
+  active:          boolean;
+  clientCount:     number;
+  investedClients: number;  // clients actually holding something — the rest are prospects/dormant
+  holdingCount:    number;
+  totalAUM:        number;
+  needsAction:     number;  // notes flagged KI/KO awaiting admin confirmation
+  hasGmail:        boolean;
+  lastActivity:    string;  // ISO date or ''
+}
+
+export interface Slice { name: string; value: number }
+
+/** A note flagged KI or likely-KO/matured, surfaced so an admin can act on it. */
+export interface AttentionNote {
+  id:         string;
+  name:       string;
+  advisor:    string;
+  clientName: string;
+  flag:       'ki' | 'likely-ko' | 'likely-matured';
+  valueMyr:   number;
 }
 
 export interface AdminOverview {
-  totalFAs:     number;
-  activeFAs:    number;
-  totalClients: number;
-  totalAUM:     number;
-  advisors:     FAStats[];
+  totalFAs:        number;
+  activeFAs:       number;
+  totalClients:    number;
+  investedClients: number;
+  totalHoldings:   number;
+  totalAUM:        number;
+  byAssetClass:    Slice[];
+  byPlatformGroup: Slice[];
+  advisors:        FAStats[];
+  attention:       AttentionNote[];
+}
+
+/** One full UTC day after `dateStr` — mirrors PortfolioPage's flag threshold. */
+function daysAfterUTC(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Same derivation the Investment page shows per note (see deriveNoteFlag in
+ * PortfolioPage) — a hint only, never written back; an admin still confirms.
+ * Duplicated rather than shared because that copy lives in a client component.
+ */
+function deriveNoteFlag(h: PortfolioHolding): AttentionNote['flag'] | null {
+  const d = h.underlyingDetails;
+  if (h.assetClass !== 'Structured Product' || !d?.schedule?.length) return null;
+  const todayUTC = new Date().toISOString().slice(0, 10);
+  const finalRow = d.schedule.find(s => s.label.startsWith('Final'));
+  if (finalRow && todayUTC >= daysAfterUTC(finalRow.date, 1)) return 'likely-matured';
+  if (d.schedule.some(s => s.label.startsWith('KO obs') && s.resolved && s.cleared)) return 'likely-ko';
+  if (d.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -69,42 +114,103 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Clients via the data-source abstraction (Notion or Supabase per flag), read once
-  // and aggregated by the Advisor tag. (AUM is incomplete in Supabase mode until it is
-  // recomputed post-portfolio; lastActivity is Notion-only until Supabase tracks edits.)
-  const byAdvisor = new Map<string, { count: number; aum: number; lastActivity: string }>();
-  for (const c of await listClients(config)) {
+  // AUM comes from the actual holdings, NOT the clients.aum_myr column: that
+  // field is a denormalized snapshot only some records ever had written, so
+  // summing it under-reported company AUM by ~5x (RM 10.7M against a real
+  // RM 64.8M on 2026-08-29). Holdings are the same rows the Investment page
+  // totals, through the same holdingValueMyr rule, so the two agree by
+  // construction. `config` is Admin here, so listHoldings/listClients are
+  // unscoped — the whole company.
+  const [clients, allHoldings, platformGroups] = await Promise.all([
+    listClients(config),
+    listHoldings(config),
+    getPlatformGroups(),
+  ]);
+
+  const holdings = allHoldings.filter(h => !isExitedHolding(h));
+  const clientNameById = new Map(clients.map(c => [c.notionId, c.name]));
+
+  // Client counts stay sourced from the client records (an FA's book includes
+  // people who hold nothing yet); investedClients is the subset with holdings.
+  const byAdvisor = new Map<string, {
+    count: number; invested: Set<string>; holdings: number;
+    aum: number; needsAction: number; lastActivity: string;
+  }>();
+  const agg = (name: string) => {
+    let a = byAdvisor.get(name);
+    if (!a) { a = { count: 0, invested: new Set(), holdings: 0, aum: 0, needsAction: 0, lastActivity: '' }; byAdvisor.set(name, a); }
+    return a;
+  };
+  for (const c of clients) {
     if (!c.advisorName) continue;
-    const agg = byAdvisor.get(c.advisorName) ?? { count: 0, aum: 0, lastActivity: '' };
-    agg.count += 1;
-    agg.aum   += c.aum;
-    if (c.lastEdited && c.lastEdited > agg.lastActivity) agg.lastActivity = c.lastEdited;
-    byAdvisor.set(c.advisorName, agg);
+    const a = agg(c.advisorName);
+    a.count += 1;
+    if (c.lastEdited && c.lastEdited > a.lastActivity) a.lastActivity = c.lastEdited;
+  }
+
+  const assetTotals = new Map<string, number>();
+  const groupTotals = new Map<string, number>();
+  const attention: AttentionNote[] = [];
+  let totalAUM = 0;
+
+  for (const h of holdings) {
+    const v = holdingValueMyr(h);
+    totalAUM += v;
+
+    const cls = h.assetClass || 'Unclassified';
+    assetTotals.set(cls, (assetTotals.get(cls) ?? 0) + v);
+
+    const platform = h.platform || derivePlatform(h.institution, h.fameAccountNo);
+    const group = platformGroups.find(g => g.platforms.some(p => p.toLowerCase() === platform.toLowerCase()));
+    const gName = group?.name ?? 'Ungrouped';
+    groupTotals.set(gName, (groupTotals.get(gName) ?? 0) + v);
+
+    const flag = deriveNoteFlag(h);
+    if (h.advisorName) {
+      const a = agg(h.advisorName);
+      a.holdings += 1;
+      a.aum += v;
+      if (h.clientNotionId) a.invested.add(h.clientNotionId);
+      if (flag) a.needsAction += 1;
+    }
+    if (flag) {
+      attention.push({
+        id: h.id, name: h.name, advisor: h.advisorName,
+        clientName: clientNameById.get(h.clientNotionId) ?? '', flag, valueMyr: v,
+      });
+    }
   }
 
   const advisors: FAStats[] = faUsers.map((u) => {
-    const agg = byAdvisor.get(u.name) ?? { count: 0, aum: 0, lastActivity: '' };
+    const a = byAdvisor.get(u.name);
     return {
-      id:           u.id,
-      name:         u.name || u.username,
-      username:     u.username,
-      active:       u.active,
-      clientCount:  agg.count,
-      totalAUM:     agg.aum,
-      hasGmail:     u.hasGmail,
-      lastActivity: agg.lastActivity,
+      id:              u.id,
+      name:            u.name || u.username,
+      username:        u.username,
+      active:          u.active,
+      clientCount:     a?.count ?? 0,
+      investedClients: a?.invested.size ?? 0,
+      holdingCount:    a?.holdings ?? 0,
+      totalAUM:        a?.aum ?? 0,
+      needsAction:     a?.needsAction ?? 0,
+      hasGmail:        u.hasGmail,
+      lastActivity:    a?.lastActivity ?? '',
     };
-  });
+  }).sort((x, y) => y.totalAUM - x.totalAUM);   // biggest book first — the ranking is the point
 
-  const activeFAs    = advisors.filter(a => a.active);
-  const totalClients = advisors.reduce((s, a) => s + a.clientCount, 0);
-  const totalAUM     = advisors.reduce((s, a) => s + a.totalAUM, 0);
+  const bySize = (m: Map<string, number>): Slice[] =>
+    [...m.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
   return NextResponse.json({
-    totalFAs:     advisors.length,
-    activeFAs:    activeFAs.length,
-    totalClients,
+    totalFAs:        advisors.length,
+    activeFAs:       advisors.filter(a => a.active).length,
+    totalClients:    clients.length,
+    investedClients: new Set(holdings.map(h => h.clientNotionId).filter(Boolean)).size,
+    totalHoldings:   holdings.length,
     totalAUM,
+    byAssetClass:    bySize(assetTotals),
+    byPlatformGroup: bySize(groupTotals),
     advisors,
+    attention:       attention.sort((a, b) => b.valueMyr - a.valueMyr),
   } as AdminOverview);
 }

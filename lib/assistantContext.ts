@@ -21,6 +21,7 @@ import { listHoldings } from './portfolio';
 import { listTasks, setTaskStatus } from './tasks';
 import { listMeetings } from './meetingNotes';
 import { listFunds, listPlans } from './products';
+import * as kbEntries from './repos/knowledgeEntries';
 
 export const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
@@ -246,27 +247,87 @@ export async function lookupKnowledgeBase(config: AdvisorConfig, question: strin
   } catch { return ''; }
 }
 
+// ── FINVA Master Brain — the firm's own FAQ + case-study memory ───────────────
+// Broad on purpose: a hard-won lesson (e.g. a bond default) is most needed on
+// questions that never say the word "bond" — "client wants low risk, 6%" is
+// exactly when someone is about to walk into it. Firm-level "big lessons" are
+// few by design, so carrying them on any advisory-shaped question is cheap
+// insurance against the AI reaching for a higher-yield product it shouldn't.
+const CASE_TRIGGER =
+  /\b(case|experience|before|previously|handled|happened|lesson|learn|advice|advise|recommend|suggest|propose|option|invest|investment|risk|return|yield|bond|fcn|note|structured|fund|insurance|policy|client|objection|complain|surrender|claim|default|fd|fixed deposit|process|procedure|how do (?:i|we))\b|案例|經驗|教訓|處理|建議|投資|風險|報酬|債券|違約|定存|流程/i;
+
+/** Words worth scoring on — drops noise so a long question doesn't match everything. */
+function keywordsOf(text: string): string[] {
+  return Array.from(new Set(
+    (text.toLowerCase().match(/[a-z]{4,}|[一-鿿]{2,}/g) ?? [])
+      .filter(w => !['this', 'that', 'with', 'from', 'have', 'what', 'when', 'they', 'their', 'about', 'would', 'should', 'could', 'client', 'looking'].includes(w)),
+  ));
+}
+
+/**
+ * Published FAQ + case studies from the firm's knowledge base.
+ * Big lessons always ride along; the rest are scored on keyword overlap so an
+ * unrelated question doesn't drag the whole library into the prompt.
+ */
+export async function lookupCaseStudies(question: string): Promise<string> {
+  if (!CASE_TRIGGER.test(question)) return '';
+  try {
+    const all = await kbEntries.listPublished();
+    if (all.length === 0) return '';
+
+    const qWords = keywordsOf(question);
+    const scored = all.map(e => {
+      const hay = keywordsOf(`${e.title} ${e.tags.join(' ')} ${e.keyTakeaway} ${e.category}`);
+      const hits = qWords.filter(w => hay.some(h => h.includes(w) || w.includes(h))).length;
+      return { e, hits };
+    });
+
+    const picked = [
+      ...scored.filter(s => s.e.isBigLesson).map(s => s.e),
+      ...scored.filter(s => !s.e.isBigLesson && s.hits > 0)
+        .sort((a, b) => b.hits - a.hits).slice(0, 4).map(s => s.e),
+    ];
+    if (picked.length === 0) return '';
+
+    const blocks = ['\n# FIRM KNOWLEDGE BASE — FAQ & CASE STUDIES (real experience from this firm\'s advisors; cite the contributor when you use one)'];
+    for (const e of picked) {
+      blocks.push(`\n## ${e.isBigLesson ? '⭐ BIG LESSON — ' : ''}${e.title}`);
+      blocks.push(`Type: ${e.entryType} · Category: ${e.category}${e.authorAdvisor ? ` · Contributed by: ${e.authorAdvisor}` : ''}`);
+      if (e.keyTakeaway) blocks.push(`KEY TAKEAWAY: ${e.keyTakeaway}`);
+      if (e.situation)   blocks.push(`Situation: ${e.situation}`);
+      if (e.resolution)  blocks.push(`How it was handled: ${e.resolution}`);
+    }
+    return blocks.join('\n');
+  } catch { return ''; }
+}
+
 /**
  * Everything that isn't tied to one selected client: mentioned-client profiles,
- * holdings search and the company catalogue. Run in parallel; each failure is
- * swallowed so one slow source can't take the whole answer down.
+ * holdings search, the company catalogue and the firm's case-study memory. Run
+ * in parallel; each failure is swallowed so one slow source can't take the
+ * whole answer down.
  */
 export async function buildSharedContext(
   config: AdvisorConfig,
   question: string,
   clients: ClientRecord[],
 ): Promise<string> {
-  const [clientData, fundData, kbData] = await Promise.all([
+  const [clientData, fundData, kbData, caseData] = await Promise.all([
     lookupMentionedClients(config, question, clients).catch(() => ''),
     lookupFundHoldings(config, question, clients).catch(() => ''),
     lookupKnowledgeBase(config, question).catch(() => ''),
+    lookupCaseStudies(question).catch(() => ''),
   ]);
-  return [clientData, fundData, kbData].filter(Boolean).join('\n');
+  return [clientData, fundData, kbData, caseData].filter(Boolean).join('\n');
 }
 
 /** Prompt rules for the sections buildSharedContext produces. */
 export const SHARED_DATA_RULES = `- When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If SEVERAL funds match the name the advisor used (e.g. two "Greater China" funds), present each fund's holders under its own heading and note they may want to be more specific. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
-- COMPANY KNOWLEDGE BASE: for questions about which fund/insurance plan is best, comparisons between products, returns, sum assured, premiums, EPF approval, risk level, or "what should I recommend" — answer FIRST from the "COMPANY KNOWLEDGE BASE" section. This is the firm's own curated, admin-maintained catalogue and is authoritative — treat it as the house view, not just background info. Only bring in general market/product knowledge if the catalogue doesn't cover what was asked, and say so explicitly when you do (e.g. "not in our catalogue, but generally…"). If the catalogue section says it's empty, tell the advisor no funds/plans have been added yet rather than answering from general knowledge as if it were house data.`;
+- COMPANY KNOWLEDGE BASE: for questions about which fund/insurance plan is best, comparisons between products, returns, sum assured, premiums, EPF approval, risk level, or "what should I recommend" — answer FIRST from the "COMPANY KNOWLEDGE BASE" section. This is the firm's own curated, admin-maintained catalogue and is authoritative — treat it as the house view, not just background info. Only bring in general market/product knowledge if the catalogue doesn't cover what was asked, and say so explicitly when you do (e.g. "not in our catalogue, but generally…"). If the catalogue section says it's empty, tell the advisor no funds/plans have been added yet rather than answering from general knowledge as if it were house data.
+- FIRM KNOWLEDGE BASE (FAQ & CASE STUDIES): this is real, hard-won experience from this firm's own advisors — treat it as more authoritative than general market knowledge, and ALWAYS attribute it ("this is X's case from the firm's knowledge base"), so the advisor knows it is a colleague's real experience and can go ask them for detail. An entry marked "⭐ BIG LESSON" is a firm-level lesson: surface it whenever it is even loosely relevant, and never contradict it.
+- ⚠️ RISK-TIER SAFETY RULE (this overrides any impulse to be helpful with a bigger number). When the advisor's question signals LOW RISK — "low risk", "conservative", "capital preservation", "safe", "FD alternative", "定存", "保守", "穩健", "低風險" — you must answer ONLY from instruments in that risk tier (cash, government bonds, investment-grade corporate bonds). NEVER present a higher-yielding product (structured notes/FCN, equities, leveraged products) as a way to "hit the target return". FCNs carry knock-in risk: in the worst case the client takes delivery of a collapsed stock and loses a large part of their principal — they are NOT a low-risk instrument no matter how attractive the coupon looks. If the firm's low-risk holdings cannot reach the return the client wants, SAY SO PLAINLY and explain the gap. An honest "we can't reach that at this risk level" is the correct answer; reaching up the risk ladder to produce a nicer number is a harmful one. If you do mention a higher-risk instrument for context, you must state explicitly that it sits in a different risk tier and name the specific risk mechanism.
+- ⚠️ DEFAULTED / DISTRESSED POSITIONS. Before citing any holding as a live option, check its state — a bond can still read as "Active" with no maturity date and yet be in default. If the current value is drastically below cost, treat it as defaulted/distressed: never present it as an available yield, and if it is relevant, cite it as a cautionary case with its recovery rate. (Concrete precedent in the firm: a 6.3% corporate bond that defaulted and recovered ~0.1% of capital.)
+- You describe what the firm has done and what it currently runs; you never tell the advisor what their client should buy. Investment recommendations are the licensed advisor's call, made through the firm's own suitability and compliance process.`;
 
 // ── Task intents (mark done / create) ─────────────────────────────────────────
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import DashboardPage from './DashboardPage';
-import AdminHomePage from './AdminHomePage';
+import AdminPage from './AdminPage';
 
 export default function HomePage() {
   const [role, setRole] = useState<string | null>(null);
@@ -15,5 +15,7 @@ export default function HomePage() {
   }, []);
 
   if (role === null) return null;
-  return role === 'Admin' ? <AdminHomePage /> : <DashboardPage />;
+  // An admin's dashboard is the admin dashboard — one page, one nav entry.
+  // /admin redirects here so existing links still land somewhere sensible.
+  return role === 'Admin' ? <AdminPage /> : <DashboardPage />;
 }

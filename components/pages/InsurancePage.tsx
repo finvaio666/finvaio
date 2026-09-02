@@ -32,6 +32,7 @@ interface Policy {
   medicalCard:  string;
   policyOwner:  string;
   lifeAssured:  string;
+  advisorName:  string;   // only varies for an Admin — their response spans every FA
 }
 
 interface ClientData {
@@ -248,6 +249,10 @@ export default function InsurancePage() {
   const [search, setSearch]     = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing,  setEditing]  = useState<PolicyDraft | null>(null);
+  // Admin-only: the response spans every advisor, so it needs narrowing before
+  // the client picker is usable. Seeded from the cached role like the sidebar's.
+  const [isAdmin] = useState(() => typeof window !== 'undefined' && sessionStorage.getItem('aria-role') === 'Admin');
+  const [advisorFilter, setAdvisorFilter] = useState<string>('');   // '' = every FA
 
   const loadData = (fresh = false) => {
     setLoading(true);
@@ -283,13 +288,20 @@ export default function InsurancePage() {
     setFormOpen(true);
   }
 
-  const clientNames = Array.from(new Set(policies.map(p => p.clientName).filter(Boolean))).sort();
+  // FA scoping happens before anything else derives from the list, so the client
+  // picker, the totals and the gap count all describe the same book.
+  const advisorOptions = Array.from(new Set(policies.map(p => p.advisorName).filter(Boolean))).sort();
+  const scoped = (isAdmin && advisorFilter)
+    ? policies.filter(p => p.advisorName === advisorFilter)
+    : policies;
+
+  const clientNames = Array.from(new Set(scoped.map(p => p.clientName).filter(Boolean))).sort();
 
   // Only offer clients this page can actually show policies for. Names are matched
   // alongside ids because a policy can be attributed to its Policy Owner instead of
   // the linked client (see ownerOf below).
-  const insuredIds   = new Set(policies.map(p => p.clientId).filter(Boolean));
-  const insuredNames = new Set(policies.flatMap(p => [p.clientName, (p.policyOwner || '').trim()]).filter(Boolean));
+  const insuredIds   = new Set(scoped.map(p => p.clientId).filter(Boolean));
+  const insuredNames = new Set(scoped.flatMap(p => [p.clientName, (p.policyOwner || '').trim()]).filter(Boolean));
   const pickerClients = clients.filter(c => insuredIds.has(c.id) || insuredNames.has(c.name));
 
   // Derive name from id for filtering (policies only have clientName)
@@ -304,8 +316,8 @@ export default function InsurancePage() {
   const ownerOf = (p: Policy) => (p.policyOwner || '').trim() || p.clientName;
 
   const visible = filterClient === null ? [] : filterClient === 'All'
-    ? policies
-    : policies.filter(p => p.clientName === filterClient || ownerOf(p) === filterClient);
+    ? scoped
+    : scoped.filter(p => p.clientName === filterClient || ownerOf(p) === filterClient);
   const activePolicies = visible.filter(p => p.status?.includes('Active'));
 
   const totalSumAssured    = activePolicies.reduce((s, p) => s + p.sumAssured, 0);
@@ -345,6 +357,37 @@ export default function InsurancePage() {
 
   return (
     <>
+      {/* ── FA filter — admin-only. Matches the Investment page's control, since
+             an admin browsing either book is doing the same thing. ── */}
+      {isAdmin && advisorOptions.length > 1 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text3)' }}>
+            FA
+          </span>
+          <select
+            value={advisorFilter}
+            onChange={e => { setAdvisorFilter(e.target.value); setFilterId(''); setSearch(''); }}
+            style={{
+              padding: '7px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+              fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+              border: `1.5px solid ${advisorFilter ? 'var(--accent2)' : 'var(--border)'}`,
+              background: advisorFilter ? 'var(--accent2)' : 'var(--surface)',
+              color: advisorFilter ? '#fff' : 'var(--text2)',
+              outline: 'none', minWidth: 170, transition: 'all 0.15s',
+            }}
+          >
+            <option value="" style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+              All FAs ({policies.length})
+            </option>
+            {advisorOptions.map(a => (
+              <option key={a} value={a} style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+                {a} ({policies.filter(p => p.advisorName === a).length})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {/* ── Client selector ── always visible at top ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <div style={{ width: 300 }}>
