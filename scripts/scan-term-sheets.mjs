@@ -94,6 +94,26 @@ function likelyClientHint(filePath, scanRoot) {
   return segments.filter(Boolean).join(' / ') || '(root of scanned folder)';
 }
 
+// Loosen "LIM_WEI_YI" / "Siew Voon Fei" / "TracyChia" into a comparable form —
+// underscores to spaces, case-folded — so it can be matched against real
+// client_name values from the database.
+const normalizeName = (s) => s.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Which client (if any) this file's folder path actually names. The deepest
+// folder segment is tried first (client folders are usually the leaf, e.g.
+// ".../TracyChia/LIM_WEI_YI/note.pdf"), falling back to shallower ones for
+// files that sit directly under an advisor folder (".../Siew Voon Fei/note.pdf").
+function matchClient(filePath, scanRoot, clients) {
+  const rel = path.relative(scanRoot, filePath);
+  const segments = rel.split(path.sep).slice(0, -1).reverse();
+  for (const seg of segments) {
+    const norm = normalizeName(seg);
+    const hit = clients.find(c => normalizeName(c.client_name) === norm);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 // ── 3. Extract full text via Python + pypdf ───────────────────────────────────
 function extractText(filePath) {
   const escaped = filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -235,17 +255,41 @@ function parseNatixis(text) {
 const PARSERS = { nomura: parseNomura, marex: parseMarex, ubs_vmran: parseUbsVmran, csi: parseCsi, natixis: parseNatixis };
 
 // ── 5. What's already in the live book ────────────────────────────────────────
-async function loadExistingIsins() {
-  const set = new Set();
+// Keyed by ISIN alone AND by "ISIN__clientNotionId" — a shared note (several
+// clients each holding their own slice of the same tranche) is common in this
+// book, so "this ISIN exists somewhere" is not the same question as "this
+// ISIN exists FOR THIS CLIENT". Diffing on ISIN alone would silently skip a
+// new client who bought into an already-inserted note (caught 2026-09-05:
+// XS3395171005 already sits under 4 different clients).
+async function loadExisting() {
+  const byIsin = new Set();
+  const byIsinClient = new Set();
   let from = 0;
   for (;;) {
-    const r = await fetch(`${SB}/rest/v1/portfolio_holdings?deleted_at=is.null&select=product_name&order=id&offset=${from}&limit=1000`, { headers: H });
+    const r = await fetch(`${SB}/rest/v1/portfolio_holdings?deleted_at=is.null&select=product_name,client_notion_id&order=id&offset=${from}&limit=1000`, { headers: H });
     const rows = await r.json();
-    for (const row of rows) if (row.product_name) set.add(row.product_name);
+    for (const row of rows) {
+      if (!row.product_name) continue;
+      byIsin.add(row.product_name);
+      byIsinClient.add(`${row.product_name}__${row.client_notion_id}`);
+    }
     if (rows.length < 1000) break;
     from += 1000;
   }
-  return set;
+  return { byIsin, byIsinClient };
+}
+
+async function loadClients() {
+  const out = [];
+  let from = 0;
+  for (;;) {
+    const r = await fetch(`${SB}/rest/v1/clients?select=notion_id,client_name,advisor&order=id&offset=${from}&limit=1000`, { headers: H });
+    const rows = await r.json();
+    out.push(...rows);
+    if (rows.length < 1000) break;
+    from += 1000;
+  }
+  return out;
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────
@@ -254,16 +298,35 @@ const main = async () => {
   const pdfs = walkPdfs(folder);
   console.log(`Found ${pdfs.length} PDF(s).\n`);
 
-  const existing = await loadExistingIsins();
-  console.log(`${existing.size} ISIN(s) already in the live book.\n`);
+  const { byIsin, byIsinClient } = await loadExisting();
+  const clients = await loadClients();
+  console.log(`${byIsin.size} ISIN(s) already in the live book, across ${clients.length} clients.\n`);
 
   const missing = [];
   const skipped = [];
   for (const filePath of pdfs) {
     const isin = isinFromFilename(filePath);
     if (!isin) { skipped.push({ filePath, reason: 'no ISIN found in filename' }); continue; }
-    if (existing.has(isin) && !forceIsins.has(isin)) continue; // already inserted — nothing to do
-    missing.push({ filePath, isin, clientHint: likelyClientHint(filePath, folder) });
+
+    const client = matchClient(filePath, folder, clients);
+    const hint = likelyClientHint(filePath, folder);
+
+    if (forceIsins.has(isin)) {
+      // --force bypasses the "already have it" check entirely, for spot-testing.
+    } else if (client) {
+      // We know exactly which client this is — check the ISIN+client pair, not
+      // just the ISIN, so a new client on an already-inserted note isn't skipped.
+      if (byIsinClient.has(`${isin}__${client.notion_id}`)) continue;
+    } else {
+      // Couldn't match the folder to a known client at all — fall back to the
+      // ISIN-only check (better than nothing) but flag it loudly, since this
+      // is exactly the case that can hide a real new-client insertion.
+      if (byIsin.has(isin)) {
+        console.log(`⚠ ${isin}: folder "${hint}" didn't match any known client, and this ISIN already exists for OTHER client(s) — skipping, but VERIFY this isn't actually a new client. Rename the folder to match the client's name in FINVA to fix this.\n`);
+        continue;
+      }
+    }
+    missing.push({ filePath, isin, clientHint: hint, matchedClient: client ? { name: client.client_name, advisor: client.advisor } : null });
   }
 
   if (skipped.length) {
@@ -280,8 +343,16 @@ const main = async () => {
   console.log(`=== ${missing.length} note(s) in the folder NOT yet in the book ===\n`);
   const queue = [];
   for (const m of missing) {
-    console.log(`${m.isin}  (client hint: ${m.clientHint})`);
+    const clientLine = m.matchedClient
+      ? `client: ${m.matchedClient.name} (${m.matchedClient.advisor}) — matched to folder "${m.clientHint}"`
+      : `client: NOT MATCHED — folder "${m.clientHint}" doesn't correspond to a known client name; confirm manually`;
+    console.log(`${m.isin}  —  ${clientLine}`);
     console.log(`  ${m.filePath}`);
+    // The term sheet only ever states the total tranche size (e.g. "Denomination
+    // USD 260,000"), never a per-client split — that number always has to come
+    // from you (your own instruction, or the official position statement), the
+    // same way it has for every shared note inserted this session.
+    console.log(`  ⓘ This client's actual invested amount is NOT in the term sheet — you'll need to supply it.`);
     const text = extractText(m.filePath);
     if (!text) {
       console.log(`  ⚠ Could not extract PDF text (is python3 + pypdf installed? \`pip install pypdf\`)\n`);
