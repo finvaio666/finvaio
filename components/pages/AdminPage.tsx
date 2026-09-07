@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import type { AdminOverview, FAStats, AttentionNote } from '@/app/api/admin/overview/route';
+import type { AdminOverview, FAStats, AttentionGroup } from '@/app/api/admin/overview/route';
 import type { AdminClient } from '@/app/api/admin/clients/route';
 import type { DataQualityReport } from '@/app/api/admin/data-quality/route';
 import type { InsuranceOverview } from '@/app/api/admin/insurance-overview/route';
@@ -682,7 +682,102 @@ function PlatformsTab() {
   );
 }
 
-type AdminTab = 'today' | 'investment' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality';
+// ── Needs Action tab ──────────────────────────────────────────────────────────
+// Every Matured / KO / KI structured note company-wide, grouped by ISIN so a
+// note shared across several clients (and possibly several FAs) shows up as
+// ONE entry naming every affected FA — not as unrelated-looking duplicate
+// rows an admin has to notice are actually the same note. Confirming exit on
+// a group is one bulk action that redeems every client's copy of that note
+// at once (see POST /api/portfolio/confirm-note-exit) — the whole reason this
+// is grouped in the first place, rather than left as individual confirm
+// buttons that could be clicked one at a time and leave siblings behind.
+function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
+  groups: AttentionGroup[];
+  onConfirm: (g: AttentionGroup) => void;
+  confirmingKey: string;
+}) {
+  if (!groups.length) {
+    return (
+      <div className="section" style={{ padding: '64px 32px', textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>Nothing needs action</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)' }}>No structured note is flagged Matured, likely knocked-out, or KI-breached right now.</div>
+      </div>
+    );
+  }
+
+  const flagMeta = {
+    ki:              { label: 'KI breached',  color: '#d97706', bg: 'rgba(217,119,6,0.12)',  border: 'rgba(217,119,6,0.35)' },
+    'likely-ko':     { label: 'Likely KO',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.35)' },
+    'likely-matured': { label: 'Matured',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.35)' },
+  } as const;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+        {groups.length} note{groups.length === 1 ? '' : 's'} flagged. A note shared by several clients (and possibly several FAs) shows once, with every
+        affected FA named — confirming it redeems every client&apos;s copy in one action. Knock-in is a risk warning on a note still held; there is nothing to confirm there.
+      </div>
+      {groups.map(g => {
+        const meta = flagMeta[g.flag];
+        const key = g.productName;
+        const isConfirming = confirmingKey === key;
+        return (
+          <div key={key} style={{ background: 'var(--surface)', border: `1px solid ${meta.border}`, borderRadius: 10, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{g.name}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: meta.color, background: meta.bg, border: `1px solid ${meta.border}` }}>
+                    {meta.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                  {g.rows.length} client{g.rows.length === 1 ? '' : 's'} affected · {fmt(g.totalValueMyr)} total
+                  {g.advisors.length > 1 && (
+                    <span style={{ marginLeft: 6, color: '#F37338', fontWeight: 600 }}>· shared across {g.advisors.length} FAs</span>
+                  )}
+                </div>
+              </div>
+              {g.flag === 'ki' ? (
+                <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>Monitor only — still held</span>
+              ) : (
+                <button
+                  onClick={() => onConfirm(g)}
+                  disabled={isConfirming}
+                  title={`Mark all ${g.rows.length} affected holding(s) Redeemed`}
+                  style={{
+                    flexShrink: 0, padding: '7px 16px', fontSize: 12, fontWeight: 700, borderRadius: 8,
+                    cursor: isConfirming ? 'wait' : 'pointer',
+                    background: isConfirming ? 'var(--surface)' : '#ef4444',
+                    color: isConfirming ? 'var(--text3)' : '#fff',
+                    border: '1px solid #ef4444', opacity: isConfirming ? 0.6 : 1,
+                  }}
+                >
+                  {isConfirming ? 'Saving…' : g.rows.length > 1 ? `Confirm exit (all ${g.rows.length})` : 'Confirm exit'}
+                </button>
+              )}
+            </div>
+
+            {/* Who this actually touches — the FAs and their clients, so an
+                admin acting on a shared note sees the full blast radius before
+                clicking, not just a count. */}
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {g.rows.map(r => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text2)' }}>{r.clientName || '—'} <span style={{ color: 'var(--text3)' }}>· {r.advisor || '—'}</span></span>
+                  <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{fmt(r.valueMyr)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type AdminTab = 'today' | 'investment' | 'action' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -734,27 +829,35 @@ export default function AdminPage() {
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
   /**
-   * Confirm a flagged note has actually exited. This is the only thing that
-   * writes the exit: the KO/maturity flag itself is a system hint and never
-   * changes status on its own, so nothing leaves an advisor's book without an
-   * admin saying so here. Marking it Redeemed drops it from active AUM.
+   * Confirm a flagged note has actually exited — for EVERY client holding a
+   * copy of it, in one action. The KO/maturity flag itself is a system hint
+   * and never changes status on its own, so nothing leaves an advisor's book
+   * without an admin saying so here; this is the only thing that writes it.
+   *
+   * A shared note is one row per client, but the underlying fact (it knocked
+   * out / matured) is the same for all of them — so this calls the bulk
+   * endpoint keyed on the ISIN, not a single holding id, and it redeems every
+   * client's copy across every FA at once. See POST /api/portfolio/confirm-note-exit.
    *
    * Deliberately offered for KO/maturity only — a KI is a principal-protection
    * warning on a note that is still held, so there is nothing to confirm.
    */
-  async function confirmExit(n: AttentionNote) {
-    const label = n.flag === 'likely-matured' ? 'matured' : 'knocked out';
+  async function confirmExit(g: AttentionGroup) {
+    const label = g.flag === 'likely-matured' ? 'matured' : 'knocked out';
+    const who = g.rows.length > 1
+      ? `${g.rows.length} clients across ${g.advisors.join(', ')}`
+      : `${g.rows[0]?.clientName || '—'} (${g.rows[0]?.advisor || '—'})`;
     if (!confirm(
-      `Confirm this note has ${label}?\n\n${n.name}\n` +
-      `Client: ${n.clientName || '—'}\nAdvisor: ${n.advisor || '—'}\nValue: ${fmt(n.valueMyr)}\n\n` +
-      `It will be marked Redeemed and removed from ${n.advisor || 'the advisor'}'s active AUM.`
+      `Confirm this note has ${label}?\n\n${g.name}\n` +
+      `Affects: ${who}\nTotal value: ${fmt(g.totalValueMyr)}\n\n` +
+      `All ${g.rows.length} holding(s) will be marked Redeemed and removed from active AUM.`
     )) return;
-    setConfirmingId(n.id);
+    setConfirmingId(g.productName);
     try {
-      const res = await fetch('/api/portfolio', {
-        method:  'PATCH',
+      const res = await fetch('/api/portfolio/confirm-note-exit', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ id: n.id, status: 'Redeemed' }),
+        body:    JSON.stringify({ productName: g.productName }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { alert(d.error ?? 'Could not confirm this note.'); return; }
@@ -824,6 +927,7 @@ export default function AdminPage() {
             {([
               { id: 'today',      label: '🏠 Today'      },
               { id: 'investment', label: '📈 Investment' },
+              { id: 'action',     label: `🔔 Needs Action${overview.attention.length ? ` (${overview.attention.length})` : ''}` },
               { id: 'insurance',  label: '🛡️ Insurance'  },
               { id: 'advisors',   label: '👥 Advisors'   },
               { id: 'clients',    label: '📋 All Clients' },
@@ -903,59 +1007,23 @@ export default function AdminPage() {
                 })}
               </div>
 
-              {/* The one thing on this page that needs a decision, not just a read.
-                  Confirming an exit happens on the Investment page next to the note. */}
-              {overview.attention.length > 0 && (
-                <div style={{ background: 'var(--surface)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#ef4444', marginBottom: 4 }}>
-                    Structured notes needing action ({overview.attention.length})
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
-                    Confirming an exit marks the note Redeemed and removes it from that advisor&apos;s active AUM. Knock-in is a risk warning on a note still held — there is nothing to confirm.
-                  </div>
-                  {overview.attention.slice(0, 12).map(n => (
-                    <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{[n.clientName, n.advisor].filter(Boolean).join(' · ')}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{fmt(n.valueMyr)}</span>
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap',
-                          color: n.flag === 'ki' ? '#d97706' : '#ef4444',
-                          background: n.flag === 'ki' ? 'rgba(217,119,6,0.12)' : 'rgba(239,68,68,0.12)',
-                          border: `1px solid ${n.flag === 'ki' ? 'rgba(217,119,6,0.35)' : 'rgba(239,68,68,0.35)'}`,
-                        }}>
-                          {n.flag === 'ki' ? 'KI breached' : n.flag === 'likely-ko' ? 'Likely KO' : 'Matured'}
-                        </span>
-                        {n.flag === 'ki' ? (
-                          <span style={{ fontSize: 11, color: 'var(--text3)', width: 96, textAlign: 'right' }}>Monitor only</span>
-                        ) : (
-                          <button
-                            onClick={() => confirmExit(n)}
-                            disabled={confirmingId === n.id}
-                            title="Mark this note Redeemed and remove it from active AUM"
-                            style={{
-                              width: 96, padding: '5px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6,
-                              cursor: confirmingId === n.id ? 'wait' : 'pointer',
-                              background: confirmingId === n.id ? 'var(--surface)' : '#ef4444',
-                              color: confirmingId === n.id ? 'var(--text3)' : '#fff',
-                              border: '1px solid #ef4444',
-                              opacity: confirmingId === n.id ? 0.6 : 1,
-                            }}
-                          >
-                            {confirmingId === n.id ? 'Saving…' : 'Confirm exit'}
-                          </button>
-                        )}
-                      </div>
+              {/* The one thing on this page that needs a decision, not just a
+                  read — full detail (grouped by note, with bulk confirm) lives
+                  on its own tab so it isn't squeezed into a capped preview. */}
+              {overview.attentionGroups.length > 0 && (
+                <div
+                  onClick={() => setTab('action')}
+                  style={{ background: 'var(--surface)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, padding: '16px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#ef4444' }}>
+                      {overview.attentionGroups.length} note{overview.attentionGroups.length === 1 ? '' : 's'} flagged Matured / KO / KI ({overview.attention.length} client holding{overview.attention.length === 1 ? '' : 's'} affected)
                     </div>
-                  ))}
-                  {overview.attention.length > 12 && (
-                    <div style={{ fontSize: 11, color: 'var(--text3)', paddingTop: 10 }}>
-                      +{overview.attention.length - 12} more — see the Investment page.
+                    <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                      A note shared across FAs shows once, naming everyone it touches — confirming it redeems every client&apos;s copy together.
                     </div>
-                  )}
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>Review →</span>
                 </div>
               )}
 
@@ -965,6 +1033,10 @@ export default function AdminPage() {
                 <button onClick={() => router.push('/portfolio')} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>📈 Open Investments</button>
               </div>
             </div>
+          )}
+
+          {tab === 'action' && (
+            <NeedsActionTab groups={overview.attentionGroups} onConfirm={confirmExit} confirmingKey={confirmingId} />
           )}
 
           {tab === 'advisors' && (

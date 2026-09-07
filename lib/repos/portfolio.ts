@@ -139,6 +139,28 @@ export async function updateHolding(config: AdvisorConfig, id: string, patch: Re
   if (!data || data.length === 0) throw new Error(`portfolio update: no live holding with id ${id}`);
 }
 
+/**
+ * Redeem every LIVE holding that shares this ISIN, across every advisor and
+ * client — the bulk counterpart to updateHolding, for a shared structured
+ * note. A note held by several clients is one row per client; confirming a
+ * KO/maturity is a fact about the NOTE, so it has to land on every one of
+ * those rows at once, not just the single row an admin happened to click.
+ * No per-row ownership check (unlike updateHolding/deleteHolding) — this
+ * intentionally crosses advisor boundaries, so it's gated by requiring Admin
+ * at the route level instead. Returns the ids actually updated.
+ */
+export async function redeemByProductName(productName: string): Promise<string[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .update({ status: 'Redeemed' })
+    .eq('product_name', productName)
+    .is('deleted_at', null)
+    .neq('status', 'Redeemed')
+    .select('id');
+  if (error) throw new Error(`portfolio redeemByProductName failed: ${error.message}`);
+  return (data ?? []).map(r => (r as { id: string }).id);
+}
+
 /** Soft-delete one holding (advisor-scoped; recoverable — clear deleted_at to restore). */
 export async function deleteHolding(config: AdvisorConfig, id: string): Promise<void> {
   await assertOwner(config, id);

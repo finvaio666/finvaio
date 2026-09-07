@@ -33,12 +33,30 @@ export interface Slice { name: string; value: number }
 
 /** A note flagged KI or likely-KO/matured, surfaced so an admin can act on it. */
 export interface AttentionNote {
-  id:         string;
-  name:       string;
-  advisor:    string;
-  clientName: string;
-  flag:       'ki' | 'likely-ko' | 'likely-matured';
-  valueMyr:   number;
+  id:          string;
+  productName: string;   // ISIN — what groups this row with its sibling copies below
+  name:        string;
+  advisor:     string;
+  clientName:  string;
+  flag:        'ki' | 'likely-ko' | 'likely-matured';
+  valueMyr:    number;
+}
+
+/**
+ * One flagged note, aggregated across every client/FA holding a copy of it.
+ * A shared structured note is one row per client in portfolio_holdings, but
+ * KO/KI/maturity is a fact about the NOTE, not about any one client's slice
+ * of it — confirming CRWD/ZS/NET knocked out means it knocked out for every
+ * client who held it, not just the first row an admin happens to click.
+ * `rows` is what a single "Confirm exit" click on this group has to update.
+ */
+export interface AttentionGroup {
+  productName:  string;
+  name:         string;
+  flag:         'ki' | 'likely-ko' | 'likely-matured';
+  totalValueMyr: number;
+  advisors:     string[];   // distinct FAs affected, for the "who does this touch" summary
+  rows:         { id: string; clientName: string; advisor: string; valueMyr: number }[];
 }
 
 export interface AdminOverview {
@@ -52,6 +70,7 @@ export interface AdminOverview {
   byPlatformGroup: Slice[];
   advisors:        FAStats[];
   attention:       AttentionNote[];
+  attentionGroups: AttentionGroup[];
 }
 
 /** One full UTC day after `dateStr` — mirrors PortfolioPage's flag threshold. */
@@ -175,7 +194,7 @@ export async function GET(req: NextRequest) {
     }
     if (flag) {
       attention.push({
-        id: h.id, name: h.name, advisor: h.advisorName,
+        id: h.id, productName: h.productName, name: h.name, advisor: h.advisorName,
         clientName: clientNameById.get(h.clientNotionId) ?? '', flag, valueMyr: v,
       });
     }
@@ -201,6 +220,22 @@ export async function GET(req: NextRequest) {
   const bySize = (m: Map<string, number>): Slice[] =>
     [...m.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
+  // Group flagged rows by ISIN — a shared note is one row per client, but the
+  // KO/KI/maturity fact is about the note, so every client holding it needs
+  // to show up together, not as separate unrelated-looking line items.
+  // Falls back to grouping by holding id for the (should-not-happen) case of
+  // a flagged row with no ISIN, so it still surfaces rather than vanishing.
+  const groupMap = new Map<string, AttentionGroup>();
+  for (const n of attention) {
+    const key = n.productName || `__${n.id}`;
+    let g = groupMap.get(key);
+    if (!g) { g = { productName: n.productName, name: n.name, flag: n.flag, totalValueMyr: 0, advisors: [], rows: [] }; groupMap.set(key, g); }
+    g.totalValueMyr += n.valueMyr;
+    if (n.advisor && !g.advisors.includes(n.advisor)) g.advisors.push(n.advisor);
+    g.rows.push({ id: n.id, clientName: n.clientName, advisor: n.advisor, valueMyr: n.valueMyr });
+  }
+  const attentionGroups = [...groupMap.values()].sort((a, b) => b.totalValueMyr - a.totalValueMyr);
+
   return NextResponse.json({
     totalFAs:        advisors.length,
     activeFAs:       advisors.filter(a => a.active).length,
@@ -212,5 +247,6 @@ export async function GET(req: NextRequest) {
     byPlatformGroup: bySize(groupTotals),
     advisors,
     attention:       attention.sort((a, b) => b.valueMyr - a.valueMyr),
+    attentionGroups,
   } as AdminOverview);
 }
