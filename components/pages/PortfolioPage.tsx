@@ -20,6 +20,7 @@ interface Holding {
   assetClass: string;
   institution: string;
   status: string;
+  issueDate: string;
   maturity: string;
   currency: string;
   valueOrig: number;
@@ -928,7 +929,16 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                           )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, paddingLeft: showAcctHeaders ? 26 : 13 }}>
-                          {[h.assetClass === 'Structured Product' ? noteType(h.name) : h.assetClass, h.institution].filter(Boolean).join(' · ')}
+                          {[
+                            h.assetClass === 'Structured Product' ? noteType(h.name) : h.assetClass,
+                            h.institution,
+                            // Issue date is the one term-sheet fact an FA can't eyeball from
+                            // anywhere else on this row — coupon and maturity already show,
+                            // but "when did this actually start" doesn't, until now.
+                            h.assetClass === 'Structured Product' && h.issueDate
+                              ? `Issued ${new Date(h.issueDate).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                              : '',
+                          ].filter(Boolean).join(' · ')}
                           {h.maturity && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>⚠️ Matures {new Date(h.maturity).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}</span>}
                         </div>
                         {/* Meaningless for Structured Products — h.valueOrig there is

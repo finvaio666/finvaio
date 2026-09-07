@@ -153,6 +153,7 @@ export async function GET(req: NextRequest) {
             fameAccountNo: h.fameAccountNo,
             fundSource:    h.fundSource,
             status:        h.status,
+            issueDate:     h.startDate,
             maturity:      h.maturityDate,
             currency:      h.currency || 'MYR',
             valueOrig:     h.valueOriginal,
