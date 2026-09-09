@@ -784,7 +784,7 @@ type AdminTab = 'today' | 'investment' | 'action' | 'insurance' | 'advisors' | '
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab,      setTab]      = useState<AdminTab>('today');
+  const [tab,      setTab]      = useState<AdminTab>('action');
   const [overview,  setOverview]  = useState<AdminOverview | null>(null);
   const [insurance, setInsurance] = useState<InsuranceOverview | null>(null);
   const [insErr,    setInsErr]    = useState('');
@@ -928,9 +928,9 @@ export default function AdminPage() {
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
             {([
+              { id: 'action',     label: `🔔 Needs Action${overview.attention.length ? ` (${overview.attention.length})` : ''}` },
               { id: 'today',      label: '🏠 Today'      },
               { id: 'investment', label: '📈 Investment' },
-              { id: 'action',     label: `🔔 Needs Action${overview.attention.length ? ` (${overview.attention.length})` : ''}` },
               { id: 'insurance',  label: '🛡️ Insurance'  },
               { id: 'advisors',   label: '👥 Advisors'   },
               { id: 'clients',    label: '📋 All Clients' },
