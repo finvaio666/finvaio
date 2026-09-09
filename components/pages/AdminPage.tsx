@@ -16,6 +16,9 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 // Whole ringgit only — AUM rollups are summed from many holdings, so trailing
 // cents ("RM 64,772,314.88") read as false precision rather than useful detail.
 function fmt(n: number) { return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
+// A note's own denomination, not converted — an FA reading a USD note's value
+// needs the real USD figure, not an RM-converted one.
+function fmtCcy(n: number, ccy: string) { return `${ccy || 'MYR'} ${n.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
 function fmtDate(d: string) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -733,7 +736,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-                  {g.rows.length} client{g.rows.length === 1 ? '' : 's'} affected · {fmt(g.totalValueMyr)} total
+                  {g.rows.length} client{g.rows.length === 1 ? '' : 's'} affected · {fmtCcy(g.totalValueOriginal, g.currency)} total
                   {g.advisors.length > 1 && (
                     <span style={{ marginLeft: 6, color: '#F37338', fontWeight: 600 }}>· shared across {g.advisors.length} FAs</span>
                   )}
@@ -766,7 +769,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
               {g.rows.map(r => (
                 <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                   <span style={{ color: 'var(--text2)' }}>{r.clientName || '—'} <span style={{ color: 'var(--text3)' }}>· {r.advisor || '—'}</span></span>
-                  <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{fmt(r.valueMyr)}</span>
+                  <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{fmtCcy(r.valueOriginal, r.currency)}</span>
                 </div>
               ))}
             </div>
@@ -849,7 +852,7 @@ export default function AdminPage() {
       : `${g.rows[0]?.clientName || '—'} (${g.rows[0]?.advisor || '—'})`;
     if (!confirm(
       `Confirm this note has ${label}?\n\n${g.name}\n` +
-      `Affects: ${who}\nTotal value: ${fmt(g.totalValueMyr)}\n\n` +
+      `Affects: ${who}\nTotal value: ${fmtCcy(g.totalValueOriginal, g.currency)}\n\n` +
       `All ${g.rows.length} holding(s) will be marked Redeemed and removed from active AUM.`
     )) return;
     setConfirmingId(g.productName);

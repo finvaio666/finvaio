@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client, isFullPage } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
-import { listHoldings, holdingValueMyr, isExitedHolding, type PortfolioHolding } from '@/lib/portfolio';
+import { listHoldings, holdingValueMyr, holdingValueOriginal, isExitedHolding, type PortfolioHolding } from '@/lib/portfolio';
 import { getPlatformGroups, derivePlatform } from '@/lib/platformGroups';
 import * as sbUsers from '@/lib/repos/users';
 
@@ -33,13 +33,15 @@ export interface Slice { name: string; value: number }
 
 /** A note flagged KI or likely-KO/matured, surfaced so an admin can act on it. */
 export interface AttentionNote {
-  id:          string;
-  productName: string;   // ISIN — what groups this row with its sibling copies below
-  name:        string;
-  advisor:     string;
-  clientName:  string;
-  flag:        'ki' | 'likely-ko' | 'likely-matured';
-  valueMyr:    number;
+  id:            string;
+  productName:   string;   // ISIN — what groups this row with its sibling copies below
+  name:          string;
+  advisor:       string;
+  clientName:    string;
+  flag:          'ki' | 'likely-ko' | 'likely-matured';
+  currency:      string;   // the note's own denomination — USD, SGD, MYR…
+  valueOriginal: number;   // in `currency`, not converted
+  valueMyr:      number;   // MYR equivalent — kept for sorting/ranking across currencies, not for display
 }
 
 /**
@@ -54,9 +56,11 @@ export interface AttentionGroup {
   productName:  string;
   name:         string;
   flag:         'ki' | 'likely-ko' | 'likely-matured';
-  totalValueMyr: number;
+  currency:     string;         // one ISIN is always one currency, so this is set once per group
+  totalValueOriginal: number;   // sum in `currency` — what the page actually displays
+  totalValueMyr: number;        // MYR equivalent — sort key only; groups span different currencies so this is the one comparable total
   advisors:     string[];   // distinct FAs affected, for the "who does this touch" summary
-  rows:         { id: string; clientName: string; advisor: string; valueMyr: number }[];
+  rows:         { id: string; clientName: string; advisor: string; currency: string; valueOriginal: number; valueMyr: number }[];
 }
 
 export interface AdminOverview {
@@ -195,7 +199,8 @@ export async function GET(req: NextRequest) {
     if (flag) {
       attention.push({
         id: h.id, productName: h.productName, name: h.name, advisor: h.advisorName,
-        clientName: clientNameById.get(h.clientNotionId) ?? '', flag, valueMyr: v,
+        clientName: clientNameById.get(h.clientNotionId) ?? '', flag,
+        currency: h.currency || 'MYR', valueOriginal: holdingValueOriginal(h), valueMyr: v,
       });
     }
   }
@@ -229,10 +234,11 @@ export async function GET(req: NextRequest) {
   for (const n of attention) {
     const key = n.productName || `__${n.id}`;
     let g = groupMap.get(key);
-    if (!g) { g = { productName: n.productName, name: n.name, flag: n.flag, totalValueMyr: 0, advisors: [], rows: [] }; groupMap.set(key, g); }
+    if (!g) { g = { productName: n.productName, name: n.name, flag: n.flag, currency: n.currency, totalValueOriginal: 0, totalValueMyr: 0, advisors: [], rows: [] }; groupMap.set(key, g); }
+    g.totalValueOriginal += n.valueOriginal;
     g.totalValueMyr += n.valueMyr;
     if (n.advisor && !g.advisors.includes(n.advisor)) g.advisors.push(n.advisor);
-    g.rows.push({ id: n.id, clientName: n.clientName, advisor: n.advisor, valueMyr: n.valueMyr });
+    g.rows.push({ id: n.id, clientName: n.clientName, advisor: n.advisor, currency: n.currency, valueOriginal: n.valueOriginal, valueMyr: n.valueMyr });
   }
   const attentionGroups = [...groupMap.values()].sort((a, b) => b.totalValueMyr - a.totalValueMyr);
 

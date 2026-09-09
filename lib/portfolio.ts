@@ -94,6 +94,19 @@ export function holdingValueMyr(h: PortfolioHolding): number {
   return h.valueMyr || h.valueOriginal * h.fxRate;
 }
 
+/**
+ * A holding's value in its OWN currency, no MYR conversion — the same
+ * purchase/par-vs-value rule as holdingValueMyr, just before the fxRate
+ * multiply. For a USD note this is the actual USD amount, not an MYR
+ * equivalent — used where showing a converted figure would misstate what a
+ * client's position is actually denominated in (e.g. the admin's Needs
+ * Action page, where an FA needs the real USD/SGD number, not RM).
+ */
+export function holdingValueOriginal(h: PortfolioHolding): number {
+  if (h.assetClass === 'Structured Product') return h.purchaseOriginal;
+  return h.valueOriginal;
+}
+
 /** A structured note an admin has confirmed exited — excluded from active AUM. */
 export function isExitedHolding(h: PortfolioHolding): boolean {
   return h.assetClass === 'Structured Product' && h.status === 'Redeemed';
