@@ -26,6 +26,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 
@@ -54,9 +55,13 @@ const jsonOut = jsonOutIdx >= 0 ? process.argv[jsonOutIdx + 1] : null;
 // for spot-checking the parser against a known-good ISIN, not normal use.
 const forceIdx = process.argv.indexOf('--force');
 const forceIsins = forceIdx >= 0 ? new Set(process.argv[forceIdx + 1].split(',')) : new Set();
+// --push: stage what was found into note_intake, so it shows up in the Admin
+// "New Notes" tab for review. Still not an insert — nothing reaches
+// portfolio_holdings until a human confirms the terms and supplies the amount.
+const push = process.argv.includes('--push');
 
 if (!folder) {
-  console.error('Usage: node scripts/scan-term-sheets.mjs "<folder to scan>" [--json out.json]');
+  console.error('Usage: node scripts/scan-term-sheets.mjs "<folder to scan>" [--json out.json] [--push]');
   process.exit(1);
 }
 if (!fs.existsSync(folder)) { console.error(`Folder not found: ${folder}`); process.exit(1); }
@@ -279,6 +284,28 @@ async function loadExisting() {
   return { byIsin, byIsinClient };
 }
 
+// Content hash, not path — this is the key the intake queue dedupes and
+// "ignore permanently" work on, so renaming a file or moving it to a tidier
+// folder must not resurrect a candidate that was already dealt with.
+function hashFile(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+/**
+ * Documents already rejected in the app ("superseded draft", "duplicate",
+ * "not ours"). Ignoring is per DOCUMENT, so one rejection covers every client
+ * folder the same PDF sits in — and it's permanent, which is the whole point:
+ * a nightly scan that keeps re-offering a note you already said no to is a
+ * queue nobody reads.
+ */
+async function loadIgnoredHashes() {
+  const out = new Set();
+  const r = await fetch(`${SB}/rest/v1/note_intake?status=eq.ignored&select=file_hash`, { headers: H });
+  if (!r.ok) return out;  // table not migrated yet — scanning still works, just without the memory
+  for (const row of await r.json()) out.add(row.file_hash);
+  return out;
+}
+
 async function loadClients() {
   const out = [];
   let from = 0;
@@ -300,13 +327,19 @@ const main = async () => {
 
   const { byIsin, byIsinClient } = await loadExisting();
   const clients = await loadClients();
-  console.log(`${byIsin.size} ISIN(s) already in the live book, across ${clients.length} clients.\n`);
+  const ignoredHashes = await loadIgnoredHashes();
+  console.log(`${byIsin.size} ISIN(s) already in the live book, across ${clients.length} clients.`);
+  console.log(`${ignoredHashes.size} document(s) previously ignored — those stay hidden.\n`);
 
   const missing = [];
   const skipped = [];
+  let ignoredSeen = 0;
   for (const filePath of pdfs) {
     const isin = isinFromFilename(filePath);
     if (!isin) { skipped.push({ filePath, reason: 'no ISIN found in filename' }); continue; }
+
+    const fileHash = hashFile(filePath);
+    if (ignoredHashes.has(fileHash)) { ignoredSeen++; continue; }
 
     const client = matchClient(filePath, folder, clients);
     const hint = likelyClientHint(filePath, folder);
@@ -326,8 +359,14 @@ const main = async () => {
         continue;
       }
     }
-    missing.push({ filePath, isin, clientHint: hint, matchedClient: client ? { name: client.client_name, advisor: client.advisor } : null });
+    missing.push({
+      filePath, isin, fileHash, clientHint: hint,
+      clientNotionId: client?.notion_id ?? '',
+      matchedClient: client ? { name: client.client_name, advisor: client.advisor } : null,
+    });
   }
+
+  if (ignoredSeen) console.log(`Skipped ${ignoredSeen} file(s) previously ignored in the app.\n`);
 
   if (skipped.length) {
     console.log(`Skipped (no ISIN in filename — check manually):`);
@@ -375,10 +414,45 @@ const main = async () => {
     queue.push({ ...m, family, parsed });
   }
 
+  if (push) {
+    // Upsert on (file_hash, client_notion_id): a re-scan of a file still
+    // sitting in the folder refreshes its parse and bumps last_seen_at rather
+    // than piling up duplicates. status is deliberately NOT in the update list
+    // — re-scanning must never flip a row an admin already resolved back to
+    // pending, which would undo an "ignore" the moment the file was re-seen.
+    const payload = queue.map(q => ({
+      file_hash:           q.fileHash,
+      file_path:           q.filePath,
+      file_name:           path.basename(q.filePath),
+      isin:                q.isin,
+      client_notion_id:    q.clientNotionId || '',
+      client_match_source: q.matchedClient ? 'folder' : null,
+      client_hint:         q.clientHint,
+      issuer_family:       q.family ?? null,
+      parsed:              q.parsed ?? null,
+      parse_warnings:      q.parseNotes ?? q.parsed?.notes_ ?? [],
+      last_seen_at:        new Date().toISOString(),
+    }));
+    const res = await fetch(`${SB}/rest/v1/note_intake?on_conflict=file_hash,client_notion_id`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      console.log(`\n⚠ Could not stage into note_intake (${res.status}): ${await res.text()}`);
+      console.log('  Has db/migrations/2026-09-09-create-note-intake.sql been applied?');
+    } else {
+      const rows = await res.json();
+      const stillPending = rows.filter(r => r.status === 'pending').length;
+      console.log(`\n✓ Staged ${rows.length} candidate(s) into the intake queue — ${stillPending} awaiting review.`);
+      console.log('  Review them in FINVA: Dashboard → 📥 New Notes. Nothing has been inserted into the book.');
+    }
+  }
+
   if (jsonOut) {
     fs.writeFileSync(jsonOut, JSON.stringify(queue, null, 2));
     console.log(`Review queue written to ${jsonOut} — nothing has been inserted. Confirm each entry against its actual PDF before it goes into Supabase/Notion.`);
-  } else {
+  } else if (!push) {
     console.log(`Nothing has been inserted. Re-run with --json <file> to save this queue, or hand the ${missing.length} PDF(s) above to Claude to insert after review.`);
   }
 };

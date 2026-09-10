@@ -242,6 +242,13 @@ export interface PortfolioPatchInput {
   purchaseMyr?:  number;
   units?:        number;
   maturityDate?: string;
+  // Structured-note fields. Not editable from the add/edit holding form (which
+  // covers funds and equities); set when a note is accepted off the intake
+  // queue, where the term sheet supplies them. productName is the ISIN — the
+  // key everything else groups a shared note by.
+  productName?:       string;
+  startDate?:         string;
+  underlyingDetails?: PortfolioHolding['underlyingDetails'];
 }
 
 /** Map caller fields → portfolio_holdings columns. `isCreate` forces the name
@@ -262,6 +269,9 @@ export function buildPortfolioPatch(b: PortfolioPatchInput, advisorName: string,
   if (b.purchaseMyr  !== undefined) p.purchase_price_myr      = b.purchaseMyr || 0;
   if (b.units        !== undefined) p.units                   = b.units || 0;
   if (b.maturityDate !== undefined) p.maturity_date           = b.maturityDate || null;
+  if (b.productName  !== undefined) p.product_name            = t(b.productName);
+  if (b.startDate    !== undefined) p.start_date              = b.startDate || null;
+  if (b.underlyingDetails !== undefined) p.underlying_details = b.underlyingDetails;
   if (isCreate) p.advisor = advisorName;
   return p;
 }

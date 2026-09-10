@@ -10,6 +10,7 @@ import type { PlatformGroup } from '@/lib/platformGroups';
 import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import NewNotesTab from '@/components/NewNotesTab';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -780,7 +781,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
   );
 }
 
-type AdminTab = 'today' | 'investment' | 'action' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality';
+type AdminTab = 'today' | 'investment' | 'action' | 'newnotes' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -929,6 +930,7 @@ export default function AdminPage() {
           <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
             {([
               { id: 'action',     label: `🔔 Needs Action${overview.attention.length ? ` (${overview.attention.length})` : ''}` },
+              { id: 'newnotes',   label: '📥 New Notes'  },
               { id: 'today',      label: '🏠 Today'      },
               { id: 'investment', label: '📈 Investment' },
               { id: 'insurance',  label: '🛡️ Insurance'  },
@@ -952,6 +954,11 @@ export default function AdminPage() {
           </div>
 
           {/* Tab content */}
+          {/* Entry and exit for the same notes sit side by side: New Notes is
+              term sheets waiting to come into the book, Needs Action is notes
+              on their way out. */}
+          {tab === 'newnotes' && <NewNotesTab />}
+
           {tab === 'today' && <TodayTab />}
 
           {tab === 'investment' && (
