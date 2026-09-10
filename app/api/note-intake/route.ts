@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
+import { listHoldings } from '@/lib/portfolio';
+import { getPlatformGroups } from '@/lib/platformGroups';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +44,17 @@ export interface IntakeQueue {
   candidates: IntakeCandidate[];
   /** Every client, for the "which client is this actually for?" dropdown on an unmatched candidate. */
   clients: { id: string; name: string; advisorName: string }[];
+  /**
+   * Custodians to choose from, rather than a free-text box: a typo here
+   * ("Swissquote" for "SwissQuote") silently creates a platform that groups
+   * into Ungrouped and drops the note out of the AUM-by-platform breakdown.
+   * Drawn from what the book actually uses AND from the admin's configured
+   * platform groups, so a platform that is set up but not yet held (MSSG)
+   * can still be picked for the first note on it.
+   */
+  platforms: string[];
+  /** Issuers already in the book — a datalist, so an existing spelling is one click but a new issuer is still typeable. */
+  institutions: string[];
 }
 
 async function requireAdmin(req: NextRequest) {
@@ -57,10 +70,25 @@ export async function GET(req: NextRequest) {
   if (gate.error) return gate.error;
 
   try {
-    const [rows, clients] = await Promise.all([
+    const [rows, clients, holdings, groups] = await Promise.all([
       sbIntake.listPending(),
       listClients(gate.config!),   // Admin here, so unscoped — a candidate can belong to any FA's client
+      listHoldings(gate.config!),
+      getPlatformGroups(),
     ]);
+
+    // Union of what's in use and what's configured, so the list reflects the
+    // firm as it is rather than only what has been bought so far.
+    const platforms = [...new Set([
+      ...holdings.map(h => h.platform).filter(Boolean),
+      ...groups.flatMap(g => g.platforms),
+    ])].sort((a, b) => a.localeCompare(b));
+
+    // Issuers, most-used first — for a structured note the issuer is almost
+    // always one of the handful of banks the firm already deals with.
+    const instCount = new Map<string, number>();
+    for (const h of holdings) if (h.institution) instCount.set(h.institution, (instCount.get(h.institution) ?? 0) + 1);
+    const institutions = [...instCount.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
 
     const clientById = new Map(clients.map(c => [c.notionId, c]));
     const perHash = new Map<string, number>();
@@ -89,6 +117,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       candidates,
       clients: clients.map(c => ({ id: c.notionId, name: c.name, advisorName: c.advisorName })).sort((a, b) => a.name.localeCompare(b.name)),
+      platforms,
+      institutions,
     } as IntakeQueue);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

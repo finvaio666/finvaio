@@ -43,13 +43,30 @@ interface ParsedTerms {
   issueDate?: string | null;
   maturityDate?: string | null;
   couponPctPa?: number | null;
+  /** Barriers as a % of initial, where the issuer's template states them plainly enough to read. */
+  kiPct?: number | null;
+  koPct?: number | null;
   underlyings?: { name?: string; ticker?: string; entry?: number; strike?: number }[];
   schedule?: { n?: number; determinationDate?: string | null; triggerPct?: number | null }[];
   notes_?: string[];
 }
 
+/** Short label — the badge and the draft holding name. */
 const ISSUER_LABEL: Record<string, string> = {
   nomura: 'Nomura', marex: 'Marex', ubs_vmran: 'UBS', csi: 'CSI', natixis: 'Natixis',
+};
+
+/**
+ * The exact Institution spelling already used in the book, so an accepted note
+ * lands on the existing issuer rather than creating a near-duplicate ("UBS"
+ * alongside "UBS AG (London Branch)") that splits it in every breakdown.
+ */
+const ISSUER_INSTITUTION: Record<string, string> = {
+  nomura:    'Nomura',
+  marex:     'Marex Financial',
+  ubs_vmran: 'UBS AG (London Branch)',
+  csi:       "CSI Financial Products Ltd (Guarantor: CITIC Securities Int'l)",
+  natixis:   'Natixis',
 };
 
 /** A first-draft holding name from what the parser found — always editable. */
@@ -66,13 +83,15 @@ function initialForm(c: IntakeCandidate): FormState {
     holdingName:  draftName(c, p),
     currency:     'USD',
     fxRate:       '',
-    institution:  ISSUER_LABEL[c.issuerFamily] ?? '',
+    institution:  ISSUER_INSTITUTION[c.issuerFamily] ?? '',
     platform:     '',
     startDate:    p.issueDate ?? '',
     maturityDate: p.maturityDate ?? '',
     couponPctPa:  p.couponPctPa != null ? String(p.couponPctPa) : '',
-    kiPct:        '',
-    koPct:        '100',
+    // Prefilled only where the template stated the barrier plainly; otherwise
+    // left blank so it is read off the PDF rather than inherited from a guess.
+    kiPct:        p.kiPct != null ? String(p.kiPct) : '',
+    koPct:        p.koPct != null ? String(p.koPct) : '100',
     // One row prefilled with the folder's client when it matched; otherwise an
     // empty row so the reviewer has to choose one explicitly.
     allocations:  [{ clientId: c.clientId, amount: '' }],
@@ -223,6 +242,9 @@ export default function NewNotesTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <datalist id="intake-issuers">
+        {queue.institutions.map(i => <option key={i} value={i} />)}
+      </datalist>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
         {queue.candidates.length} term sheet{queue.candidates.length === 1 ? '' : 's'} found in the folder but not in the book.
         The parsed terms below are a <strong>draft to check against the PDF</strong>, not settled fact — and the invested amount is never on a term sheet,
@@ -289,8 +311,21 @@ export default function NewNotesTab() {
                 {/* Terms */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
                   <Field label="Holding name"><input style={inputStyle} value={f.holdingName} onChange={e => setField(c.id, 'holdingName', e.target.value)} /></Field>
-                  <Field label="Issuer"><input style={inputStyle} value={f.institution} onChange={e => setField(c.id, 'institution', e.target.value)} /></Field>
-                  <Field label="Platform"><input style={inputStyle} value={f.platform} placeholder="custodian" onChange={e => setField(c.id, 'platform', e.target.value)} /></Field>
+                  {/* Issuer is a datalist, not a select: the handful of banks
+                      already in the book cover almost every note, but a first
+                      note from a new issuer must still be typeable. */}
+                  <Field label="Issuer">
+                    <input style={inputStyle} list="intake-issuers" value={f.institution} onChange={e => setField(c.id, 'institution', e.target.value)} />
+                  </Field>
+                  {/* Platform is a hard list. A typo here ("Swissquote") creates
+                      a platform that groups into Ungrouped and quietly drops the
+                      note out of the AUM-by-platform breakdown. */}
+                  <Field label="Platform" hint="custodian">
+                    <select style={inputStyle} value={f.platform} onChange={e => setField(c.id, 'platform', e.target.value)}>
+                      <option value="">Select platform…</option>
+                      {queue.platforms.map(pl => <option key={pl} value={pl}>{pl}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Currency"><input style={inputStyle} value={f.currency} onChange={e => setField(c.id, 'currency', e.target.value.toUpperCase())} /></Field>
                   <Field label="FX to MYR" hint="corrected by the FX refresh later">
                     <input style={inputStyle} value={f.fxRate} placeholder="e.g. 4.20" inputMode="decimal" onChange={e => setField(c.id, 'fxRate', e.target.value)} />

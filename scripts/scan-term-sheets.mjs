@@ -211,16 +211,71 @@ function parseMarex(text) {
 }
 
 function parseUbsVmran(text) {
-  const detLine = text.match(/Periodic Coupon Determination Dates:[\s\S]{0,20}?which are currently expected to be ([\s\S]{0,400}?), provided/)?.[1] ?? '';
+  // pypdf wraps this template's prose mid-sentence, and mid-DATE ("22\nDec
+  // 2026"), so every match below runs against a whitespace-flattened copy.
+  // The original newlines carry no meaning here — unlike the Nomura/Natixis
+  // basket tables, where a line break IS the row separator.
+  const flat = text.replace(/\s+/g, ' ');
+
+  const tradeDate = flat.match(/Trade Date:\s*(\d{1,2} \w+ \d{4})/)?.[1];
+  const issueDate = flat.match(/Issue Date:\s*(\d{1,2} \w+ \d{4})/)?.[1];
+  // The Valuation Date is the final observation; Maturity is stated only
+  // relatively ("Valuation Date + 2 Business Days"), so it is left for the
+  // reviewer rather than computed — business-day arithmetic needs a holiday
+  // calendar this script does not have.
+  const valuationDate = flat.match(/Valuation Date:\s*(\d{1,2} \w+ \d{4})/)?.[1];
+
+  // "6 Months USD 14.77% (annualized basis)" — the headline is already p.a.,
+  // unlike the per-period rate stated further down ("1.2308% ... every 1 Month").
+  const couponPctPa = flat.match(/([\d.]+)%\s*\(annualized basis\)/)?.[1];
+
+  // Conversion Price is quoted as a % of the Initial Price ("Xn = 70.00% x So").
+  // For these ELNs that level IS the downside barrier the final close is
+  // measured against, so it prefills the KI field.
+  const conversionPct = flat.match(/\(\s*Xn\s*=\s*([\d.]+)%\s*x\s*So\s*\)/)?.[1];
+
+  // "Tesla Inc (TSLA.OQ) USD 357.36 USD 250.1520 USD 50,000 / Xn"
+  //  name        ticker      So          Xn (conversion/strike)
+  const basketRows = [...flat.matchAll(/([A-Z][A-Za-z0-9 .&,'-]{2,40}?)\s*\(([A-Z]{1,6}\.[A-Z]{1,3})\)\s+[A-Z]{3}\s+([\d,]+\.?\d*)\s+[A-Z]{3}\s+([\d,]+\.?\d*)/g)];
+  const num = s => +s.replace(/,/g, '');
+  const underlyings = basketRows.map(r => ({
+    // Each row ends "USD 50,000 / Xn" and pypdf runs it straight into the next
+    // company name, so every row after the first arrives as "Xn Broadcom Inc".
+    // Xn is the term sheet's symbol for the conversion price, never part of a name.
+    name: r[1].trim().replace(/^Xn\s+/, ''),
+    ticker: r[2], entry: num(r[3]), strike: num(r[4]),
+  }));
+
+  // Determination dates run to the Valuation Date inclusive; the Callable
+  // Price step-down table covers every one EXCEPT the final ("each (apart from
+  // the final one) Periodic Coupon Determination Date"). So the step-down
+  // levels line up with the observations from the front, and the last date
+  // falls through as the final valuation with no autocall barrier of its own.
+  const detLine = flat.match(/Periodic Coupon Determination Dates:.{0,200}?currently expected to be (.{0,400}?),?\s*provided/)?.[1] ?? '';
   const dates = [...detLine.matchAll(/(\d{1,2} \w+ \d{4})/g)].map(m => toIso(m[1]));
-  const valuationDate = text.match(/Valuation Date:\s*(\d{1,2} \w+ \d{4})/)?.[1];
+  const callable = [...flat.matchAll(/(\d+)(?:st|nd|rd|th) Mandatory Early Redemption Date\s+([\d.]+)%\s*of Initial Price/g)]
+    .reduce((acc, m) => { acc[+m[1]] = +m[2]; return acc; }, {});
+
+  const schedule = dates.map((d, i) => ({
+    n: i + 1, determinationDate: d,
+    triggerPct: callable[i + 1] ?? null,   // null on the final date — it is not an autocall observation
+  }));
+
+  const notes_ = ['UBS VMRAN: schedule dates are Periodic Coupon Determination Dates, not Payment Dates.'];
+  if (!underlyings.length) notes_.push('Basket table did not parse — read the underlyings and their Initial Prices manually.');
+  if (!dates.length)       notes_.push('Determination-date list did not parse — read the schedule manually.');
+  notes_.push('Maturity is stated as "Valuation Date + 2 Business Days" — confirm the actual date; the final observation is ' + (dates[dates.length - 1] ?? '?') + '.');
+
   return {
-    tradeDate: null, issueDate: text.match(/Settlement Date/) ? null : null,
-    couponPctPa: null,
-    schedule: dates.map((d, i) => ({ n: i + 1, determinationDate: d, triggerPct: null })),
+    tradeDate: toIso(tradeDate),
+    issueDate: toIso(issueDate),
+    couponPctPa: couponPctPa ? +couponPctPa : null,
+    kiPct: conversionPct ? +conversionPct : null,
+    koPct: callable[1] ?? null,
+    schedule,
     finalValuationDate: toIso(valuationDate),
-    underlyings: [],
-    notes_: ['UBS VMRAN: schedule dates are Periodic Coupon Determination Dates, not Payment Dates.', 'Trigger % (Callable Price step-down) and coupon rate need manual read — stated separately from the date table.'],
+    underlyings,
+    notes_,
   };
 }
 
