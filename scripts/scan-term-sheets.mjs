@@ -186,6 +186,34 @@ function addBusinessDays(iso, n) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * The tranche's total size and its minimum unit, in the note's own currency.
+ *
+ * Every issuer states both, under its own label:
+ *   UBS     "Issue Amount: USD 550,000"          "Note Denomination: USD 50,000"
+ *   Nomura  "Nominal Amount of Series USD 100,000.00"  "Denomination USD 100,000.00 per Security"
+ *   Marex   "Issue Size Up to USD 480,000"       "Denomination USD 80,000"
+ *
+ * Worth pulling out because they are the only figures on a term sheet that can
+ * CHECK the one number a human has to type: the per-client amounts must sum to
+ * no more than the tranche, and each should be a whole number of denominations.
+ * That turns a silent typo (500,000 for 50,000) into a caught one.
+ */
+function parseSizing(text) {
+  const flat = text.replace(/\s+/g, ' ');
+  const amt = s => (s ? +s.replace(/,/g, '') : null);
+  const issueAmount = amt(
+    flat.match(/Issue Amount:?\s*[A-Z]{3}\s*([\d,]+(?:\.\d+)?)/)?.[1]
+    ?? flat.match(/Nominal Amount of Series\s*[A-Z]{3}\s*([\d,]+(?:\.\d+)?)/)?.[1]
+    ?? flat.match(/Issue Size\s*(?:Up to\s*)?[A-Z]{3}\s*([\d,]+(?:\.\d+)?)/)?.[1]
+  );
+  const denomination = amt(
+    flat.match(/(?:Note )?Denomination:?\s*[A-Z]{3}\s*([\d,]+(?:\.\d+)?)/)?.[1]
+  );
+  const currency = flat.match(/(?:Issue Amount|Issue Size|Nominal Amount of Series)[:\s]*(?:Up to\s*)?([A-Z]{3})\s*[\d,]/)?.[1] ?? null;
+  return { issueAmount, denomination, currency };
+}
+
 function detectFamily(text) {
   if (text.includes('Knock-Out Determination Day')) return 'nomura';
   if (text.includes('Early Redemption Observation Date')) return 'marex';
@@ -287,14 +315,23 @@ function parseUbsVmran(text) {
 
   // "Maturity Date: Valuation Date + 2 Business Days ..." — maturity is stated
   // relative to the final valuation, never as an absolute date.
+  // ...but the template then spells the resulting date out ("which is currently
+  // expected to be 24 Mar 2027"). Prefer that: it is the issuer's own
+  // calculation, holidays included, where the computed fallback below knows
+  // only about weekends.
   const lag = +(flat.match(/Maturity Date:\s*Valuation Date \+\s*(\d+)\s*Business Days/)?.[1] ?? 0);
   const finalValuation = toIso(valuationDate) ?? dates[dates.length - 1] ?? null;
-  const maturityDate = lag ? addBusinessDays(finalValuation, lag) : null;
+  const statedMaturity = toIso(
+    flat.match(/Maturity Date:[\s\S]{0,400}?currently expected to be (\d{1,2} \w+ \d{4})/)?.[1]
+  );
+  const maturityDate = statedMaturity ?? (lag ? addBusinessDays(finalValuation, lag) : null);
 
   const notes_ = ['UBS VMRAN: schedule dates are Periodic Coupon Determination Dates, not Payment Dates.'];
   if (!underlyings.length) notes_.push('Basket table did not parse — read the underlyings and their Initial Prices manually.');
   if (!dates.length)       notes_.push('Determination-date list did not parse — read the schedule manually.');
-  if (maturityDate) {
+  if (statedMaturity) {
+    notes_.push(`Maturity ${statedMaturity} is stated in the term sheet (final valuation ${finalValuation} + ${lag} business days).`);
+  } else if (maturityDate) {
     notes_.push(`Maturity ${maturityDate} is COMPUTED as final valuation ${finalValuation} + ${lag} business days (weekends only, no holiday calendar) — confirm it.`);
   } else if (finalValuation) {
     notes_.push(`Maturity is stated relative to the final valuation (${finalValuation}) and did not parse — read it manually.`);
@@ -494,8 +531,13 @@ const main = async () => {
       queue.push({ ...m, family: null, parsed: null, parseNotes: ['Unrecognized template — none of the known issuer markers matched'] });
       continue;
     }
-    const parsed = PARSERS[family](text);
+    // Sizing is label-matched rather than template-specific, so it runs for
+    // every issuer regardless of which parser handled the rest.
+    const parsed = { ...PARSERS[family](text), ...parseSizing(text) };
     console.log(`  Template: ${family}`);
+    if (parsed.issueAmount) {
+      console.log(`  Tranche: ${parsed.currency ?? ''} ${parsed.issueAmount.toLocaleString()}${parsed.denomination ? ` (in units of ${parsed.denomination.toLocaleString()})` : ''}`);
+    }
     console.log(`  Trade: ${parsed.tradeDate ?? '?'}  Issue: ${parsed.issueDate ?? '?'}  Coupon: ${parsed.couponPctPa ?? '?'}% p.a.`);
     console.log(`  Underlyings: ${parsed.underlyings.length ? parsed.underlyings.map(u => u.name).join(', ') : '(not parsed — read manually)'}`);
     console.log(`  Schedule: ${parsed.schedule.length} observation(s)${parsed.schedule.length ? ` — first ${parsed.schedule[0].determinationDate}, last ${parsed.schedule[parsed.schedule.length - 1].determinationDate}` : ''}`);

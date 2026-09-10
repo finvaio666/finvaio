@@ -157,6 +157,19 @@ export async function POST(req: NextRequest) {
     // without it, accepting twice would create two sets of holdings.
     if (row.status !== 'pending') return NextResponse.json({ error: `Already ${row.status}` }, { status: 409 });
 
+    // Re-checked here, not just in the form: the tranche size comes from the
+    // stored parse, so this holds even if the page was left open while the
+    // candidate was re-scanned, and it can't be skipped by calling the API
+    // directly. Only the impossible case is enforced — a short allocation is
+    // normal, since the rest of a tranche can sit outside this firm.
+    const issueAmount = Number((row.parsed as { issueAmount?: number } | null)?.issueAmount) || 0;
+    const total = allocations.reduce((s, a) => s + Number(a.amount), 0);
+    if (issueAmount && total > issueAmount) {
+      return NextResponse.json({
+        error: `These amounts total ${total.toLocaleString()}, but the tranche is only ${issueAmount.toLocaleString()}. You cannot hold more of a note than was issued.`,
+      }, { status: 400 });
+    }
+
     const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
     const clientById = new Map(clients.map(c => [c.notionId, c]));
     const unknown = allocations.find(a => !clientById.has(a.clientId));

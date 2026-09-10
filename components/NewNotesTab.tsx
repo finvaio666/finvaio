@@ -46,6 +46,9 @@ interface ParsedTerms {
   /** Barriers as a % of initial, where the issuer's template states them plainly enough to read. */
   kiPct?: number | null;
   koPct?: number | null;
+  /** Tranche total and minimum unit — the only figures on a term sheet that can check the amounts a human types. */
+  issueAmount?: number | null;
+  denomination?: number | null;
   underlyings?: { name?: string; ticker?: string; entry?: number; strike?: number }[];
   schedule?: { n?: number; determinationDate?: string | null; triggerPct?: number | null }[];
   notes_?: string[];
@@ -188,12 +191,31 @@ export default function NewNotesTab() {
 
   async function accept(c: IntakeCandidate) {
     const f = forms[c.id];
+    const p = (c.parsed ?? {}) as ParsedTerms;
     const allocations = f.allocations
       .filter(a => a.clientId && Number(a.amount) > 0)
       .map(a => ({ clientId: a.clientId, amount: Number(a.amount) }));
 
     if (!allocations.length) { alert('Each client needs an invested amount — that figure is never on the term sheet, so it has to come from you.'); return; }
     if (!Number(f.kiPct))  { alert('Read the KI barrier off the term sheet (as a % of initial) — without it, a knock-in can never be flagged.'); return; }
+
+    // Checks against the tranche the term sheet states. Over-allocating is
+    // impossible, so it blocks outright; an amount that isn't a whole number of
+    // denominations is usually a typo (500,000 for 50,000) but can be
+    // legitimate, so it asks rather than refuses.
+    const total = allocations.reduce((s, a) => s + a.amount, 0);
+    if (p.issueAmount && total > p.issueAmount) {
+      alert(`These amounts total ${f.currency} ${total.toLocaleString()}, but the whole tranche is only ${f.currency} ${p.issueAmount.toLocaleString()}.\n\nCheck the figures — you cannot hold more of a note than was issued.`);
+      return;
+    }
+    if (p.denomination) {
+      const odd = allocations.filter(a => a.amount % p.denomination! !== 0);
+      if (odd.length && !confirm(
+        `The term sheet states a denomination of ${f.currency} ${p.denomination.toLocaleString()}, but ${odd.length} amount(s) are not a whole multiple of it:\n\n` +
+        odd.map(a => `  ${queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId} — ${f.currency} ${a.amount.toLocaleString()}`).join('\n') +
+        `\n\nContinue anyway?`
+      )) return;
+    }
 
     const names = allocations.map(a => queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId);
     if (!confirm(`Add this note to the book?\n\n${f.holdingName}\n${c.isin}\n\n${allocations.map((a, i) => `  ${names[i]} — ${f.currency} ${a.amount.toLocaleString()}`).join('\n')}\n\nThis creates ${allocations.length} live holding(s).`)) return;
@@ -345,6 +367,38 @@ export default function NewNotesTab() {
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>
                   A tranche is often split across several clients at different amounts. Add a row per client — they all get the same terms, so the copies can&apos;t drift apart later.
                 </div>
+
+                {/* Checks the typed amounts against the tranche the term sheet
+                    states. An over-allocation is arithmetically impossible, so
+                    it blocks; a short one is normal (the rest of the tranche can
+                    sit outside this firm) and only informs. */}
+                {(() => {
+                  const total = f.allocations.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+                  if (!p.issueAmount) {
+                    return total > 0 ? (
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>
+                        Allocated <strong>{f.currency} {total.toLocaleString()}</strong> — the tranche size didn&apos;t parse, so there is nothing to check it against.
+                      </div>
+                    ) : null;
+                  }
+                  const over = total > p.issueAmount;
+                  const left = p.issueAmount - total;
+                  return (
+                    <div style={{
+                      fontSize: 11, marginBottom: 8, padding: '7px 10px', borderRadius: 6,
+                      background: over ? 'rgba(239,68,68,0.12)' : 'var(--bg)',
+                      border: `1px solid ${over ? 'rgba(239,68,68,0.35)' : 'var(--border)'}`,
+                      color: over ? '#ef4444' : 'var(--text2)',
+                    }}>
+                      Tranche <strong>{f.currency} {p.issueAmount.toLocaleString()}</strong>
+                      {p.denomination ? <> · units of {p.denomination.toLocaleString()}</> : null}
+                      {' · '}allocated <strong>{f.currency} {total.toLocaleString()}</strong>
+                      {over
+                        ? <> · <strong>over by {(-left).toLocaleString()}</strong> — more than the note exists</>
+                        : <> · {left.toLocaleString()} unallocated{left === 0 ? ' ✓' : ''}</>}
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                   {f.allocations.map((a, i) => {
                     // Which FA ends up owning the holding follows the client, so
