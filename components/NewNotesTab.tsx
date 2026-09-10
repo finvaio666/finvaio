@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { IntakeCandidate, IntakeQueue } from '@/app/api/note-intake/route';
+import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 
 /**
  * The admin review queue for structured notes found in the term-sheet folder
@@ -27,7 +28,6 @@ interface Allocation { clientId: string; amount: string }
 interface FormState {
   holdingName:  string;
   currency:     string;
-  fxRate:       string;
   institution:  string;
   platform:     string;
   startDate:    string;
@@ -82,10 +82,13 @@ function initialForm(c: IntakeCandidate): FormState {
   return {
     holdingName:  draftName(c, p),
     currency:     'USD',
-    fxRate:       '',
     institution:  ISSUER_INSTITUTION[c.issuerFamily] ?? '',
     platform:     '',
     startDate:    p.issueDate ?? '',
+    // Computed from the final valuation plus the term sheet's stated settlement
+    // lag, not equal to the last observation — in this book maturity really is
+    // a few days later on almost every note. The parse warnings say it's
+    // computed, so it reads as a starting point rather than a fact.
     maturityDate: p.maturityDate ?? '',
     couponPctPa:  p.couponPctPa != null ? String(p.couponPctPa) : '',
     // Prefilled only where the template stated the barrier plainly; otherwise
@@ -190,7 +193,6 @@ export default function NewNotesTab() {
       .map(a => ({ clientId: a.clientId, amount: Number(a.amount) }));
 
     if (!allocations.length) { alert('Each client needs an invested amount — that figure is never on the term sheet, so it has to come from you.'); return; }
-    if (!Number(f.fxRate)) { alert('An FX rate to MYR is needed so this note counts towards AUM.'); return; }
     if (!Number(f.kiPct))  { alert('Read the KI barrier off the term sheet (as a % of initial) — without it, a knock-in can never be flagged.'); return; }
 
     const names = allocations.map(a => queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId);
@@ -205,7 +207,6 @@ export default function NewNotesTab() {
           holdingName:  f.holdingName,
           allocations,
           currency:     f.currency,
-          fxRate:       Number(f.fxRate),
           institution:  f.institution,
           platform:     f.platform,
           startDate:    f.startDate,
@@ -217,6 +218,9 @@ export default function NewNotesTab() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { alert(d.error ?? 'Could not add this note.'); return; }
+      // Say which rate was used: it is fetched live rather than typed here, so
+      // this is the only place it's visible before the holding is written.
+      alert(`Added ${d.created} holding(s) at ${f.currency}/MYR ${Number(d.fxRate).toFixed(4)}.`);
       setOpenId('');
       await load();
     } catch { alert('Could not add this note — network error.'); }
@@ -327,9 +331,6 @@ export default function NewNotesTab() {
                     </select>
                   </Field>
                   <Field label="Currency"><input style={inputStyle} value={f.currency} onChange={e => setField(c.id, 'currency', e.target.value.toUpperCase())} /></Field>
-                  <Field label="FX to MYR" hint="corrected by the FX refresh later">
-                    <input style={inputStyle} value={f.fxRate} placeholder="e.g. 4.20" inputMode="decimal" onChange={e => setField(c.id, 'fxRate', e.target.value)} />
-                  </Field>
                   <Field label="Coupon % p.a."><input style={inputStyle} value={f.couponPctPa} inputMode="decimal" onChange={e => setField(c.id, 'couponPctPa', e.target.value)} /></Field>
                   <Field label="Issue date"><input style={inputStyle} type="date" value={f.startDate} onChange={e => setField(c.id, 'startDate', e.target.value)} /></Field>
                   <Field label="Maturity date"><input style={inputStyle} type="date" value={f.maturityDate} onChange={e => setField(c.id, 'maturityDate', e.target.value)} /></Field>
@@ -345,25 +346,38 @@ export default function NewNotesTab() {
                   A tranche is often split across several clients at different amounts. Add a row per client — they all get the same terms, so the copies can&apos;t drift apart later.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                  {f.allocations.map((a, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <select style={{ ...inputStyle, flex: 2 }} value={a.clientId} onChange={e => setAlloc(c.id, i, 'clientId', e.target.value)}>
-                        <option value="">Select client…</option>
-                        {queue.clients.map(cl => (
-                          <option key={cl.id} value={cl.id}>{cl.name}{cl.advisorName ? ` — ${cl.advisorName}` : ''}</option>
-                        ))}
-                      </select>
-                      <input
-                        style={{ ...inputStyle, flex: 1 }} value={a.amount} inputMode="decimal"
-                        placeholder={`Amount (${f.currency})`}
-                        onChange={e => setAlloc(c.id, i, 'amount', e.target.value)}
-                      />
-                      {f.allocations.length > 1 && (
-                        <button onClick={() => removeAlloc(c.id, i)} title="Remove this client"
-                          style={{ padding: '5px 9px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', cursor: 'pointer' }}>×</button>
-                      )}
-                    </div>
-                  ))}
+                  {f.allocations.map((a, i) => {
+                    // Which FA ends up owning the holding follows the client, so
+                    // show it once one is picked — an admin adding a note for
+                    // someone else's client should see whose book it lands in.
+                    const owner = queue.clients.find(cl => cl.id === a.clientId)?.advisorName;
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <div style={{ flex: 2, minWidth: 0 }}>
+                          {/* Same type-to-search picker as the rest of the app —
+                              matches name, email and phone. A plain <select> of
+                              ~950 clients is not a realistic way to find one. */}
+                          <ClientSearchCombobox
+                            clients={queue.clients}
+                            value={a.clientId}
+                            onChange={cl => setAlloc(c.id, i, 'clientId', cl?.id ?? '')}
+                            placeholder="Search client by name…"
+                            inputStyle={{ padding: '6px 32px 6px 30px', fontSize: 12, borderRadius: 6, borderWidth: 1 }}
+                          />
+                          {owner && <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 3, paddingLeft: 4 }}>goes to {owner}&apos;s book</div>}
+                        </div>
+                        <input
+                          style={{ ...inputStyle, flex: 1 }} value={a.amount} inputMode="decimal"
+                          placeholder={`Amount (${f.currency})`}
+                          onChange={e => setAlloc(c.id, i, 'amount', e.target.value)}
+                        />
+                        {f.allocations.length > 1 && (
+                          <button onClick={() => removeAlloc(c.id, i)} title="Remove this client"
+                            style={{ padding: '5px 9px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', cursor: 'pointer' }}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 <button onClick={() => addAlloc(c.id)}
                   style={{ padding: '5px 11px', fontSize: 11.5, fontWeight: 600, borderRadius: 6, border: '1px dashed var(--border)', background: 'none', color: 'var(--text2)', cursor: 'pointer', marginBottom: 16 }}>

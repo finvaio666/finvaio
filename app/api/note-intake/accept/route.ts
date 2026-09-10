@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
-import { buildPortfolioPatch, type PortfolioHolding } from '@/lib/portfolio';
+import { buildPortfolioPatch, listHoldings, type PortfolioHolding } from '@/lib/portfolio';
+import { fetchMyrRates } from '@/lib/fx';
 import * as sbPortfolio from '@/lib/repos/portfolio';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
@@ -30,7 +31,6 @@ interface Body {
   holdingName:  string;
   allocations:  Allocation[];
   currency:     string;
-  fxRate:       number;
   institution?: string;
   platform?:    string;
   startDate?:   string;
@@ -39,6 +39,38 @@ interface Body {
   /** KI / KO barriers as a % of each underlying's initial fixing level — read off the PDF, never parsed. */
   kiPct?:       number;
   koPct?:       number;
+}
+
+/**
+ * Today's rate for `ccy`, resolved server-side rather than typed by the
+ * reviewer.
+ *
+ * It matters that this is right at insert time: a structured note carries a
+ * stored value_myr, and the nightly FX refresh deliberately writes only
+ * fx_rate_to_myr and never value_myr (see update-fx) — so a wrong rate here
+ * is not "corrected later", it stays in reported AUM until someone notices.
+ * A USD note booked at rate 1 would understate the firm's AUM by ~4x.
+ *
+ * Falls back to the rate the book already uses for that currency when the FX
+ * source is down (better than blocking the accept on an outage), and throws
+ * rather than guessing 1 when there is nothing to fall back to.
+ */
+async function resolveFxRate(ccy: string, holdings: PortfolioHolding[]): Promise<number> {
+  const code = (ccy || 'MYR').trim().toUpperCase();
+  if (code === 'MYR') return 1;
+
+  try {
+    const { toMyr } = await fetchMyrRates();
+    if (toMyr[code] > 0) return toMyr[code];
+  } catch { /* fall through to the book's own rate */ }
+
+  const seen = holdings
+    .filter(h => (h.currency || '').trim().toUpperCase() === code && h.fxRate > 0)
+    .map(h => h.fxRate)
+    .sort((a, b) => a - b);
+  if (seen.length) return seen[Math.floor(seen.length / 2)];   // median — one stale outlier can't drag it
+
+  throw new Error(`No FX rate available for ${code}. Refresh FX rates and try again.`);
 }
 
 interface ParsedUnderlying { name?: string; ticker?: string; entry?: number; strike?: number }
@@ -125,13 +157,13 @@ export async function POST(req: NextRequest) {
     // without it, accepting twice would create two sets of holdings.
     if (row.status !== 'pending') return NextResponse.json({ error: `Already ${row.status}` }, { status: 409 });
 
-    const clients = await listClients(config);
+    const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
     const clientById = new Map(clients.map(c => [c.notionId, c]));
     const unknown = allocations.find(a => !clientById.has(a.clientId));
     if (unknown) return NextResponse.json({ error: `Unknown client: ${unknown.clientId}` }, { status: 400 });
 
     const underlyingDetails = buildUnderlyingDetails(row.parsed, b);
-    const fxRate = Number(b.fxRate) || 1;
+    const fxRate = await resolveFxRate(b.currency, holdings);
 
     const holdingIds: string[] = [];
     for (const a of allocations) {
@@ -166,7 +198,7 @@ export async function POST(req: NextRequest) {
     }
 
     await sbIntake.markInserted(b.id, holdingIds, config.name);
-    return NextResponse.json({ success: true, created: holdingIds.length, holdingIds });
+    return NextResponse.json({ success: true, created: holdingIds.length, holdingIds, fxRate });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

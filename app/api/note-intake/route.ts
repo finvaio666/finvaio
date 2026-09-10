@@ -42,8 +42,14 @@ export interface IntakeCandidate {
 
 export interface IntakeQueue {
   candidates: IntakeCandidate[];
-  /** Every client, for the "which client is this actually for?" dropdown on an unmatched candidate. */
-  clients: { id: string; name: string; advisorName: string }[];
+  /**
+   * Every client, for the "which client is this actually for?" picker on an
+   * unmatched candidate. Carries email/phone/segment because the picker is the
+   * same type-to-search combobox used everywhere else in the app, and it
+   * matches on all three — with ~950 clients, scrolling a plain list is not a
+   * realistic way to find anyone.
+   */
+  clients: { id: string; name: string; advisorName: string; segment: string; email: string; phone: string }[];
   /**
    * Custodians to choose from, rather than a free-text box: a typo here
    * ("Swissquote" for "SwissQuote") silently creates a platform that groups
@@ -116,7 +122,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       candidates,
-      clients: clients.map(c => ({ id: c.notionId, name: c.name, advisorName: c.advisorName })).sort((a, b) => a.name.localeCompare(b.name)),
+      clients: clients
+        .map(c => ({ id: c.notionId, name: c.name, advisorName: c.advisorName, segment: c.segment, email: c.email, phone: c.phone }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
       platforms,
       institutions,
     } as IntakeQueue);

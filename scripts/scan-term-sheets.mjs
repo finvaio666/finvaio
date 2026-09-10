@@ -162,6 +162,30 @@ function toIso(dateStr) {
   return new Date(Date.UTC(+m[3], month, +m[1])).toISOString().slice(0, 10);
 }
 
+/**
+ * `iso` plus `n` business days, counting weekends only.
+ *
+ * Term sheets state maturity relative to the final valuation ("Valuation Date
+ * + 2 Business Days"), and in this book maturity really is later than the
+ * final observation on 36 of 43 notes — so equating the two is wrong, and
+ * leaving it blank loses a date the PDF effectively gives you.
+ *
+ * Weekends only, no holiday calendar: a public holiday in the settlement
+ * window pushes the real date out by another day, so this is a starting point
+ * the reviewer confirms, never an authority. Callers say so in notes_.
+ */
+function addBusinessDays(iso, n) {
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00:00Z`);
+  let left = n;
+  while (left > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) left--;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 function detectFamily(text) {
   if (text.includes('Knock-Out Determination Day')) return 'nomura';
   if (text.includes('Early Redemption Observation Date')) return 'marex';
@@ -261,19 +285,30 @@ function parseUbsVmran(text) {
     triggerPct: callable[i + 1] ?? null,   // null on the final date — it is not an autocall observation
   }));
 
+  // "Maturity Date: Valuation Date + 2 Business Days ..." — maturity is stated
+  // relative to the final valuation, never as an absolute date.
+  const lag = +(flat.match(/Maturity Date:\s*Valuation Date \+\s*(\d+)\s*Business Days/)?.[1] ?? 0);
+  const finalValuation = toIso(valuationDate) ?? dates[dates.length - 1] ?? null;
+  const maturityDate = lag ? addBusinessDays(finalValuation, lag) : null;
+
   const notes_ = ['UBS VMRAN: schedule dates are Periodic Coupon Determination Dates, not Payment Dates.'];
   if (!underlyings.length) notes_.push('Basket table did not parse — read the underlyings and their Initial Prices manually.');
   if (!dates.length)       notes_.push('Determination-date list did not parse — read the schedule manually.');
-  notes_.push('Maturity is stated as "Valuation Date + 2 Business Days" — confirm the actual date; the final observation is ' + (dates[dates.length - 1] ?? '?') + '.');
+  if (maturityDate) {
+    notes_.push(`Maturity ${maturityDate} is COMPUTED as final valuation ${finalValuation} + ${lag} business days (weekends only, no holiday calendar) — confirm it.`);
+  } else if (finalValuation) {
+    notes_.push(`Maturity is stated relative to the final valuation (${finalValuation}) and did not parse — read it manually.`);
+  }
 
   return {
     tradeDate: toIso(tradeDate),
     issueDate: toIso(issueDate),
+    maturityDate,
     couponPctPa: couponPctPa ? +couponPctPa : null,
     kiPct: conversionPct ? +conversionPct : null,
     koPct: callable[1] ?? null,
     schedule,
-    finalValuationDate: toIso(valuationDate),
+    finalValuationDate: finalValuation,
     underlyings,
     notes_,
   };

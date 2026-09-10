@@ -1,24 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listHoldings, setFxRate } from '@/lib/portfolio';
+import { fetchMyrRates } from '@/lib/fx';
 
 export const dynamic = 'force-dynamic';
 
-// Same source and tolerance as scripts/update-fx-rates.mjs (the standalone
-// one-time backfill this route replaces for day-to-day use). Kept in sync by
-// hand — the script runs outside the Next app and can't import this route.
+// Same tolerance as scripts/update-fx-rates.mjs (the standalone one-time
+// backfill this route replaces for day-to-day use). Kept in sync by hand —
+// the script runs outside the Next app and can't import this route.
 const TOLERANCE = 0.005; // 0.5% — skip a row already this close, don't churn it every refresh
-
-async function fetchMyrRates(): Promise<{ date: string; toMyr: Record<string, number> }> {
-  const res = await fetch('https://api.frankfurter.app/latest?base=MYR', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`FX source returned ${res.status}`);
-  const body = await res.json() as { date: string; rates: Record<string, number> };
-  const toMyr: Record<string, number> = { MYR: 1 };
-  for (const [ccy, perMyr] of Object.entries(body.rates)) {
-    if (perMyr > 0) toMyr[ccy] = 1 / perMyr;
-  }
-  return { date: body.date, toMyr };
-}
 
 /**
  * Refresh stored FX rates from live market rates (ECB via Frankfurter).
