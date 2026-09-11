@@ -77,6 +77,20 @@ interface ParsedUnderlying { name?: string; ticker?: string; entry?: number; str
 interface ParsedObs { n?: number; determinationDate?: string | null; triggerPct?: number | null }
 
 /**
+ * "Company Name (TICKER)" — the one naming convention the rest of the app
+ * depends on. update-underlying-prices pulls the Yahoo symbol out of the
+ * parentheses, so a name without them (or with a Reuters RIC suffix Yahoo
+ * doesn't recognise — TSLA.OQ, 005930.KS) silently yields no quote, and the
+ * note's Today column stays blank through every price refresh.
+ */
+function underlyingName(u: ParsedUnderlying): string {
+  const sym = (u.ticker || '').replace(/\.[A-Z]{1,3}$/, '').trim();   // TSLA.OQ → TSLA
+  const label = (u.name || '').trim();
+  if (sym && label) return `${label} (${sym})`;
+  return sym || label;
+}
+
+/**
  * Map the scanner's parse + the reviewer's barriers into the underlying_details
  * shape the rest of the app reads (see PortfolioHolding.underlyingDetails).
  *
@@ -99,7 +113,11 @@ function buildUnderlyingDetails(
   const underlyings = (p.underlyings ?? []).map(u => {
     const entry = Number(u.entry) || 0;
     return {
-      name:   u.ticker || u.name || '',
+      // "Company Name (TICKER)" — the shape update-underlying-prices reads the
+      // Yahoo symbol out of, via /\(([^)]+)\)/. A bare name means no quote and
+      // Today stays blank forever. Reuters RIC suffixes are stripped because
+      // Yahoo doesn't know them: TSLA.OQ is not a symbol, TSLA is.
+      name:   underlyingName(u),
       entry,
       strike: Number(u.strike) || entry,
       ki:     +(entry * kiPct / 100).toFixed(4),
@@ -107,23 +125,32 @@ function buildUnderlyingDetails(
     };
   });
 
-  // Labelled 'KO obs N' / 'Final' because that is what the flag derivation
-  // matches on (deriveNoteFlag in PortfolioPage and the admin overview both
-  // do startsWith). `resolved`/`cleared` are deliberately left unset — an
-  // observation is only ever resolved from a real historical close, never
-  // assumed at insert time.
-  const obs = (p.schedule ?? []).filter(s => s.determinationDate);
-  const schedule = obs.map((s, i) => ({
-    date:  String(s.determinationDate),
-    label: `KO obs ${s.n ?? i + 1}`,
-    ...(s.triggerPct != null ? { triggerPct: Number(s.triggerPct) } : {}),
+  // Labelled 'KO obs #N (trigger P%)' / 'Final / Maturity' to match every note
+  // already in the book: the flag derivation matches on the 'KO obs'/'Final'
+  // prefixes, and the schedule chips on the Investment page render the label
+  // text itself — so a step-down that lives only in the triggerPct field is
+  // stored correctly but invisible to whoever is reading the note.
+  // `resolved`/`cleared` stay unset: an observation is only ever resolved from
+  // a real historical close, never assumed at insert time.
+  //
+  // Only dates with a trigger become KO observations. A final valuation date
+  // carries no autocall barrier (UBS's Callable Price table covers every
+  // determination date EXCEPT the last), and listing it as a KO obs would
+  // invent one: with no triggerPct, koBarrier falls back to the underlying's
+  // `ko` level and the refresh would test a 100% autocall that does not exist.
+  const obs = (p.schedule ?? []).filter(s => s.determinationDate && s.triggerPct != null);
+  const schedule: NonNullable<PortfolioHolding['underlyingDetails']>['schedule'] = obs.map((s, i) => ({
+    date:       String(s.determinationDate),
+    label:      `KO obs #${s.n ?? i + 1} (trigger ${Number(s.triggerPct)}%)`,
+    triggerPct: Number(s.triggerPct),
   }));
 
-  // The final observation doubles as the maturity check. Prefer the reviewer's
-  // maturity date; fall back to the last observation so a note without one
-  // still ages out of the book instead of sitting live forever.
-  const finalDate = b.maturityDate || (obs.length ? String(obs[obs.length - 1].determinationDate) : '');
-  if (finalDate) schedule.push({ date: finalDate, label: 'Final' });
+  // Maturity closes the note out. Prefer the reviewer's date; fall back to the
+  // last scheduled date so a note without one still ages out of the book
+  // instead of sitting live forever.
+  const allDates = (p.schedule ?? []).filter(s => s.determinationDate);
+  const finalDate = b.maturityDate || (allDates.length ? String(allDates[allDates.length - 1].determinationDate) : '');
+  if (finalDate) schedule.push({ date: finalDate, label: 'Final / Maturity' });
 
   if (!underlyings.length && !schedule.length) return null;
   return {
