@@ -46,6 +46,9 @@ interface Props {
   fallbackName?: string;
 }
 
+/** Rows rendered at once. Beyond this the dropdown asks you to keep typing. */
+const MAX_VISIBLE = 50;
+
 const SEGMENT_COLORS: Record<string, { bg: string; color: string }> = {
   hnw:      { bg: '#7c3aed22', color: '#7c3aed' },
   affluent: { bg: '#0ea5e922', color: '#0ea5e9' },
@@ -89,6 +92,14 @@ export default function ClientSearchCombobox({
           c.phone?.replace(/\s/g, '').includes(q.replace(/\s/g, ''))
         );
       });
+
+  // Only ever render a slice of the matches. An admin's book is the whole
+  // company (~950 clients), and rendering every one on focus — then again on
+  // every keystroke — put ~950 avatar+badge rows in the DOM and made the box
+  // feel laggy to type in. Nobody scrolls to the 51st result anyway: past that
+  // point the answer is to keep typing, which the footer says.
+  const visible = filtered.slice(0, MAX_VISIBLE);
+  const hiddenCount = filtered.length - visible.length;
 
   // Extra "escape hatch" rows shown under the results: create the typed name as
   // a prospect, or log against it as a one-off non-client. Hidden once the typed
@@ -160,16 +171,16 @@ export default function ClientSearchCombobox({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlighted(h => Math.min(h + 1, filtered.length + extras.length - 1));
+      setHighlighted(h => Math.min(h + 1, visible.length + extras.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlighted(h => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (highlighted < filtered.length) {
-        if (filtered[highlighted]) handleSelect(filtered[highlighted]);
+      if (highlighted < visible.length) {
+        if (visible[highlighted]) handleSelect(visible[highlighted]);
       } else {
-        extras[highlighted - filtered.length]?.run();
+        extras[highlighted - visible.length]?.run();
       }
     } else if (e.key === 'Escape') {
       setOpen(false);
@@ -269,12 +280,12 @@ export default function ClientSearchCombobox({
             listStyle: 'none',
           }}
         >
-          {filtered.length === 0 && extras.length === 0 ? (
+          {visible.length === 0 && extras.length === 0 ? (
             <li style={{ padding: '12px 16px', color: 'var(--text3)', fontSize: 13 }}>
               No clients found
             </li>
           ) : (
-            filtered.map((c, i) => {
+            visible.map((c, i) => {
               const cls = segmentClass(c.segment ?? '');
               const clr = SEGMENT_COLORS[cls] ?? SEGMENT_COLORS.active;
               const isHighlighted = i === highlighted;
@@ -344,7 +355,7 @@ export default function ClientSearchCombobox({
           )}
 
           {extras.map((x, xi) => {
-            const i = filtered.length + xi;
+            const i = visible.length + xi;
             const isHighlighted = i === highlighted;
             return (
               <li
@@ -381,6 +392,17 @@ export default function ClientSearchCombobox({
               </li>
             );
           })}
+
+          {/* Says the list is cut short, so a missing name reads as "narrow the
+              search" rather than "this client isn't in the system". */}
+          {hiddenCount > 0 && (
+            <li style={{
+              padding: '8px 14px', fontSize: 11, color: 'var(--text3)',
+              borderTop: '1px solid var(--border)', textAlign: 'center',
+            }}>
+              Showing {visible.length} of {filtered.length} — keep typing to narrow
+            </li>
+          )}
         </ul>
       )}
     </div>

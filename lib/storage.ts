@@ -66,6 +66,43 @@ export function makeFormKey(provider: string, name: string): string {
   return `forms/${slug(provider) || 'misc'}/${slug(name) || 'form'}-${rand}.pdf`;
 }
 
+// ── Generic object storage ────────────────────────────────────────────────────
+// Always Supabase, deliberately NOT routed through backend(). The Forms Library
+// is switchable because its catalogue predates the app and may live anywhere;
+// term sheets are only ever created by FINVA itself, so there is nothing to
+// migrate and no reason to inherit a Drive/R2 code path. Notably the Drive
+// backend could not serve this anyway: its token is scoped `drive.file`
+// (app-created files only), which is the same limitation that makes a
+// hand-populated Drive folder unreadable to the app.
+
+const TERM_SHEET_BUCKET = 'term-sheets';
+
+/** Collision-safe object key for a stored term sheet. */
+export function makeTermSheetKey(isin: string, fileName: string): string {
+  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${slug(isin) || 'unknown'}/${slug(fileName.replace(/\.pdf$/i, '')) || 'termsheet'}-${rand}.pdf`;
+}
+
+export async function uploadTermSheet(key: string, buffer: Buffer): Promise<void> {
+  const { error } = await getSupabase().storage.from(TERM_SHEET_BUCKET)
+    .upload(key, buffer, { contentType: 'application/pdf', upsert: false });
+  if (error) throw new Error(`term sheet upload failed: ${error.message}`);
+}
+
+export async function downloadTermSheet(key: string): Promise<Buffer> {
+  const { data, error } = await getSupabase().storage.from(TERM_SHEET_BUCKET).download(key);
+  if (error || !data) throw new Error(`term sheet download failed: ${error?.message ?? 'no data'}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/** Short-lived link for the reviewer to open the PDF the card is describing. */
+export async function signedTermSheetUrl(key: string, seconds = 300): Promise<string> {
+  const { data, error } = await getSupabase().storage.from(TERM_SHEET_BUCKET).createSignedUrl(key, seconds);
+  if (error || !data) throw new Error(`term sheet link failed: ${error?.message ?? 'no data'}`);
+  return data.signedUrl;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**

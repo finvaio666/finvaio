@@ -94,6 +94,19 @@ export function holdingValueMyr(h: PortfolioHolding): number {
   return h.valueMyr || h.valueOriginal * h.fxRate;
 }
 
+/**
+ * A holding's value in its OWN currency, no MYR conversion — the same
+ * purchase/par-vs-value rule as holdingValueMyr, just before the fxRate
+ * multiply. For a USD note this is the actual USD amount, not an MYR
+ * equivalent — used where showing a converted figure would misstate what a
+ * client's position is actually denominated in (e.g. the admin's Needs
+ * Action page, where an FA needs the real USD/SGD number, not RM).
+ */
+export function holdingValueOriginal(h: PortfolioHolding): number {
+  if (h.assetClass === 'Structured Product') return h.purchaseOriginal;
+  return h.valueOriginal;
+}
+
 /** A structured note an admin has confirmed exited — excluded from active AUM. */
 export function isExitedHolding(h: PortfolioHolding): boolean {
   return h.assetClass === 'Structured Product' && h.status === 'Redeemed';
@@ -229,6 +242,13 @@ export interface PortfolioPatchInput {
   purchaseMyr?:  number;
   units?:        number;
   maturityDate?: string;
+  // Structured-note fields. Not editable from the add/edit holding form (which
+  // covers funds and equities); set when a note is accepted off the intake
+  // queue, where the term sheet supplies them. productName is the ISIN — the
+  // key everything else groups a shared note by.
+  productName?:       string;
+  startDate?:         string;
+  underlyingDetails?: PortfolioHolding['underlyingDetails'];
 }
 
 /** Map caller fields → portfolio_holdings columns. `isCreate` forces the name
@@ -249,6 +269,9 @@ export function buildPortfolioPatch(b: PortfolioPatchInput, advisorName: string,
   if (b.purchaseMyr  !== undefined) p.purchase_price_myr      = b.purchaseMyr || 0;
   if (b.units        !== undefined) p.units                   = b.units || 0;
   if (b.maturityDate !== undefined) p.maturity_date           = b.maturityDate || null;
+  if (b.productName  !== undefined) p.product_name            = t(b.productName);
+  if (b.startDate    !== undefined) p.start_date              = b.startDate || null;
+  if (b.underlyingDetails !== undefined) p.underlying_details = b.underlyingDetails;
   if (isCreate) p.advisor = advisorName;
   return p;
 }
