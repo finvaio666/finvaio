@@ -3,6 +3,7 @@ import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { getPlatformGroups } from '@/lib/platformGroups';
+import { signedTermSheetUrl } from '@/lib/storage';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,15 @@ export interface IntakeCandidate {
   parseWarnings: string[];
   parsed:        Record<string, unknown> | null;
   firstSeenAt:   string;
+  /**
+   * 'awaiting_parse' means the PDF is uploaded but its terms haven't been read
+   * yet — parsing needs pypdf, which runs on a machine, not on Vercel. The card
+   * says so rather than showing an empty form that looks like a failed parse.
+   */
+  status:        'pending' | 'awaiting_parse';
+  uploadedBy:    string;
+  /** Short-lived link to the stored PDF, so the reviewer can check the terms against it. Empty for folder scans. */
+  fileUrl:       string;
   /**
    * How many OTHER pending candidates share this file. Ignoring is per
    * document, so a shared note filed under several clients takes all of them
@@ -100,7 +110,14 @@ export async function GET(req: NextRequest) {
     const perHash = new Map<string, number>();
     for (const r of rows) perHash.set(r.fileHash, (perHash.get(r.fileHash) ?? 0) + 1);
 
-    const candidates: IntakeCandidate[] = rows.map(r => {
+    // Signed per request rather than stored: the links expire, so a stale one
+    // is never left lying around in a cached payload.
+    const signed = await Promise.all(rows.map(async r => {
+      if (!r.storageKey) return '';
+      try { return await signedTermSheetUrl(r.storageKey); } catch { return ''; }
+    }));
+
+    const candidates: IntakeCandidate[] = rows.map((r, i) => {
       const c = r.clientNotionId ? clientById.get(r.clientNotionId) : undefined;
       return {
         id:            r.id,
@@ -116,6 +133,9 @@ export async function GET(req: NextRequest) {
         parseWarnings: r.parseWarnings,
         parsed:        r.parsed,
         firstSeenAt:   r.firstSeenAt,
+        status:        r.status === 'awaiting_parse' ? 'awaiting_parse' : 'pending',
+        uploadedBy:    r.uploadedBy,
+        fileUrl:       signed[i],
         siblingCount:  (perHash.get(r.fileHash) ?? 1) - 1,
       };
     });

@@ -27,6 +27,7 @@
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 
@@ -59,12 +60,18 @@ const forceIsins = forceIdx >= 0 ? new Set(process.argv[forceIdx + 1].split(',')
 // "New Notes" tab for review. Still not an insert — nothing reaches
 // portfolio_holdings until a human confirms the terms and supplies the amount.
 const push = process.argv.includes('--push');
+// --parse-queue: read the terms of term sheets UPLOADED through the app, which
+// arrive with the PDF stored but nothing parsed. Vercel has no Python, and a JS
+// PDF reader is exactly what misreads a table column silently, so parsing stays
+// here where pypdf is. Takes no folder argument — the queue is the input.
+const parseQueue = process.argv.includes('--parse-queue');
 
-if (!folder) {
+if (!folder && !parseQueue) {
   console.error('Usage: node scripts/scan-term-sheets.mjs "<folder to scan>" [--json out.json] [--push]');
+  console.error('       node scripts/scan-term-sheets.mjs --parse-queue        (read terms of app-uploaded term sheets)');
   process.exit(1);
 }
-if (!fs.existsSync(folder)) { console.error(`Folder not found: ${folder}`); process.exit(1); }
+if (folder && !fs.existsSync(folder)) { console.error(`Folder not found: ${folder}`); process.exit(1); }
 
 // ── 1. Walk the folder for PDFs ───────────────────────────────────────────────
 function walkPdfs(dir) {
@@ -446,8 +453,80 @@ async function loadClients() {
   return out;
 }
 
+/**
+ * Read the terms of term sheets uploaded through the app.
+ *
+ * An upload lands with the PDF in Supabase Storage and no terms — the route
+ * that accepts it runs on Vercel, which has no Python. This pulls each one
+ * down, runs the same pypdf parsers the folder scan uses, writes the result
+ * back and moves the row from 'awaiting_parse' to 'pending' so it becomes a
+ * reviewable card.
+ *
+ * A file whose terms can't be read still moves to 'pending', carrying the
+ * reason in parse_warnings: the reviewer can key the terms by hand from the
+ * PDF, and a candidate stuck invisibly in a parse queue helps nobody.
+ */
+async function runParseQueue() {
+  const r = await fetch(`${SB}/rest/v1/note_intake?status=eq.awaiting_parse&storage_key=not.is.null&select=id,isin,file_name,storage_key&order=first_seen_at`, { headers: H });
+  if (!r.ok) { console.error(`Could not read the parse queue (${r.status}): ${await r.text()}`); process.exit(1); }
+  const rows = await r.json();
+
+  if (!rows.length) { console.log('Nothing awaiting parse — every uploaded term sheet has had its terms read.'); return; }
+  console.log(`${rows.length} uploaded term sheet(s) awaiting parse.\n`);
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finva-ts-'));
+  let done = 0, failed = 0;
+
+  for (const row of rows) {
+    console.log(`${row.isin}  ${row.file_name}`);
+    const dl = await fetch(`${SB}/storage/v1/object/term-sheets/${row.storage_key}`, { headers: H });
+    if (!dl.ok) { console.log(`  ⚠ download failed (${dl.status}) — leaving it queued\n`); failed++; continue; }
+
+    const tmp = path.join(tmpDir, `${row.isin}-${Date.now()}.pdf`);
+    fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
+
+    const text = extractText(tmp);
+    let family = null, parsed = null;
+    const warnings = [];
+
+    if (!text) {
+      warnings.push('PDF text extraction failed — is python3 + pypdf installed? Key the terms in by hand.');
+    } else {
+      family = detectFamily(text);
+      if (family === 'unknown') {
+        family = null;
+        warnings.push('Unrecognised term sheet format — no known issuer template matched. Key the terms in by hand.');
+      } else {
+        parsed = { ...PARSERS[family](text), ...parseSizing(text) };
+        warnings.push(...(parsed.notes_ ?? []));
+        console.log(`  Template: ${family}${parsed.issueAmount ? `  Tranche: ${parsed.currency ?? ''} ${parsed.issueAmount.toLocaleString()}` : ''}`);
+        console.log(`  Underlyings: ${parsed.underlyings?.length ? parsed.underlyings.map(u => u.ticker || u.name).join(', ') : '(not parsed)'}  Schedule: ${parsed.schedule?.length ?? 0} obs`);
+      }
+    }
+
+    const up = await fetch(`${SB}/rest/v1/note_intake?id=eq.${row.id}`, {
+      method: 'PATCH',
+      headers: { ...H, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        issuer_family: family, parsed, parse_warnings: warnings,
+        status: 'pending', last_seen_at: new Date().toISOString(),
+      }),
+    });
+    if (!up.ok) { console.log(`  ⚠ write-back failed (${up.status}): ${await up.text()}\n`); failed++; continue; }
+
+    fs.unlinkSync(tmp);
+    done++;
+    console.log(`  ✓ ready for review\n`);
+  }
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  console.log(`Parsed ${done} term sheet(s)${failed ? `, ${failed} left queued` : ''}. Review them in FINVA: Dashboard → 📥 New Notes.`);
+}
+
 // ── main ───────────────────────────────────────────────────────────────────────
 const main = async () => {
+  if (parseQueue) return runParseQueue();
+
   console.log(`Scanning ${folder} ...`);
   const pdfs = walkPdfs(folder);
   console.log(`Found ${pdfs.length} PDF(s).\n`);

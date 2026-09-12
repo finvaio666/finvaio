@@ -120,6 +120,119 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
+/**
+ * Drag term sheets in, say which client each belongs to, upload.
+ *
+ * The client is PICKED here rather than guessed from a folder name, which is
+ * the weak point of the folder scanner — it warns loudly when a folder doesn't
+ * match a known client, and that warning is the only thing standing between a
+ * mis-named folder and a silently skipped note.
+ *
+ * Terms are not read at upload time (Vercel has no Python, and a JS PDF reader
+ * misreads table columns quietly), so a file lands as "awaiting parse" and the
+ * card says so until `scan-term-sheets.mjs --parse-queue` has run.
+ */
+function UploadPanel({ clients, onDone }: {
+  clients: IntakeQueue['clients'];
+  onDone: () => void;
+}) {
+  const [picked, setPicked]   = useState<{ file: File; clientId: string }[]>([]);
+  const [busy, setBusy]       = useState(false);
+  const [results, setResults] = useState<{ fileName: string; ok: boolean; reason?: string }[]>([]);
+  const [dragging, setDragging] = useState(false);
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    const pdfs = [...list].filter(f => /\.pdf$/i.test(f.name));
+    setPicked(p => [...p, ...pdfs.map(file => ({ file, clientId: '' }))]);
+    setResults([]);
+  }
+
+  async function upload() {
+    if (!picked.length) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      // Parallel arrays: the route pairs clientIds[i] with files[i].
+      for (const p of picked) { fd.append('files', p.file); fd.append('clientIds', p.clientId); }
+      const res = await fetch('/api/note-intake/upload', { method: 'POST', body: fd });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error ?? 'Upload failed.'); return; }
+      setResults(d.results ?? []);
+      // Keep only what was rejected, with its reason — re-uploading the ones
+      // that worked would just produce "already in the queue".
+      const failedNames = new Set((d.results ?? []).filter((r: { ok: boolean }) => !r.ok).map((r: { fileName: string }) => r.fileName));
+      setPicked(p => p.filter(x => failedNames.has(x.file.name)));
+      onDone();
+    } catch { alert('Upload failed — network error.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="section" style={{ padding: 16, marginBottom: 4 }}>
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
+        style={{
+          border: `1.5px dashed ${dragging ? '#F37338' : 'var(--border)'}`,
+          background: dragging ? 'rgba(243,115,56,0.06)' : 'transparent',
+          borderRadius: 10, padding: '18px 16px', textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Upload term sheets</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 10 }}>
+          Drop PDFs here, or <label style={{ color: '#F37338', cursor: 'pointer', textDecoration: 'underline' }}>
+            browse<input type="file" accept="application/pdf" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+          </label>. The filename must contain the ISIN.
+        </div>
+      </div>
+
+      {picked.length > 0 && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {picked.map((p, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ flex: 2, minWidth: 0, fontSize: 11.5, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {p.file.name}
+              </div>
+              <div style={{ flex: 2, minWidth: 0 }}>
+                <ClientSearchCombobox
+                  clients={clients}
+                  value={p.clientId}
+                  onChange={cl => setPicked(list => list.map((x, j) => (j === i ? { ...x, clientId: cl?.id ?? '' } : x)))}
+                  placeholder="Which client?"
+                  inputStyle={{ padding: '6px 32px 6px 30px', fontSize: 12, borderRadius: 6, borderWidth: 1 }}
+                />
+              </div>
+              <button onClick={() => setPicked(list => list.filter((_, j) => j !== i))} title="Remove"
+                style={{ padding: '5px 9px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', cursor: 'pointer' }}>×</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 2 }}>
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+              Leaving a client blank is fine — you&apos;ll pick one before it can be added to the book.
+            </span>
+            <button onClick={upload} disabled={busy}
+              style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #F37338', background: busy ? 'var(--surface)' : '#F37338', color: busy ? 'var(--text3)' : '#fff', cursor: busy ? 'wait' : 'pointer' }}>
+              {busy ? 'Uploading…' : `Upload ${picked.length}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {results.map((r, i) => (
+            <div key={i} style={{ fontSize: 11, color: r.ok ? '#22c55e' : '#d97706' }}>
+              {r.ok ? '✓' : '⚠'} {r.fileName}{r.reason ? ` — ${r.reason}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function NewNotesTab() {
   const [queue,   setQueue]   = useState<IntakeQueue | null>(null);
   const [loading, setLoading] = useState(true);
@@ -255,24 +368,39 @@ export default function NewNotesTab() {
 
   if (!queue.candidates.length) {
     return (
-      <div className="section" style={{ padding: '64px 32px', textAlign: 'center' }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>📭</div>
-        <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>No new term sheets</div>
-        <div style={{ fontSize: 13, color: 'var(--text3)', maxWidth: 460, margin: '0 auto' }}>
-          Every term sheet in the scanned folder is either already in the book or was ignored.
-          Run <code style={{ fontSize: 12 }}>node scripts/scan-term-sheets.mjs &quot;&lt;folder&gt;&quot; --push</code> to check for new ones.
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <UploadPanel clients={queue.clients} onDone={load} />
+        <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>📭</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>No new term sheets</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', maxWidth: 460, margin: '0 auto' }}>
+            Everything found so far is either already in the book or was ignored. Upload term sheets above, or
+            run <code style={{ fontSize: 12 }}>node scripts/scan-term-sheets.mjs &quot;&lt;folder&gt;&quot; --push</code> to scan a folder.
+          </div>
         </div>
       </div>
     );
   }
+
+  const awaiting = queue.candidates.filter(c => c.status === 'awaiting_parse').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <datalist id="intake-issuers">
         {queue.institutions.map(i => <option key={i} value={i} />)}
       </datalist>
+      <UploadPanel clients={queue.clients} onDone={load} />
+
+      {awaiting > 0 && (
+        <div style={{ fontSize: 11.5, padding: '9px 12px', borderRadius: 8, color: '#d97706', background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.30)' }}>
+          {awaiting} uploaded term sheet{awaiting === 1 ? '' : 's'} still need{awaiting === 1 ? 's' : ''} its terms read.
+          Reading a PDF needs Python, which the server doesn&apos;t have — run{' '}
+          <code style={{ fontSize: 11 }}>node scripts/scan-term-sheets.mjs --parse-queue</code> and refresh.
+        </div>
+      )}
+
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-        {queue.candidates.length} term sheet{queue.candidates.length === 1 ? '' : 's'} found in the folder but not in the book.
+        {queue.candidates.length} term sheet{queue.candidates.length === 1 ? '' : 's'} not in the book.
         The parsed terms below are a <strong>draft to check against the PDF</strong>, not settled fact — and the invested amount is never on a term sheet,
         so it has to come from you.
       </div>
@@ -297,7 +425,11 @@ export default function NewNotesTab() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{c.isin}</span>
-                  {c.issuerFamily ? (
+                  {c.status === 'awaiting_parse' ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: '#d97706', background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.35)' }}>
+                      Terms not read yet
+                    </span>
+                  ) : c.issuerFamily ? (
                     <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: 'var(--text2)', background: 'var(--bg)', border: '1px solid var(--border)' }}>
                       {ISSUER_LABEL[c.issuerFamily] ?? c.issuerFamily}
                     </span>
@@ -312,7 +444,20 @@ export default function NewNotesTab() {
                     ? <>for <strong style={{ color: 'var(--text2)' }}>{c.clientName}</strong> · {c.advisorName || '—'}</>
                     : <span style={{ color: '#d97706', fontWeight: 600 }}>Client not matched — folder &ldquo;{c.clientHint}&rdquo; is not a known client name</span>}
                 </div>
-                <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 3, wordBreak: 'break-all' }}>{c.filePath}</div>
+                {c.fileUrl ? (
+                  // Uploaded: the reviewer can open the actual PDF to check the
+                  // parsed terms against it, which is the whole point of showing
+                  // them as a draft.
+                  <div style={{ fontSize: 10.5, marginTop: 3 }}>
+                    <a href={c.fileUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      style={{ color: '#F37338', textDecoration: 'underline' }}>
+                      📄 {c.fileName}
+                    </a>
+                    {c.uploadedBy && <span style={{ color: 'var(--text3)' }}> · uploaded by {c.uploadedBy}</span>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 3, wordBreak: 'break-all' }}>{c.filePath}</div>
+                )}
               </div>
               <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>{isOpen ? '▲ Close' : '▼ Review'}</span>
             </div>

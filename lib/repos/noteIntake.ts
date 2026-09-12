@@ -29,7 +29,9 @@ export interface NoteIntakeRow {
   issuerFamily:      string;
   parsed:            Record<string, unknown> | null;
   parseWarnings:     string[];
-  status:            'pending' | 'inserted' | 'ignored';
+  status:            'awaiting_parse' | 'pending' | 'inserted' | 'ignored';
+  storageKey:        string;   // '' for folder scans, which read the PDF off disk instead
+  uploadedBy:        string;
   holdingIds:        string[];
   reviewedBy:        string;
   reviewedAt:        string;
@@ -50,6 +52,8 @@ interface Row {
   parsed: Record<string, unknown> | null;
   parse_warnings: string[] | null;
   status: string;
+  storage_key: string | null;
+  uploaded_by: string | null;
   holding_ids: string[] | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -57,7 +61,7 @@ interface Row {
   last_seen_at: string | null;
 }
 
-const COLS = 'id, file_hash, file_path, file_name, isin, client_notion_id, client_match_source, client_hint, issuer_family, parsed, parse_warnings, status, holding_ids, reviewed_by, reviewed_at, first_seen_at, last_seen_at';
+const COLS = 'id, file_hash, file_path, file_name, isin, client_notion_id, client_match_source, client_hint, issuer_family, parsed, parse_warnings, status, storage_key, uploaded_by, holding_ids, reviewed_by, reviewed_at, first_seen_at, last_seen_at';
 
 function toIntake(r: Row): NoteIntakeRow {
   return {
@@ -73,6 +77,8 @@ function toIntake(r: Row): NoteIntakeRow {
     parsed:            r.parsed,
     parseWarnings:     r.parse_warnings ?? [],
     status:            (r.status as NoteIntakeRow['status']) ?? 'pending',
+    storageKey:        r.storage_key ?? '',
+    uploadedBy:        r.uploaded_by ?? '',
     holdingIds:        r.holding_ids ?? [],
     reviewedBy:        r.reviewed_by ?? '',
     reviewedAt:        r.reviewed_at ?? '',
@@ -81,13 +87,71 @@ function toIntake(r: Row): NoteIntakeRow {
   };
 }
 
-/** Candidates still awaiting review, oldest first — a note sitting unreviewed for weeks is the thing worth seeing. */
+/**
+ * Candidates still open, oldest first — a note sitting unreviewed for weeks is
+ * the thing worth seeing.
+ *
+ * Includes 'awaiting_parse': an uploaded PDF is a real candidate the moment it
+ * lands, it just has no parsed terms until the pypdf worker gets to it. Hiding
+ * it until then would make an upload look like it silently failed.
+ */
 export async function listPending(): Promise<NoteIntakeRow[]> {
   const sb = getSupabase();
   const { data, error } = await sb.from(TABLE).select(COLS)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'awaiting_parse'])
     .order('first_seen_at', { ascending: true });
   if (error) throw new Error(`note_intake list failed: ${error.message}`);
+  return (data as Row[]).map(toIntake);
+}
+
+/**
+ * Has this exact document already been dealt with, under any client?
+ *
+ * Upload has to answer two different questions before accepting a file, and
+ * they use different keys: "was this document permanently ignored" is per
+ * HASH (a rejected PDF stays rejected under every client), while "is this
+ * already queued" is per (hash, client) — the same tranche legitimately
+ * arrives once per client holding a slice of it.
+ */
+export async function findByHash(fileHash: string): Promise<NoteIntakeRow[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select(COLS).eq('file_hash', fileHash);
+  if (error) throw new Error(`note_intake hash lookup failed: ${error.message}`);
+  return (data as Row[]).map(toIntake);
+}
+
+/** Stage an uploaded term sheet. Terms are filled in later by the parse worker. */
+export async function createUpload(row: {
+  fileHash: string; fileName: string; isin: string; storageKey: string;
+  clientNotionId: string; uploadedBy: string;
+}): Promise<string> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).insert({
+    file_hash:           row.fileHash,
+    // No folder to point at — the object key is where this PDF actually lives.
+    file_path:           `supabase://term-sheets/${row.storageKey}`,
+    file_name:           row.fileName,
+    isin:                row.isin,
+    storage_key:         row.storageKey,
+    client_notion_id:    row.clientNotionId,
+    client_match_source: row.clientNotionId ? 'manual' : null,
+    client_hint:         'uploaded',
+    uploaded_by:         row.uploadedBy,
+    status:              'awaiting_parse',
+    parse_warnings:      [],
+  }).select('id').single();
+  if (error) throw new Error(`note_intake upload insert failed: ${error.message}`);
+  return (data as { id: string }).id;
+}
+
+/** Uploads whose terms haven't been read yet — the parse worker's queue. */
+export async function listAwaitingParse(): Promise<NoteIntakeRow[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select(COLS)
+    .eq('status', 'awaiting_parse')
+    .not('storage_key', 'is', null)
+    .order('first_seen_at', { ascending: true });
+  if (error) throw new Error(`note_intake parse-queue list failed: ${error.message}`);
   return (data as Row[]).map(toIntake);
 }
 
