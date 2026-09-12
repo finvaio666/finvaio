@@ -342,13 +342,32 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
   // Admin-only confirmation for a system-flagged "likely KO'd/matured" note —
   // the flag itself never writes anything; this is the one place that does,
   // and only when a human clicks it. Same admin-only PATCH route as edit/delete.
+  //
+  // The response is checked rather than discarded. This PATCH is admin-only,
+  // so an advisor clicking it gets a 403 — and when that result was thrown
+  // away, the dialog still closed and the list still reloaded, which is
+  // indistinguishable from success. A note would sit unchanged in the book
+  // while the person who clicked believed they had exited it (2026-09-12:
+  // confirmed exits that never reached Supabase or Notion, both stores showing
+  // 0 redeemed against 57 active notes). A write that can fail silently is
+  // worse than no button.
   async function confirmExit(h: Holding) {
     if (!confirm(`Confirm "${h.name}" has exited (KO'd or matured)? This marks it Redeemed and removes it from the active AUM view.`)) return;
-    await fetch('/api/portfolio', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: h.id, status: 'Redeemed' }),
-    });
+    try {
+      const res = await fetch('/api/portfolio', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: h.id, status: 'Redeemed' }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.error ?? `Could not mark "${h.name}" as exited. It is unchanged.`);
+        return;   // no reload: the list is already correct, and reloading would suggest something happened
+      }
+    } catch {
+      alert(`Could not mark "${h.name}" as exited — network error. It is unchanged.`);
+      return;
+    }
     loadHoldings(true);
   }
 
