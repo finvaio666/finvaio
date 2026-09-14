@@ -311,6 +311,13 @@ export default function NewNotesTab() {
 
     if (!allocations.length) { alert('Each client needs an invested amount — that figure is never on the term sheet, so it has to come from you.'); return; }
     if (!Number(f.kiPct))  { alert('Read the KI barrier off the term sheet (as a % of initial) — without it, a knock-in can never be flagged.'); return; }
+    // A note accepted here has no FAME account number (it was never synced),
+    // so an empty Platform leaves nothing at all to group it by — the client's
+    // Portfolio tab drops it into "Other Holdings (manual entries)" and the
+    // admin's AUM-by-platform breakdown loses it to Ungrouped. Caught this
+    // exact case in production: XS3479300751's four holdings landed there
+    // because the dropdown was left on its placeholder.
+    if (!f.platform) { alert('Pick a platform (custodian) before adding this — without one, the note has nothing to group by and lands under "manual entries" on the client\'s profile.'); return; }
 
     // Checks against the tranche the term sheet states. Over-allocating is
     // impossible, so it blocks outright; an amount that isn't a whole number of

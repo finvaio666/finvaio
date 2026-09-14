@@ -169,6 +169,13 @@ export async function POST(req: NextRequest) {
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   if (!b.holdingName?.trim()) return NextResponse.json({ error: 'Holding name is required' }, { status: 400 });
+  // A note accepted here never has a FAME account number — it was never
+  // synced, it was typed in. Skip the platform too and there is nothing left
+  // to group it by: the client's Portfolio tab drops it into "Other Holdings
+  // (manual entries)" and the admin AUM-by-platform breakdown loses it to
+  // Ungrouped. Caught in production — XS3479300751's four holdings landed
+  // there because the form's own check was the only thing enforcing this.
+  if (!b.platform?.trim()) return NextResponse.json({ error: 'A platform (custodian) is required — without one this note has nothing to group by.' }, { status: 400 });
 
   const allocations = (b.allocations ?? []).filter(a => a.clientId && Number(a.amount) > 0);
   if (!allocations.length) {
