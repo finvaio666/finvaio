@@ -209,6 +209,22 @@ export async function POST(req: NextRequest) {
     const unknown = allocations.find(a => !clientById.has(a.clientId));
     if (unknown) return NextResponse.json({ error: `Unknown client: ${unknown.clientId}` }, { status: 400 });
 
+    // A candidate's "already held" check runs once, at upload or scan time —
+    // it is a snapshot, not a live guarantee. If a client ends up holding this
+    // ISIN through some OTHER path afterward (a direct correction, a second
+    // upload of the same tranche, the candidate sitting unreviewed while the
+    // note was entered another way), the stale candidate would otherwise still
+    // be sitting here days later, and accepting it creates a genuine duplicate
+    // holding. Re-checked here, at the one point that actually writes.
+    const alreadyHeld = allocations.find(a =>
+      holdings.some(h => h.productName === row.isin && h.clientNotionId === a.clientId));
+    if (alreadyHeld) {
+      const name = clientById.get(alreadyHeld.clientId)?.name ?? alreadyHeld.clientId;
+      return NextResponse.json({
+        error: `${name} already holds ${row.isin} — this candidate is stale. Ignore it instead of accepting.`,
+      }, { status: 409 });
+    }
+
     const underlyingDetails = buildUnderlyingDetails(row.parsed, b);
     const fxRate = await resolveFxRate(b.currency, holdings);
 

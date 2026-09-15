@@ -422,7 +422,8 @@ export default function NewNotesTab() {
         return (
           <div key={c.id} style={{
             background: 'var(--surface)', borderRadius: 10,
-            border: `1px solid ${unmatched ? 'rgba(217,119,6,0.35)' : 'var(--border)'}`,
+            border: `1px solid ${c.alreadyHeld ? 'rgba(100,116,139,0.4)' : unmatched ? 'rgba(217,119,6,0.35)' : 'var(--border)'}`,
+            opacity: c.alreadyHeld ? 0.65 : 1,
           }}>
             {/* Summary row — always visible */}
             <div
@@ -432,6 +433,16 @@ export default function NewNotesTab() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{c.isin}</span>
+                  {c.alreadyHeld && (
+                    // The upload/scan-time "already held" check is a snapshot —
+                    // this client ended up holding the note some other way since
+                    // this candidate was staged. Nothing to review here; it can
+                    // only be ignored, since accepting it now would duplicate a
+                    // live holding.
+                    <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: 'var(--text3)', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+                      Stale — client already holds this note
+                    </span>
+                  )}
                   {c.status === 'awaiting_parse' ? (
                     <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: '#d97706', background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.35)' }}>
                       Terms not read yet
@@ -590,14 +601,20 @@ export default function NewNotesTab() {
                   + Add another client
                 </button>
 
+                {c.alreadyHeld && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 10 }}>
+                    This client already holds {c.isin} in the live book — this candidate is left over from before that happened. Nothing to review; ignore it.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <button onClick={() => ignore(c)} disabled={isBusy}
                     title={c.siblingCount ? `Also removes ${c.siblingCount} other pending candidate(s) for this document` : 'Never offer this term sheet again'}
                     style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', cursor: isBusy ? 'wait' : 'pointer' }}>
                     Ignore permanently{c.siblingCount ? ` (${c.siblingCount + 1} copies)` : ''}
                   </button>
-                  <button onClick={() => accept(c)} disabled={isBusy}
-                    style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #22c55e', background: isBusy ? 'var(--surface)' : '#22c55e', color: isBusy ? 'var(--text3)' : '#fff', cursor: isBusy ? 'wait' : 'pointer', opacity: isBusy ? 0.6 : 1 }}>
+                  <button onClick={() => accept(c)} disabled={isBusy || c.alreadyHeld}
+                    title={c.alreadyHeld ? 'Already held — accepting would create a duplicate holding' : undefined}
+                    style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #22c55e', background: (isBusy || c.alreadyHeld) ? 'var(--surface)' : '#22c55e', color: (isBusy || c.alreadyHeld) ? 'var(--text3)' : '#fff', cursor: (isBusy || c.alreadyHeld) ? 'not-allowed' : 'pointer', opacity: (isBusy || c.alreadyHeld) ? 0.6 : 1 }}>
                     {isBusy ? 'Adding…' : 'Add to book'}
                   </button>
                 </div>
