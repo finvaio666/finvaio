@@ -120,10 +120,23 @@ export async function findByHash(fileHash: string): Promise<NoteIntakeRow[]> {
   return (data as Row[]).map(toIntake);
 }
 
-/** Stage an uploaded term sheet. Terms are filled in later by the parse worker. */
+/**
+ * Stage an uploaded term sheet.
+ *
+ * Terms are read inline at upload time (Gemini — see lib/geminiParseTermSheet.ts)
+ * whenever that succeeds, so the row lands as 'pending' and reviewable
+ * immediately rather than waiting on anything. `parsed` here is the fallback:
+ * when the read fails (network hiccup, malformed model output, quota), the
+ * row lands 'awaiting_parse' exactly as before, and the local pypdf worker
+ * (`scan-term-sheets.mjs --parse-queue`) remains a working second attempt —
+ * nothing about that path changed.
+ */
 export async function createUpload(row: {
   fileHash: string; fileName: string; isin: string; storageKey: string;
   clientNotionId: string; uploadedBy: string;
+  parsed?: Record<string, unknown> | null;
+  issuerFamily?: string;
+  parseWarnings?: string[];
 }): Promise<string> {
   const sb = getSupabase();
   const { data, error } = await sb.from(TABLE).insert({
@@ -137,8 +150,10 @@ export async function createUpload(row: {
     client_match_source: row.clientNotionId ? 'manual' : null,
     client_hint:         'uploaded',
     uploaded_by:         row.uploadedBy,
-    status:              'awaiting_parse',
-    parse_warnings:      [],
+    status:              row.parsed ? 'pending' : 'awaiting_parse',
+    issuer_family:       row.issuerFamily ?? null,
+    parsed:              row.parsed ?? null,
+    parse_warnings:      row.parseWarnings ?? [],
   }).select('id').single();
   if (error) throw new Error(`note_intake upload insert failed: ${error.message}`);
   return (data as { id: string }).id;

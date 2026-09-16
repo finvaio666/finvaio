@@ -49,6 +49,7 @@ interface ParsedTerms {
   /** Tranche total and minimum unit — the only figures on a term sheet that can check the amounts a human types. */
   issueAmount?: number | null;
   denomination?: number | null;
+  currency?: string | null;
   underlyings?: { name?: string; ticker?: string; entry?: number; strike?: number }[];
   schedule?: { n?: number; determinationDate?: string | null; triggerPct?: number | null }[];
   notes_?: string[];
@@ -72,10 +73,16 @@ const ISSUER_INSTITUTION: Record<string, string> = {
   natixis:   'Natixis',
 };
 
-/** A first-draft holding name from what the parser found — always editable. */
+/**
+ * A first-draft holding name from what the parser found — always editable.
+ * `issuerFamily` is either one of the old regex-parser slugs (nomura, marex…)
+ * or, from Gemini, the institution's full name as stated on the term sheet —
+ * either way ISSUER_LABEL's `??` fallback means a name that isn't in the
+ * short-label map is used as-is, just longer.
+ */
 function draftName(c: IntakeCandidate, p: ParsedTerms): string {
   const tickers = (p.underlyings ?? []).map(u => u.ticker || u.name).filter(Boolean);
-  const issuer = ISSUER_LABEL[c.issuerFamily] ?? '';
+  const issuer = ISSUER_LABEL[c.issuerFamily] ?? c.issuerFamily ?? '';
   const basket = tickers.length ? tickers.join('/') : c.isin;
   return [issuer, basket, 'FCN'].filter(Boolean).join(' ');
 }
@@ -84,8 +91,11 @@ function initialForm(c: IntakeCandidate): FormState {
   const p = (c.parsed ?? {}) as ParsedTerms;
   return {
     holdingName:  draftName(c, p),
-    currency:     'USD',
-    institution:  ISSUER_INSTITUTION[c.issuerFamily] ?? '',
+    currency:     p.currency || 'USD',
+    // Gemini's issuer_family already IS the exact institution string (it asks
+    // for the name "exactly as stated"), so it prefills directly — the old
+    // slug map only still matters for legacy regex-parsed rows.
+    institution:  ISSUER_INSTITUTION[c.issuerFamily] ?? c.issuerFamily ?? '',
     platform:     '',
     startDate:    p.issueDate ?? '',
     // Computed from the final valuation plus the term sheet's stated settlement
@@ -311,6 +321,13 @@ export default function NewNotesTab() {
 
     if (!allocations.length) { alert('Each client needs an invested amount — that figure is never on the term sheet, so it has to come from you.'); return; }
     if (!Number(f.kiPct))  { alert('Read the KI barrier off the term sheet (as a % of initial) — without it, a knock-in can never be flagged.'); return; }
+    // A note accepted here has no FAME account number (it was never synced),
+    // so an empty Platform leaves nothing at all to group it by — the client's
+    // Portfolio tab drops it into "Other Holdings (manual entries)" and the
+    // admin's AUM-by-platform breakdown loses it to Ungrouped. Caught this
+    // exact case in production: XS3479300751's four holdings landed there
+    // because the dropdown was left on its placeholder.
+    if (!f.platform) { alert('Pick a platform (custodian) before adding this — without one, the note has nothing to group by and lands under "manual entries" on the client\'s profile.'); return; }
 
     // Checks against the tranche the term sheet states. Over-allocating is
     // impossible, so it blocks outright; an amount that isn't a whole number of
@@ -415,7 +432,8 @@ export default function NewNotesTab() {
         return (
           <div key={c.id} style={{
             background: 'var(--surface)', borderRadius: 10,
-            border: `1px solid ${unmatched ? 'rgba(217,119,6,0.35)' : 'var(--border)'}`,
+            border: `1px solid ${c.alreadyHeld ? 'rgba(100,116,139,0.4)' : unmatched ? 'rgba(217,119,6,0.35)' : 'var(--border)'}`,
+            opacity: c.alreadyHeld ? 0.65 : 1,
           }}>
             {/* Summary row — always visible */}
             <div
@@ -425,6 +443,16 @@ export default function NewNotesTab() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{c.isin}</span>
+                  {c.alreadyHeld && (
+                    // The upload/scan-time "already held" check is a snapshot —
+                    // this client ended up holding the note some other way since
+                    // this candidate was staged. Nothing to review here; it can
+                    // only be ignored, since accepting it now would duplicate a
+                    // live holding.
+                    <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: 'var(--text3)', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+                      Stale — client already holds this note
+                    </span>
+                  )}
                   {c.status === 'awaiting_parse' ? (
                     <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: '#d97706', background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.35)' }}>
                       Terms not read yet
@@ -583,14 +611,20 @@ export default function NewNotesTab() {
                   + Add another client
                 </button>
 
+                {c.alreadyHeld && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 10 }}>
+                    This client already holds {c.isin} in the live book — this candidate is left over from before that happened. Nothing to review; ignore it.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <button onClick={() => ignore(c)} disabled={isBusy}
                     title={c.siblingCount ? `Also removes ${c.siblingCount} other pending candidate(s) for this document` : 'Never offer this term sheet again'}
                     style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text3)', cursor: isBusy ? 'wait' : 'pointer' }}>
                     Ignore permanently{c.siblingCount ? ` (${c.siblingCount + 1} copies)` : ''}
                   </button>
-                  <button onClick={() => accept(c)} disabled={isBusy}
-                    style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #22c55e', background: isBusy ? 'var(--surface)' : '#22c55e', color: isBusy ? 'var(--text3)' : '#fff', cursor: isBusy ? 'wait' : 'pointer', opacity: isBusy ? 0.6 : 1 }}>
+                  <button onClick={() => accept(c)} disabled={isBusy || c.alreadyHeld}
+                    title={c.alreadyHeld ? 'Already held — accepting would create a duplicate holding' : undefined}
+                    style={{ padding: '7px 18px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1px solid #22c55e', background: (isBusy || c.alreadyHeld) ? 'var(--surface)' : '#22c55e', color: (isBusy || c.alreadyHeld) ? 'var(--text3)' : '#fff', cursor: (isBusy || c.alreadyHeld) ? 'not-allowed' : 'pointer', opacity: (isBusy || c.alreadyHeld) ? 0.6 : 1 }}>
                     {isBusy ? 'Adding…' : 'Add to book'}
                   </button>
                 </div>

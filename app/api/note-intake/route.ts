@@ -33,6 +33,15 @@ export interface IntakeCandidate {
   parsed:        Record<string, unknown> | null;
   firstSeenAt:   string;
   /**
+   * True when the matched client already holds this ISIN in the live book.
+   * The "already held" check that keeps a candidate from being created in the
+   * first place runs once, at upload or scan time — it can go stale if the
+   * client ends up holding the note some OTHER way afterward (a direct
+   * correction, a second upload of the same tranche). Surfaced here so the
+   * card says so before anyone opens it, not just when accept is blocked.
+   */
+  alreadyHeld:   boolean;
+  /**
    * 'awaiting_parse' means the PDF is uploaded but its terms haven't been read
    * yet — parsing needs pypdf, which runs on a machine, not on Vercel. The card
    * says so rather than showing an empty form that looks like a failed parse.
@@ -133,6 +142,7 @@ export async function GET(req: NextRequest) {
         parseWarnings: r.parseWarnings,
         parsed:        r.parsed,
         firstSeenAt:   r.firstSeenAt,
+        alreadyHeld:   !!r.clientNotionId && holdings.some(h => h.productName === r.isin && h.clientNotionId === r.clientNotionId),
         status:        r.status === 'awaiting_parse' ? 'awaiting_parse' : 'pending',
         uploadedBy:    r.uploadedBy,
         fileUrl:       signed[i],

@@ -169,6 +169,13 @@ export async function POST(req: NextRequest) {
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   if (!b.holdingName?.trim()) return NextResponse.json({ error: 'Holding name is required' }, { status: 400 });
+  // A note accepted here never has a FAME account number — it was never
+  // synced, it was typed in. Skip the platform too and there is nothing left
+  // to group it by: the client's Portfolio tab drops it into "Other Holdings
+  // (manual entries)" and the admin AUM-by-platform breakdown loses it to
+  // Ungrouped. Caught in production — XS3479300751's four holdings landed
+  // there because the form's own check was the only thing enforcing this.
+  if (!b.platform?.trim()) return NextResponse.json({ error: 'A platform (custodian) is required — without one this note has nothing to group by.' }, { status: 400 });
 
   const allocations = (b.allocations ?? []).filter(a => a.clientId && Number(a.amount) > 0);
   if (!allocations.length) {
@@ -201,6 +208,22 @@ export async function POST(req: NextRequest) {
     const clientById = new Map(clients.map(c => [c.notionId, c]));
     const unknown = allocations.find(a => !clientById.has(a.clientId));
     if (unknown) return NextResponse.json({ error: `Unknown client: ${unknown.clientId}` }, { status: 400 });
+
+    // A candidate's "already held" check runs once, at upload or scan time —
+    // it is a snapshot, not a live guarantee. If a client ends up holding this
+    // ISIN through some OTHER path afterward (a direct correction, a second
+    // upload of the same tranche, the candidate sitting unreviewed while the
+    // note was entered another way), the stale candidate would otherwise still
+    // be sitting here days later, and accepting it creates a genuine duplicate
+    // holding. Re-checked here, at the one point that actually writes.
+    const alreadyHeld = allocations.find(a =>
+      holdings.some(h => h.productName === row.isin && h.clientNotionId === a.clientId));
+    if (alreadyHeld) {
+      const name = clientById.get(alreadyHeld.clientId)?.name ?? alreadyHeld.clientId;
+      return NextResponse.json({
+        error: `${name} already holds ${row.isin} — this candidate is stale. Ignore it instead of accepting.`,
+      }, { status: 409 });
+    }
 
     const underlyingDetails = buildUnderlyingDetails(row.parsed, b);
     const fxRate = await resolveFxRate(b.currency, holdings);
