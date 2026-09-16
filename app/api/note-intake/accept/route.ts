@@ -39,6 +39,8 @@ interface Body {
   /** KI / KO barriers as a % of each underlying's initial fixing level — read off the PDF, never parsed. */
   kiPct?:       number;
   koPct?:       number;
+  /** Set once the reviewer has confirmed a genuine shortfall against the tranche — see the check below. */
+  acknowledgedShortfall?: boolean;
 }
 
 /**
@@ -194,13 +196,24 @@ export async function POST(req: NextRequest) {
     // Re-checked here, not just in the form: the tranche size comes from the
     // stored parse, so this holds even if the page was left open while the
     // candidate was re-scanned, and it can't be skipped by calling the API
-    // directly. Only the impossible case is enforced — a short allocation is
-    // normal, since the rest of a tranche can sit outside this firm.
+    // directly.
     const issueAmount = Number((row.parsed as { issueAmount?: number } | null)?.issueAmount) || 0;
     const total = allocations.reduce((s, a) => s + Number(a.amount), 0);
     if (issueAmount && total > issueAmount) {
       return NextResponse.json({
         error: `These amounts total ${total.toLocaleString()}, but the tranche is only ${issueAmount.toLocaleString()}. You cannot hold more of a note than was issued.`,
+      }, { status: 400 });
+    }
+    // A shortfall is usually a forgotten client or a mistyped amount — the
+    // whole reason to check against the tranche at all — so it requires the
+    // same explicit sign-off as an odd denomination, not silent passthrough.
+    // b.acknowledgedShortfall is only trusted because it is meaningless on
+    // its own: it just means "the form's own confirm() was accepted", and the
+    // actual shortfall amount is recomputed here from the stored tranche, not
+    // taken from the client.
+    if (issueAmount && total < issueAmount && !b.acknowledgedShortfall) {
+      return NextResponse.json({
+        error: `This only accounts for ${total.toLocaleString()} of the ${issueAmount.toLocaleString()} tranche — ${(issueAmount - total).toLocaleString()} unallocated. Confirm this is intentional before adding.`,
       }, { status: 400 });
     }
 

@@ -346,6 +346,17 @@ export default function NewNotesTab() {
         `\n\nContinue anyway?`
       )) return;
     }
+    // A shortfall usually means a client row was forgotten or an amount was
+    // mistyped — that is the actual point of checking against the tranche at
+    // all, so it needs the same explicit confirmation as an odd denomination,
+    // not silent passthrough. The one legitimate reason to proceed anyway —
+    // the rest of the tranche is held at another firm — still has to be a
+    // deliberate "yes", not the default.
+    const shortfall = p.issueAmount ? p.issueAmount - total : 0;
+    if (shortfall > 0 && !confirm(
+      `This only accounts for ${f.currency} ${total.toLocaleString()} of the ${f.currency} ${p.issueAmount!.toLocaleString()} tranche — ${f.currency} ${shortfall.toLocaleString()} unallocated.\n\n` +
+      `This is usually a forgotten client or a mistyped amount. Continue only if the rest of this tranche is genuinely held outside this firm.`
+    )) return;
 
     const names = allocations.map(a => queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId);
     if (!confirm(`Add this note to the book?\n\n${f.holdingName}\n${c.isin}\n\n${allocations.map((a, i) => `  ${names[i]} — ${f.currency} ${a.amount.toLocaleString()}`).join('\n')}\n\nThis creates ${allocations.length} live holding(s).`)) return;
@@ -366,6 +377,10 @@ export default function NewNotesTab() {
           couponPctPa:  Number(f.couponPctPa) || undefined,
           kiPct:        Number(f.kiPct),
           koPct:        Number(f.koPct) || 100,
+          // Only meaningful when there IS a shortfall — the user already
+          // confirmed it above. Re-checked server-side so this can't be
+          // skipped by calling the API directly.
+          acknowledgedShortfall: shortfall > 0,
         }),
       });
       const d = await res.json().catch(() => ({}));
