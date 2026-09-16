@@ -4,6 +4,7 @@ import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { makeTermSheetKey, uploadTermSheet } from '@/lib/storage';
+import { parseTermSheetWithGemini } from '@/lib/geminiParseTermSheet';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
 export const dynamic = 'force-dynamic';
@@ -21,10 +22,18 @@ export const dynamic = 'force-dynamic';
  * why a hand-populated Drive folder is invisible to it (that token is scoped
  * `drive.file`, app-created files only).
  *
- * Nothing is parsed here: Vercel has no Python, and reading a term sheet's
- * tables with a JS PDF library is what silently misreads a column — it already
- * stored wrong observation dates on 5 live notes. Rows land as 'awaiting_parse'
- * and `node scripts/scan-term-sheets.mjs --parse-queue` fills in the terms.
+ * Terms are read inline, here, with Gemini (lib/geminiParseTermSheet.ts) —
+ * not with a hand-written JS PDF-table parser, which is what silently
+ * misreads a column and already stored wrong observation dates on 5 live
+ * notes once before. A row lands 'pending' — reviewable immediately — the
+ * moment the read succeeds. If it fails (network hiccup, quota, malformed
+ * model output), the row falls back to 'awaiting_parse' exactly as before,
+ * and `node scripts/scan-term-sheets.mjs --parse-queue` (pypdf, local) is
+ * still there as a working second attempt.
+ *
+ * Every field Gemini returns is still shown as an editable draft the
+ * reviewer confirms against the PDF before Add to book — reading most fields
+ * correctly doesn't make the one wrong field trustworthy unchecked.
  */
 
 const MAX_BYTES = 15 * 1024 * 1024;   // a term sheet is tens of pages; well clear of this
@@ -106,9 +115,26 @@ export async function POST(req: NextRequest) {
 
       const key = makeTermSheetKey(isin, name);
       await uploadTermSheet(key, buffer);
+
+      // Read the terms now, in this request, rather than leaving the row for
+      // a later worker to find. A failure here is not fatal to the upload —
+      // it only means this candidate falls back to the slower path.
+      let parsed: Record<string, unknown> | null = null;
+      let issuerFamily = '';
+      let parseWarnings: string[] = [];
+      try {
+        const g = await parseTermSheetWithGemini(buffer);
+        issuerFamily = g.institution ?? '';
+        parseWarnings = g.notes_;
+        parsed = { ...g, institution: undefined };   // institution lives in issuer_family, not duplicated inside parsed
+      } catch (e: unknown) {
+        parseWarnings = [`Automatic read failed (${e instanceof Error ? e.message : String(e)}) — will be retried, or key the terms in by hand.`];
+      }
+
       await sbIntake.createUpload({
         fileHash, fileName: name, isin, storageKey: key,
         clientNotionId: clientId, uploadedBy: config.name,
+        parsed, issuerFamily, parseWarnings,
       });
       results.push({ fileName: name, ok: true, isin });
     } catch (e: unknown) {

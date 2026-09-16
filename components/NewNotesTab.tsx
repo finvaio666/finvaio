@@ -49,6 +49,7 @@ interface ParsedTerms {
   /** Tranche total and minimum unit — the only figures on a term sheet that can check the amounts a human types. */
   issueAmount?: number | null;
   denomination?: number | null;
+  currency?: string | null;
   underlyings?: { name?: string; ticker?: string; entry?: number; strike?: number }[];
   schedule?: { n?: number; determinationDate?: string | null; triggerPct?: number | null }[];
   notes_?: string[];
@@ -72,10 +73,16 @@ const ISSUER_INSTITUTION: Record<string, string> = {
   natixis:   'Natixis',
 };
 
-/** A first-draft holding name from what the parser found — always editable. */
+/**
+ * A first-draft holding name from what the parser found — always editable.
+ * `issuerFamily` is either one of the old regex-parser slugs (nomura, marex…)
+ * or, from Gemini, the institution's full name as stated on the term sheet —
+ * either way ISSUER_LABEL's `??` fallback means a name that isn't in the
+ * short-label map is used as-is, just longer.
+ */
 function draftName(c: IntakeCandidate, p: ParsedTerms): string {
   const tickers = (p.underlyings ?? []).map(u => u.ticker || u.name).filter(Boolean);
-  const issuer = ISSUER_LABEL[c.issuerFamily] ?? '';
+  const issuer = ISSUER_LABEL[c.issuerFamily] ?? c.issuerFamily ?? '';
   const basket = tickers.length ? tickers.join('/') : c.isin;
   return [issuer, basket, 'FCN'].filter(Boolean).join(' ');
 }
@@ -84,8 +91,11 @@ function initialForm(c: IntakeCandidate): FormState {
   const p = (c.parsed ?? {}) as ParsedTerms;
   return {
     holdingName:  draftName(c, p),
-    currency:     'USD',
-    institution:  ISSUER_INSTITUTION[c.issuerFamily] ?? '',
+    currency:     p.currency || 'USD',
+    // Gemini's issuer_family already IS the exact institution string (it asks
+    // for the name "exactly as stated"), so it prefills directly — the old
+    // slug map only still matters for legacy regex-parsed rows.
+    institution:  ISSUER_INSTITUTION[c.issuerFamily] ?? c.issuerFamily ?? '',
     platform:     '',
     startDate:    p.issueDate ?? '',
     // Computed from the final valuation plus the term sheet's stated settlement
