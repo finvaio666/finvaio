@@ -39,8 +39,6 @@ interface Body {
   /** KI / KO barriers as a % of each underlying's initial fixing level — read off the PDF, never parsed. */
   kiPct?:       number;
   koPct?:       number;
-  /** Set once the reviewer has confirmed a genuine shortfall against the tranche — see the check below. */
-  acknowledgedShortfall?: boolean;
 }
 
 /**
@@ -205,15 +203,15 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     // A shortfall is usually a forgotten client or a mistyped amount — the
-    // whole reason to check against the tranche at all — so it requires the
-    // same explicit sign-off as an odd denomination, not silent passthrough.
-    // b.acknowledgedShortfall is only trusted because it is meaningless on
-    // its own: it just means "the form's own confirm() was accepted", and the
-    // actual shortfall amount is recomputed here from the stored tranche, not
-    // taken from the client.
-    if (issueAmount && total < issueAmount && !b.acknowledgedShortfall) {
+    // whole reason to check against the tranche at all — so this is a hard
+    // block, same as over-allocation just above. Previously this accepted a
+    // client-confirmed override (acknowledgedShortfall); that let a shortfall
+    // through in production because a confirm() dialog is trivial to click
+    // past under time pressure. Now there is no override: the allocations
+    // must sum to the full tranche before this route will write anything.
+    if (issueAmount && total < issueAmount) {
       return NextResponse.json({
-        error: `This only accounts for ${total.toLocaleString()} of the ${issueAmount.toLocaleString()} tranche — ${(issueAmount - total).toLocaleString()} unallocated. Confirm this is intentional before adding.`,
+        error: `This only accounts for ${total.toLocaleString()} of the ${issueAmount.toLocaleString()} tranche — ${(issueAmount - total).toLocaleString()} unallocated. The allocations must add up to the full tranche before this note can be added.`,
       }, { status: 400 });
     }
 
