@@ -5,6 +5,7 @@ import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { makeTermSheetKey, uploadTermSheet } from '@/lib/storage';
 import { parseTermSheetWithGemini } from '@/lib/geminiParseTermSheet';
+import { canUseNoteIntake } from '@/lib/noteIntakeAccess';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
 export const dynamic = 'force-dynamic';
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const config = await getAdvisorConfig(advisorId);
-  if (config?.role !== 'Admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  if (!canUseNoteIntake(config)) return NextResponse.json({ error: 'Not available for this account.' }, { status: 403 });
 
   const form = await req.formData();
   const files = form.getAll('files').filter((f): f is File => f instanceof File);
@@ -65,6 +66,9 @@ export async function POST(req: NextRequest) {
   // allowed — the review card makes the reviewer pick before it can be accepted.
   const clientIds = form.getAll('clientIds').map(v => String(v));
 
+  // Admin sees every client here; a non-Admin (the Tracy Chia / Sky Siew
+  // exception — see lib/noteIntakeAccess.ts) is scoped to their own, same as
+  // every other route that calls listClients with a non-Admin config.
   const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
   const validClient = new Set(clients.map(c => c.notionId));
   // Already in the book for this client? Then it's not a candidate — the same

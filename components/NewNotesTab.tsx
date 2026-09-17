@@ -346,6 +346,17 @@ export default function NewNotesTab() {
         `\n\nContinue anyway?`
       )) return;
     }
+    // A shortfall usually means a client row was forgotten or an amount was
+    // mistyped — hard block, same as over-allocation. No confirm-to-override:
+    // a dialog a reviewer can click through under time pressure is exactly
+    // how the last shortfall got in. If the rest is genuinely held elsewhere,
+    // fix the amounts to equal the tranche total (e.g. key in the other
+    // client's slice too) before this will go through.
+    const shortfall = p.issueAmount ? p.issueAmount - total : 0;
+    if (shortfall > 0) {
+      alert(`This only accounts for ${f.currency} ${total.toLocaleString()} of the ${f.currency} ${p.issueAmount!.toLocaleString()} tranche — ${f.currency} ${shortfall.toLocaleString()} unallocated.\n\nThe allocations must add up to the full tranche before this can be added. Check the figures, or add the missing client's slice.`);
+      return;
+    }
 
     const names = allocations.map(a => queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId);
     if (!confirm(`Add this note to the book?\n\n${f.holdingName}\n${c.isin}\n\n${allocations.map((a, i) => `  ${names[i]} — ${f.currency} ${a.amount.toLocaleString()}`).join('\n')}\n\nThis creates ${allocations.length} live holding(s).`)) return;

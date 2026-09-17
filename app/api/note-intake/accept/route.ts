@@ -3,6 +3,7 @@ import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { buildPortfolioPatch, listHoldings, type PortfolioHolding } from '@/lib/portfolio';
 import { fetchMyrRates } from '@/lib/fx';
+import { canUseNoteIntake } from '@/lib/noteIntakeAccess';
 import * as sbPortfolio from '@/lib/repos/portfolio';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const config = await getAdvisorConfig(advisorId);
-  if (config?.role !== 'Admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  if (!canUseNoteIntake(config)) return NextResponse.json({ error: 'Not available for this account.' }, { status: 403 });
 
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
@@ -194,13 +195,24 @@ export async function POST(req: NextRequest) {
     // Re-checked here, not just in the form: the tranche size comes from the
     // stored parse, so this holds even if the page was left open while the
     // candidate was re-scanned, and it can't be skipped by calling the API
-    // directly. Only the impossible case is enforced — a short allocation is
-    // normal, since the rest of a tranche can sit outside this firm.
+    // directly.
     const issueAmount = Number((row.parsed as { issueAmount?: number } | null)?.issueAmount) || 0;
     const total = allocations.reduce((s, a) => s + Number(a.amount), 0);
     if (issueAmount && total > issueAmount) {
       return NextResponse.json({
         error: `These amounts total ${total.toLocaleString()}, but the tranche is only ${issueAmount.toLocaleString()}. You cannot hold more of a note than was issued.`,
+      }, { status: 400 });
+    }
+    // A shortfall is usually a forgotten client or a mistyped amount — the
+    // whole reason to check against the tranche at all — so this is a hard
+    // block, same as over-allocation just above. Previously this accepted a
+    // client-confirmed override (acknowledgedShortfall); that let a shortfall
+    // through in production because a confirm() dialog is trivial to click
+    // past under time pressure. Now there is no override: the allocations
+    // must sum to the full tranche before this route will write anything.
+    if (issueAmount && total < issueAmount) {
+      return NextResponse.json({
+        error: `This only accounts for ${total.toLocaleString()} of the ${issueAmount.toLocaleString()} tranche — ${(issueAmount - total).toLocaleString()} unallocated. The allocations must add up to the full tranche before this note can be added.`,
       }, { status: 400 });
     }
 

@@ -4,6 +4,7 @@ import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
 import { getPlatformGroups } from '@/lib/platformGroups';
 import { signedTermSheetUrl } from '@/lib/storage';
+import { canUseNoteIntake } from '@/lib/noteIntakeAccess';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +14,13 @@ export const dynamic = 'force-dynamic';
  * aren't in the book yet, waiting for an admin to confirm the terms and supply
  * the one thing a term sheet never states: this client's invested amount.
  *
- * Admin-only, matching PATCH /api/portfolio: FAs raise investment-record
- * changes with the company admin rather than writing them themselves, and
- * accepting a candidate creates a live holding, so the same gate applies.
+ * Admin-only by default, matching PATCH /api/portfolio: FAs raise investment-
+ * record changes with the company admin rather than writing them themselves,
+ * and accepting a candidate creates a live holding, so the same gate applies.
+ * lib/noteIntakeAccess.ts carves out a small named exception (Tracy Chia,
+ * Sky Siew) without making them full Admins — listClients/listHoldings still
+ * scope a non-Admin to their own clients, so this only ever opens up THEIR
+ * own book, same as every other advisor-facing route.
  */
 
 export interface IntakeCandidate {
@@ -82,22 +87,22 @@ export interface IntakeQueue {
   institutions: string[];
 }
 
-async function requireAdmin(req: NextRequest) {
+async function requireAccess(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   const config = await getAdvisorConfig(advisorId);
-  if (config?.role !== 'Admin') return { error: NextResponse.json({ error: 'Admin only' }, { status: 403 }) };
+  if (!canUseNoteIntake(config)) return { error: NextResponse.json({ error: 'Not available for this account.' }, { status: 403 }) };
   return { config };
 }
 
 export async function GET(req: NextRequest) {
-  const gate = await requireAdmin(req);
+  const gate = await requireAccess(req);
   if (gate.error) return gate.error;
 
   try {
     const [rows, clients, holdings, groups] = await Promise.all([
       sbIntake.listPending(),
-      listClients(gate.config!),   // Admin here, so unscoped — a candidate can belong to any FA's client
+      listClients(gate.config!),   // Admin sees every client's candidates; a non-Admin here is scoped to their own, same as listClients always does
       listHoldings(gate.config!),
       getPlatformGroups(),
     ]);
@@ -181,7 +186,7 @@ export async function GET(req: NextRequest) {
  * doesn't resurrect it either.
  */
 export async function PATCH(req: NextRequest) {
-  const gate = await requireAdmin(req);
+  const gate = await requireAccess(req);
   if (gate.error) return gate.error;
 
   const { id } = await req.json() as { id?: string };
