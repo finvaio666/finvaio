@@ -3,6 +3,7 @@ import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { buildPortfolioPatch, listHoldings, type PortfolioHolding } from '@/lib/portfolio';
 import { fetchMyrRates } from '@/lib/fx';
+import { canUseNoteIntake } from '@/lib/noteIntakeAccess';
 import * as sbPortfolio from '@/lib/repos/portfolio';
 import * as sbIntake from '@/lib/repos/noteIntake';
 
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
   const advisorId = req.headers.get('x-advisor-id') ?? '';
   if (!advisorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const config = await getAdvisorConfig(advisorId);
-  if (config?.role !== 'Admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  if (!canUseNoteIntake(config)) return NextResponse.json({ error: 'Not available for this account.' }, { status: 403 });
 
   const b = await req.json() as Body;
   if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
