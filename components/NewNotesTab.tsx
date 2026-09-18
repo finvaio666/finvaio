@@ -439,7 +439,15 @@ export default function NewNotesTab() {
     finally { setBusyId(''); }
   }
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading the intake queue…</div>;
+  // Only the true first load shows the full-page spinner. Every later load()
+  // (e.g. UploadPanel's onDone after an upload) used to hit this same early
+  // return, which unmounts the whole tree below — including UploadPanel's
+  // own `results`/`error` state — and remounts it fresh once the refresh
+  // finishes. That silently threw away the rejection reason ("Already added
+  // to the book") a reviewer needed to see, looking exactly like the upload
+  // had done nothing at all. Gating on `!queue` keeps everything mounted
+  // through a background refresh; only a genuinely empty first load spins.
+  if (loading && !queue) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading the intake queue…</div>;
   if (err)     return <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{err}</div>;
   if (!queue)  return null;
 
