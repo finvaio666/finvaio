@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
       if (sameClient) {
         results.push({
           fileName: name, ok: false, isin,
-          reason: sameClient.status === 'inserted' ? 'Already added to the book' : 'Already in the queue',
+          reason: sameClient.status === 'inserted' ? 'Already exists in the system' : 'Already in the queue',
         });
         continue;
       }
