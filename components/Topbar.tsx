@@ -20,6 +20,7 @@ const pageTitles: Record<string, string> = {
   '/settings': 'Settings',
   '/products': 'Products',
   '/premium-calculator': 'Premium Calculator',
+  '/new-notes': 'New Notes',
 };
 
 interface TopbarProps {

@@ -159,20 +159,42 @@ function UploadPanel({ clients, onDone }: {
   function addFiles(list: FileList | null) {
     if (!list) return;
     const pdfs = [...list].filter(f => /\.pdf$/i.test(f.name));
-    setPicked(p => [...p, ...pdfs.map(file => ({ file, clientId: '' }))]);
+    // A OneDrive "Files On-Demand" placeholder dropped straight from Explorer
+    // sometimes hands the browser a 0-byte File instead of the real one — the
+    // drag payload gets built before the cloud-filter driver resolves it.
+    // Caught here, at pick time, rather than as a mysterious hang on Upload;
+    // `browse` (the OS file-open dialog) doesn't have this problem, since
+    // Windows resolves the placeholder before handing the file back.
+    const empty = pdfs.filter(f => f.size === 0);
+    if (empty.length) {
+      setError(
+        `${empty.map(f => f.name).join(', ')} — read as empty. If this came from a drag-and-drop out of ` +
+        `a OneDrive-synced folder, that's a known Explorer/browser issue with "Files On-Demand": use the ` +
+        `"browse" link instead, which doesn't have it.`,
+      );
+    }
+    const usable = pdfs.filter(f => f.size > 0);
+    setPicked(p => [...p, ...usable.map(file => ({ file, clientId: '' }))]);
     setResults([]);
-    setError('');
+    if (!empty.length) setError('');
   }
 
   async function upload() {
     if (!picked.length) return;
     setBusy(true);
     setError('');
+    // A stalled read of an unresolved file (see addFiles) or a dropped
+    // connection would otherwise leave this spinning "Uploading…" forever
+    // with no feedback at all — the exact "clicked Upload, nothing happened"
+    // report this whole change addresses. A hard ceiling turns silence into
+    // a visible, actionable error.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90_000);
     try {
       const fd = new FormData();
       // Parallel arrays: the route pairs clientIds[i] with files[i].
       for (const p of picked) { fd.append('files', p.file); fd.append('clientIds', p.clientId); }
-      const res = await fetch('/api/note-intake/upload', { method: 'POST', body: fd });
+      const res = await fetch('/api/note-intake/upload', { method: 'POST', body: fd, signal: controller.signal });
       // A silently-expired session makes middleware.ts redirect this POST to
       // /login; fetch follows it and hands back the login page's HTML with a
       // 200, which `res.ok` can't tell apart from a real success. Catch that
@@ -190,8 +212,13 @@ function UploadPanel({ clients, onDone }: {
       const failedNames = new Set((d.results ?? []).filter((r: { ok: boolean }) => !r.ok).map((r: { fileName: string }) => r.fileName));
       setPicked(p => p.filter(x => failedNames.has(x.file.name)));
       onDone();
-    } catch { setError('Upload failed — network error. Check your connection and try again.'); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      setError(
+        e instanceof DOMException && e.name === 'AbortError'
+          ? 'Upload timed out after 90 seconds. If the file is from a OneDrive-synced folder, try "browse" instead of drag-and-drop.'
+          : 'Upload failed — network error. Check your connection and try again.',
+      );
+    } finally { clearTimeout(timeout); setBusy(false); }
   }
 
   return (
