@@ -148,33 +148,49 @@ function UploadPanel({ clients, onDone }: {
 }) {
   const [picked, setPicked]   = useState<{ file: File; clientId: string }[]>([]);
   const [busy, setBusy]       = useState(false);
-  const [results, setResults] = useState<{ fileName: string; ok: boolean; reason?: string }[]>([]);
+  const [results, setResults] = useState<{ fileName: string; ok: boolean; reason?: string; warning?: string }[]>([]);
   const [dragging, setDragging] = useState(false);
+  // Inline, not alert(): an async alert() fired after an awaited fetch has a
+  // real history of going silent on mobile home-screen PWAs (iOS WebKit) —
+  // exactly the "clicked Upload, nothing happened" report this replaced.
+  // Rendered state can't be swallowed the same way.
+  const [error, setError] = useState('');
 
   function addFiles(list: FileList | null) {
     if (!list) return;
     const pdfs = [...list].filter(f => /\.pdf$/i.test(f.name));
     setPicked(p => [...p, ...pdfs.map(file => ({ file, clientId: '' }))]);
     setResults([]);
+    setError('');
   }
 
   async function upload() {
     if (!picked.length) return;
     setBusy(true);
+    setError('');
     try {
       const fd = new FormData();
       // Parallel arrays: the route pairs clientIds[i] with files[i].
       for (const p of picked) { fd.append('files', p.file); fd.append('clientIds', p.clientId); }
       const res = await fetch('/api/note-intake/upload', { method: 'POST', body: fd });
+      // A silently-expired session makes middleware.ts redirect this POST to
+      // /login; fetch follows it and hands back the login page's HTML with a
+      // 200, which `res.ok` can't tell apart from a real success. Catch that
+      // here instead of letting res.json() throw, get swallowed below, and
+      // leave the reviewer staring at a button that just stopped spinning.
+      if (res.redirected || !(res.headers.get('content-type') ?? '').includes('application/json')) {
+        setError('Your session has expired — refresh the page and log in again, then retry the upload.');
+        return;
+      }
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { alert(d.error ?? 'Upload failed.'); return; }
+      if (!res.ok) { setError(d.error ?? 'Upload failed.'); return; }
       setResults(d.results ?? []);
       // Keep only what was rejected, with its reason — re-uploading the ones
       // that worked would just produce "already in the queue".
       const failedNames = new Set((d.results ?? []).filter((r: { ok: boolean }) => !r.ok).map((r: { fileName: string }) => r.fileName));
       setPicked(p => p.filter(x => failedNames.has(x.file.name)));
       onDone();
-    } catch { alert('Upload failed — network error.'); }
+    } catch { setError('Upload failed — network error. Check your connection and try again.'); }
     finally { setBusy(false); }
   }
 
@@ -230,11 +246,17 @@ function UploadPanel({ clients, onDone }: {
         </div>
       )}
 
+      {error && (
+        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'var(--red-dim, rgba(235,0,27,0.08))', color: 'var(--red, #dc2626)', fontSize: 12, fontWeight: 600 }}>
+          {error}
+        </div>
+      )}
+
       {results.length > 0 && (
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 3 }}>
           {results.map((r, i) => (
-            <div key={i} style={{ fontSize: 11, color: r.ok ? '#22c55e' : '#d97706' }}>
-              {r.ok ? '✓' : '⚠'} {r.fileName}{r.reason ? ` — ${r.reason}` : ''}
+            <div key={i} style={{ fontSize: 11, color: r.ok && !r.warning ? '#22c55e' : '#d97706' }}>
+              {r.ok && !r.warning ? '✓' : '⚠'} {r.fileName}{r.reason ? ` — ${r.reason}` : ''}{r.warning ? ` — ${r.warning}` : ''}
             </div>
           ))}
         </div>
