@@ -87,12 +87,25 @@ export async function POST(req: NextRequest) {
   }
 
   if (useSupabase()) {
+    let id: string;
     try {
       const patch = buildPortfolioPatch(b, advisorName, true);
       if (b.clientId) patch.client_notion_id = await resolveClientNotionId(b.clientId);
-      const { id } = await sbPortfolio.createHolding(patch);
-      return NextResponse.json({ success: true, id });
+      ({ id } = await sbPortfolio.createHolding(patch));
     } catch (e: unknown) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+    // Supabase already has the new row at this point — a Notion failure here
+    // is surfaced, not fatal. Without linkNotionId, this row joins the
+    // Supabase-only orphans that PATCH/DELETE below have no Notion page to
+    // reach for (see lib/repos/portfolio.ts's file comment).
+    let notionWarning: string | undefined;
+    try {
+      const notion = new Client({ auth: config.notionApiKey });
+      const page = await notion.pages.create({ parent: { database_id: config.portfolioDbId }, properties: buildProps(b, advisorName, true) as never });
+      await sbPortfolio.linkNotionId(id, page.id);
+    } catch (e: unknown) {
+      notionWarning = `Created, but the Notion copy failed (${e instanceof Error ? e.message : String(e)}) — this holding has no linked Notion page and won't be reachable by future syncs.`;
+    }
+    return NextResponse.json({ success: true, id, ...(notionWarning ? { warning: notionWarning } : {}) });
   }
 
   const notion = new Client({ auth: config.notionApiKey });
@@ -117,11 +130,26 @@ export async function PATCH(req: NextRequest) {
       const patch = buildPortfolioPatch(b, config.name, false);
       if (b.clientId !== undefined) patch.client_notion_id = b.clientId ? await resolveClientNotionId(b.clientId) : null;
       await sbPortfolio.updateHolding(config, b.id, patch);
-      return NextResponse.json({ success: true });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
     }
+    // Supabase (authoritative) is already correct at this point — a Notion
+    // failure, or no linked page at all (a pre-dual-write orphan row), is
+    // surfaced but doesn't undo the edit.
+    let notionWarning: string | undefined;
+    try {
+      const notionId = await sbPortfolio.getNotionId(b.id);
+      if (!notionId) {
+        notionWarning = 'Updated, but this holding has no linked Notion page (created before Notion sync existed) — the Notion copy is stale and was not touched.';
+      } else {
+        const notion = new Client({ auth: config.notionApiKey });
+        await notion.pages.update({ page_id: notionId, properties: buildProps(b, config.name, false) as never });
+      }
+    } catch (e: unknown) {
+      notionWarning = `Updated, but the Notion copy failed to update (${e instanceof Error ? e.message : String(e)}).`;
+    }
+    return NextResponse.json({ success: true, ...(notionWarning ? { warning: notionWarning } : {}) });
   }
 
   const notion = new Client({ auth: config.notionApiKey });
@@ -143,11 +171,27 @@ export async function DELETE(req: NextRequest) {
   if (useSupabase()) {
     try {
       await sbPortfolio.deleteHolding(config, id);
-      return NextResponse.json({ success: true });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       return NextResponse.json({ error: msg }, { status: msg === 'Forbidden' ? 403 : 500 });
     }
+    // Supabase is already soft-deleted at this point — a Notion failure, or
+    // no linked page (a pre-dual-write orphan row), is surfaced but doesn't
+    // undo the delete. Archived, not hard-deleted, matching Supabase's
+    // soft-delete — both stay recoverable the same way.
+    let notionWarning: string | undefined;
+    try {
+      const notionId = await sbPortfolio.getNotionId(id);
+      if (!notionId) {
+        notionWarning = 'Deleted, but this holding has no linked Notion page (created before Notion sync existed) — nothing to archive there.';
+      } else {
+        const notion = new Client({ auth: config.notionApiKey });
+        await notion.pages.update({ page_id: notionId, archived: true } as never);
+      }
+    } catch (e: unknown) {
+      notionWarning = `Deleted, but the Notion copy failed to archive (${e instanceof Error ? e.message : String(e)}).`;
+    }
+    return NextResponse.json({ success: true, ...(notionWarning ? { warning: notionWarning } : {}) });
   }
 
   const notion = new Client({ auth: config.notionApiKey });

@@ -2,8 +2,15 @@
  * lib/repos/portfolio.ts
  * Supabase data-access layer for Portfolio holdings (Phase 2, table 2.2).
  *
- * Straight cutover (same model as clients/tasks): when DATA_SOURCE_PORTFOLIO=
- * 'supabase', Supabase is the single source of truth; no Notion writes here.
+ * Supabase is authoritative when DATA_SOURCE_PORTFOLIO='supabase' — every
+ * read goes through here. Writes ALSO reach Notion (app/api/portfolio/route.ts
+ * calls getNotionId/linkNotionId around each Supabase write) — the comment
+ * that used to sit here said "no Notion writes", and that gap is exactly
+ * what let a redeemed note drift back to Active weeks later when something
+ * synced from Notion's stale copy (found 2026-09-22, see confirm-note-exit).
+ * Notion isn't read live, but it has to stay truthful for backups, manual
+ * lookups, and any future reconcile — a write path that quietly stops
+ * updating it is worse than no Notion copy at all.
  *
  * The client link is `client_notion_id` (= clients.notion_id), NOT a uuid FK.
  * Callers join to clients on notion_id so `clientId` stays consistent across
@@ -116,6 +123,21 @@ async function assertOwner(config: AdvisorConfig, id: string): Promise<void> {
   const { data, error } = await sb.from(TABLE).select('advisor').eq('id', id).is('deleted_at', null).maybeSingle();
   if (error) throw new Error(`portfolio owner lookup failed: ${error.message}`);
   if (!data || (data as { advisor: string }).advisor !== config.name) throw new Error('Forbidden');
+}
+
+/** The linked Notion page id for a Supabase row, or null if it was never linked (e.g. created before this dual-write existed). */
+export async function getNotionId(id: string): Promise<string | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select('notion_id').eq('id', id).maybeSingle();
+  if (error) throw new Error(`portfolio getNotionId failed: ${error.message}`);
+  return (data as { notion_id: string | null } | null)?.notion_id ?? null;
+}
+
+/** Record which Notion page a just-created Supabase row corresponds to. */
+export async function linkNotionId(id: string, notionId: string): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from(TABLE).update({ notion_id: notionId }).eq('id', id);
+  if (error) throw new Error(`portfolio linkNotionId failed: ${error.message}`);
 }
 
 /** Insert one holding (columns already mapped by the route). Returns the new id. */
