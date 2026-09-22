@@ -865,6 +865,10 @@ export default function AdminPage() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { alert(d.error ?? 'Could not confirm this note.'); return; }
+      // Redeemed in the live system either way; this is the Notion copy
+      // specifically failing to follow — worth flagging so it doesn't sit
+      // quietly stale, but not a reason to treat the confirm itself as failed.
+      if (d.warning) alert(d.warning);
       await loadOverview();
     } catch {
       alert('Could not confirm this note — network error.');
