@@ -43,8 +43,8 @@ const SCHEMA = {
       items: { type: 'object', properties: {
         name:   { type: 'string', nullable: true },
         ticker: { type: 'string', nullable: true, description: 'The bare exchange ticker ONLY, with every suffix stripped — Reuters ("TSLA.OQ" → "TSLA"), Bloomberg ("AAPL UW Equity" → "AAPL"), or any other convention. No exchange code, no venue, no asset-class word.' },
-        entry:  { type: 'number', nullable: true },
-        strike: { type: 'number', nullable: true },
+        entry:  { type: 'number', nullable: true, description: 'The Initial Price / Initial Reference Price / Strike Price of this share — a real traded price in the underlying\'s own currency (e.g. 219.45 for a US stock). NEVER the row/list index — many term sheets print a leading "i" or "No." column numbering the underlyings 1, 2, 3…; that is not a price and must never be returned here even if no other number is nearby. If the document gives only ONE reference price per underlying (commonly labelled "Initial Price" or "Strike Price", with no separate second figure), use that same value for BOTH entry and strike below. Verified live 2026-09-23: a Natixis note\'s "i" column (1, 2, 3) was returned as entry instead of the real Initial Price (219.45, 548.82, 110.19) printed two columns over — silently corrupted every KI/KO level computed from it.' },
+        strike: { type: 'number', nullable: true, description: 'The strike/reference price used for physical settlement, if the document states one SEPARATELY from the Initial Price above. If there is only one reference price for the underlying, repeat it here — do not leave this null while entry has a value, and never return a row/list index.' },
       }},
     },
     schedule: {

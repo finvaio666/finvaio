@@ -276,6 +276,51 @@ export function buildPortfolioPatch(b: PortfolioPatchInput, advisorName: string,
   return p;
 }
 
+const notionTxt = (s?: string) => [{ text: { content: (s ?? '').slice(0, 1900) } }];
+
+/**
+ * Map the same PortfolioPatchInput → Notion page properties, so a holding
+ * written through Supabase (POST/PATCH /api/portfolio, note-intake accept)
+ * mirrors to Notion with identical field names in exactly one place — same
+ * discipline as buildPortfolioPatch above for Supabase columns.
+ *
+ * Deliberately does NOT write underlyingDetails: no Notion property exists
+ * for it (reconcile-portfolio.ts's own column list excludes it too), so a
+ * note's KI/KO schedule only ever lives in Supabase. Everything else that
+ * exists in both stores is covered.
+ */
+export function buildNotionPortfolioProps(
+  b: PortfolioPatchInput & { clientId?: string },
+  advisorName: string,
+  isCreate: boolean,
+): Record<string, unknown> {
+  const p: Record<string, unknown> = {};
+  if (isCreate || b.holdingName !== undefined) p['Holding Name'] = { title: notionTxt(b.holdingName) };
+  if (b.assetClass)                p['Asset class']  = { select: { name: b.assetClass } };
+  if (b.institution !== undefined) p['Institution']  = { rich_text: notionTxt(b.institution) };
+  // Platform is the custodian (Phillip, iFAST, SwissQuote…) — what AUM groups
+  // by. Clearing it is allowed, so treat '' as "unset the select".
+  if (b.platform    !== undefined) p['Platform']     = b.platform ? { select: { name: b.platform } } : { select: null };
+  if (b.status)                    p['Status']       = { select: { name: b.status } };
+  if (b.currency)                  p['Currency']     = { select: { name: b.currency } };
+  if (b.valueOrig    !== undefined) p['Value (Original Currency)']          = { number: b.valueOrig || 0 };
+  if (b.purchaseOrig !== undefined) p['Purchase price (original currency)'] = { number: b.purchaseOrig || 0 };
+  if (b.fxRate       !== undefined) p['FX Rate to MYR']                     = { number: b.fxRate || 1 };
+  if (b.valueMyr     !== undefined) p['Value (MYR)']                        = { number: b.valueMyr || 0 };
+  if (b.purchaseMyr  !== undefined) p['Purchase price (MYR)']               = { number: b.purchaseMyr || 0 };
+  if (b.units        !== undefined) p['Units']                              = { number: b.units || 0 };
+  if (b.maturityDate !== undefined) p['Maturity date'] = b.maturityDate ? { date: { start: b.maturityDate } } : { date: null };
+  if (b.startDate    !== undefined) p['Start date']    = b.startDate    ? { date: { start: b.startDate } }    : { date: null };
+  if (b.productName  !== undefined) p['Product name']  = { rich_text: notionTxt(b.productName) };
+  if (isCreate) {
+    p['Advisor'] = { select: { name: advisorName } };
+    if (b.clientId) p['👥 Clients'] = { relation: [{ id: b.clientId }] };
+  } else if (b.clientId !== undefined) {
+    p['👥 Clients'] = { relation: b.clientId ? [{ id: b.clientId }] : [] };
+  }
+  return p;
+}
+
 /**
  * Map a fund-switch new-fund payload → PortfolioPatchInput.
  *
