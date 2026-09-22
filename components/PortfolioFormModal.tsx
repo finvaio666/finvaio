@@ -71,6 +71,9 @@ export default function PortfolioFormModal({ clients, initial, onClose, onSaved 
     const d = await res.json();
     setSaving(false);
     if (!res.ok) { setErr(d.error ?? 'Save failed'); return; }
+    // Saved either way — this is the Notion copy specifically failing to
+    // follow, worth a heads-up but not a reason to treat the save as failed.
+    if (d.warning) alert(d.warning);
     onSaved();
   }
 

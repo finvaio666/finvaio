@@ -331,7 +331,15 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
 
   async function deleteHolding(h: Holding) {
     if (!confirm(`Delete holding "${h.name}"? This cannot be undone.`)) return;
-    await fetch(`/api/portfolio?id=${h.id}`, { method: 'DELETE' });
+    try {
+      const res = await fetch(`/api/portfolio?id=${h.id}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error ?? `Could not delete "${h.name}". It is unchanged.`); return; }
+      if (d.warning) alert(d.warning);
+    } catch {
+      alert(`Could not delete "${h.name}" — network error. It is unchanged.`);
+      return;
+    }
     loadHoldings(true);
   }
   function editHolding(h: Holding) {
@@ -364,6 +372,10 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
         alert(d.error ?? `Could not mark "${h.name}" as exited. It is unchanged.`);
         return;   // no reload: the list is already correct, and reloading would suggest something happened
       }
+      // Marked exited either way — this is the Notion copy specifically
+      // failing to follow, worth a heads-up but not a reason to treat the
+      // confirm as failed.
+      if (d.warning) alert(d.warning);
     } catch {
       alert(`Could not mark "${h.name}" as exited — network error. It is unchanged.`);
       return;
