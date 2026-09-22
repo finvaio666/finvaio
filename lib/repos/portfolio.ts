@@ -133,10 +133,17 @@ export async function getNotionId(id: string): Promise<string | null> {
   return (data as { notion_id: string | null } | null)?.notion_id ?? null;
 }
 
-/** Record which Notion page a just-created Supabase row corresponds to. */
+/**
+ * Record which Notion page a just-created Supabase row corresponds to.
+ * Dashes stripped before storing — every other notion_id in this schema
+ * (client_notion_id, etc.) is stored undashed, and reconcile-portfolio.ts
+ * joins on that exact format. A dashed id here silently breaks that join:
+ * the row reads as a brand-new orphan on both sides even though it's
+ * correctly linked (caught live 2026-09-23 backfilling 9 rows this way).
+ */
 export async function linkNotionId(id: string, notionId: string): Promise<void> {
   const sb = getSupabase();
-  const { error } = await sb.from(TABLE).update({ notion_id: notionId }).eq('id', id);
+  const { error } = await sb.from(TABLE).update({ notion_id: notionId.replace(/-/g, '') }).eq('id', id);
   if (error) throw new Error(`portfolio linkNotionId failed: ${error.message}`);
 }
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Client } from '@notionhq/client';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
-import { buildPortfolioPatch, listHoldings, type PortfolioHolding } from '@/lib/portfolio';
+import { buildPortfolioPatch, buildNotionPortfolioProps, listHoldings, type PortfolioHolding, type PortfolioPatchInput } from '@/lib/portfolio';
 import { fetchMyrRates } from '@/lib/fx';
 import { canUseNoteIntake } from '@/lib/noteIntakeAccess';
 import * as sbPortfolio from '@/lib/repos/portfolio';
@@ -240,13 +241,24 @@ export async function POST(req: NextRequest) {
     const underlyingDetails = buildUnderlyingDetails(row.parsed, b);
     const fxRate = await resolveFxRate(b.currency, holdings);
 
+    // Best-effort dual-write to Notion — every other write path in this app
+    // links a Notion page at create time (see lib/repos/portfolio.ts's file
+    // comment). This one didn't: verified live 2026-09-23 that every note
+    // ever accepted through this route had notion_id NULL, which is very
+    // likely the entire origin of the "Supabase-only orphan holdings" this
+    // book already had. A failure here is surfaced, not fatal — the holding
+    // is correctly created in Supabase (authoritative) either way.
+    const notion = config.notionApiKey && config.portfolioDbId ? new Client({ auth: config.notionApiKey }) : null;
+    let notionFailures = 0;
+
     const holdingIds: string[] = [];
     for (const a of allocations) {
       const client = clientById.get(a.clientId)!;
       const amount = Number(a.amount);
+      const advisorName = client.advisorName || config.name;
       // A note is carried at par: purchase and value are the same at entry,
       // and holdingValueMyr marks structured products at purchase thereafter.
-      const patch = buildPortfolioPatch({
+      const patchInput: PortfolioPatchInput = {
         holdingName:  b.holdingName,
         assetClass:   'Structured Product',
         productName:  row.isin,
@@ -262,18 +274,32 @@ export async function POST(req: NextRequest) {
         startDate:    b.startDate ?? '',
         maturityDate: b.maturityDate ?? '',
         underlyingDetails,
+      };
       // The holding belongs to whichever FA owns the client, not to the admin
       // clicking accept — same rule as POST /api/portfolio. Stamping the admin
       // here would hide the note from the FA whose client actually holds it.
-      }, client.advisorName || config.name, true);
+      const patch = buildPortfolioPatch(patchInput, advisorName, true);
       patch.client_notion_id = a.clientId;
 
       const { id } = await sbPortfolio.createHolding(patch);
       holdingIds.push(id);
+
+      if (notion) {
+        try {
+          const props = buildNotionPortfolioProps({ ...patchInput, clientId: a.clientId }, advisorName, true);
+          const page = await notion.pages.create({ parent: { database_id: config.portfolioDbId! }, properties: props as never });
+          await sbPortfolio.linkNotionId(id, page.id);
+        } catch { notionFailures++; }
+      } else {
+        notionFailures++;
+      }
     }
 
     await sbIntake.markInserted(b.id, holdingIds, config.name);
-    return NextResponse.json({ success: true, created: holdingIds.length, holdingIds, fxRate });
+    return NextResponse.json({
+      success: true, created: holdingIds.length, holdingIds, fxRate,
+      ...(notionFailures ? { warning: `Added to the live book, but ${notionFailures} of ${holdingIds.length} holding(s) have no linked Notion page — the Notion copy is stale for those and won't be reachable by future syncs.` } : {}),
+    });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

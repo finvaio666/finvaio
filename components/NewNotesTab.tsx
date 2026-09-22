@@ -433,6 +433,10 @@ export default function NewNotesTab() {
       // Say which rate was used: it is fetched live rather than typed here, so
       // this is the only place it's visible before the holding is written.
       alert(`Added ${d.created} holding(s) at ${f.currency}/MYR ${Number(d.fxRate).toFixed(4)}.`);
+      // Added to the live book either way — this is the Notion copy
+      // specifically failing to link, worth a heads-up but not a reason to
+      // treat the add as failed.
+      if (d.warning) alert(d.warning);
       setOpenId('');
       await load();
     } catch { alert('Could not add this note — network error.'); }
