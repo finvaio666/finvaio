@@ -63,6 +63,21 @@ for (const g of ['M', 'F'] as PruGender[]) {
     const s = pwePremium(g, age, 1_000_000, 80, 'full', true)!.monthly;
     if (!(s > b)) fail(`PWE ${g}${age}: smoker ${s} !> non-smoker ${b}`);
   }
+  // limited pay: higher monthly, fewer years -> the shorter the payment term, the higher
+  // the monthly and the lower the total premium paid
+  for (const age of [25, 40]) {
+    const years = 80 - (age + 1);
+    let lastMonthly = 0;
+    let lastTotal = Infinity;
+    for (const pay of ['full', 20, 10, 5] as PwePay[]) {
+      const m = pwePremium(g, age, 1_000_000, 80, pay)!.monthly;
+      const total = m * 12 * (pay === 'full' ? years : pay);
+      if (!(m > lastMonthly)) fail(`PWE ${g}${age} ${pay} Pay monthly ${m} !> previous ${lastMonthly}`);
+      if (!(total < lastTotal)) fail(`PWE ${g}${age} ${pay} Pay total ${total} !< previous ${lastTotal}`);
+      lastMonthly = m;
+      lastTotal = total;
+    }
+  }
   prev = 0;
   for (let age = 0; age <= 60; age += 5) {
     const p = pwypPremium({ gender: g, age, lifeSA: 300_000, ci: { type: 'Critical Care', sa: 300_000 } })!.monthly;
