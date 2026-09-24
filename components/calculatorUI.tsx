@@ -71,7 +71,7 @@ export function Field({ label, hint, children, span }: {
 }
 
 /** Pill segmented control — the app's active-state look (accent fill, white text). */
-export function Segmented<T extends string | boolean>({ options, value, onChange }: {
+export function Segmented<T extends string | number | boolean>({ options, value, onChange }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;

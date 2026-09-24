@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import {
-  estimateAll, LSA_COVERAGE_AGES,
-  type CoverageAge, type Gender, type LsaInsurer, type LsaResult,
+  estimateAll, LSA_COVERAGE_AGES, LSA_PAY_TERMS, payTermLabel,
+  type CoverageAge, type Gender, type LsaInsurer, type LsaResult, type PayTerm,
 } from '@/lib/lsaCalculator';
 import { LSA_BENEFITS, LSA_PLAN_LABEL } from '@/lib/lsaBenefits';
 import { upperName } from '@/lib/displayName';
@@ -23,6 +23,7 @@ export default function LsaCalculator() {
   const [smoker, setSmoker] = useState(false);
   const [sumAssured, setSumAssured] = useState('1000000');
   const [coverageAge, setCoverageAge] = useState<CoverageAge>(80);
+  const [payTerm, setPayTerm] = useState<PayTerm>('full');
 
   const ageN = parseInt(age, 10) || 0;
   const saN = parseInt(sumAssured, 10) || 0;
@@ -30,10 +31,13 @@ export default function LsaCalculator() {
   const [results, setResults] = useState<LsaResult[] | null>(null);
   const [picked, setPicked] = useState<Set<LsaInsurer>>(new Set());
   const [showProposal, setShowProposal] = useState(false);
+  // the payment term the current results were produced on (not the live selector)
+  const [shownPay, setShownPay] = useState<PayTerm>('full');
 
   function calculate() {
-    const r = estimateAll(gender, smoker, ageN, saN, coverageAge);
+    const r = estimateAll(gender, smoker, ageN, saN, coverageAge, payTerm);
     setResults(r);
+    setShownPay(payTerm);
     setPicked(new Set(r.filter((x) => x.monthly != null).slice(0, 3).map((x) => x.insurer)));
     setShowProposal(false);
   }
@@ -76,7 +80,8 @@ export default function LsaCalculator() {
     doc.setFontSize(9); doc.setTextColor(110, 110, 110);
     doc.text('Prepared in FINVA  |  ' + new Date().toLocaleDateString('en-GB'), 40, 62);
 
-    const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}  -  Sum Assured ${fmtRM(saN)}`;
+    const prof = `${gender === 'M' ? 'Male' : 'Female'}  -  ${smoker ? 'Smoker' : 'Non-Smoker'}  -  Age ${ageN}  -  Sum Assured ${fmtRM(saN)}`
+      + (shownPay !== 'full' ? `  -  ${payTermLabel(shownPay)} (Prudential; others Full Pay)` : '');
     doc.setFontSize(10); doc.setTextColor(40, 40, 40);
     if (clientName) doc.text('Client: ' + upperName(clientName), 40, 84);
     doc.text(prof, 40, clientName ? 98 : 84);
@@ -120,12 +125,12 @@ export default function LsaCalculator() {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14;
     doc.setFontSize(7); doc.setTextColor(130, 130, 130);
     const basisNote = shownAge === 70
-      ? 'COVERAGE BASIS - TO AGE 70 (MODELLED, NOT QUOTED). No insurer illustrates a to-age-70 term. Every premium in this proposal has been extrapolated from that insurer\'s real to-80 and to-100 quotations and is a planning indication only - it is NOT a figure any insurer will reproduce on their system. Obtain an actual illustration before relying on it. AIA and GE are unchanged from their to-80 figures because their premium does not vary with the coverage term.'
+      ? 'COVERAGE BASIS - TO AGE 70 (MODELLED, NOT QUOTED). No insurer illustrates a to-age-70 term. Every premium in this proposal has been extrapolated from that insurer\'s real to-80 and to-100 quotations and is a planning indication only - it is NOT a figure any insurer will reproduce on their system (Prudential\'s is run through its pricing model on a to-ANB-70 term). Obtain an actual illustration before relying on it. AIA and GE are unchanged from their to-80 figures because their premium does not vary with the coverage term.'
       : shownAge === 80
-      ? 'COVERAGE BASIS - TO AGE 80. AIA, Allianz, HLA and Prudential are quoted for coverage to age 80; GE\'s SmartProtect Wealth Plus is sold only on a term to age 100, so its monthly premium is not like-for-like - compare "Total to 80", which counts only the premiums paid up to age 80 for every insurer. A "Full Pay" or coverage-to-100 illustration will be materially HIGHER than the figures above (at male 35 non-smoker RM1m: HLA RM480 -> RM819, Allianz RM669 -> RM1,593, Prudential RM466 -> RM1,049).'
-      : 'COVERAGE BASIS - TO AGE 100. Figures are each insurer\'s own to-age-100 quotation (AIA "Alternative 2", Allianz\'s to-99 row, HLA\'s recommended to-99 premium, Prudential\'s total premium payable for sustainability to ANB 101; GE is only ever sold to 100). Premiums are payable for the full term, so the lifetime outlay is far larger than a to-80 plan. Prudential steps up again at 80, so no lifetime total is shown for it.';
+      ? 'COVERAGE BASIS - TO AGE 80. AIA, Allianz, HLA and Prudential are quoted for coverage to age 80; GE\'s SmartProtect Wealth Plus is sold only on a term to age 100, so its monthly premium is not like-for-like - compare "Total to 80", which counts only the premiums paid up to age 80 for every insurer. A "Full Pay" or coverage-to-100 illustration will be materially HIGHER than the figures above (at male 35 non-smoker RM1m: HLA RM480 -> RM819, Allianz RM669 -> RM1,593, Prudential RM472 -> RM851). Prudential figures come from a pricing model reverse-engineered from its own illustrations (typically within 2% of a real quote).'
+      : 'COVERAGE BASIS - TO AGE 100. Figures are each insurer\'s own to-age-100 quotation (AIA "Alternative 2", Allianz\'s to-99 row, HLA\'s recommended to-99 premium, Prudential\'s level premium on its own to-ANB-101 term, modelled; GE is only ever sold to 100). Premiums are payable for the full term, so the lifetime outlay is far larger than a to-80 plan.';
     const disc = doc.splitTextToSize(
-      basisNote + ' Always check the Coverage Period on any illustration before comparing. Premiums are estimates interpolated (log-linear on age) from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE\'s stepped premium rises steeply with age; GE male smoker ages 56-60 are not yet quoted. Prudential entry ages 50-60 on the to-80 basis are to-age-90 illustrations pending re-quote. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
+      basisNote + ' Always check the Coverage Period on any illustration before comparing. Premiums are estimates interpolated (log-linear on age) from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA; AIA and GE scale linearly pending high-SA quotes). Prudential is priced by a model reverse-engineered from 233 of its own illustrations (Full, 5, 10 and 20 Pay; typically within 2% of a real quote; smoker rates scaled from its non-smoker model). None are official quotations; confirm against the insurer system before issue. GE\'s stepped premium rises steeply with age; GE male smoker ages 56-60 are not yet quoted. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
       W - 80,
     );
     doc.text(disc, 40, y);
@@ -193,6 +198,13 @@ export default function LsaCalculator() {
               })}
             </div>
           </Field>
+          <Field
+            label="Premium payment term"
+            hint="Limited pay is priced for Prudential only — the other insurers have Full Pay illustrations, so they stay on Full Pay and are flagged."
+            span
+          >
+            <Segmented<PayTerm> value={payTerm} onChange={setPayTerm} options={LSA_PAY_TERMS} />
+          </Field>
         </Grid>
         <div style={{ marginTop: 18 }}>
           <Btn onClick={calculate}>Calculate premiums</Btn>
@@ -215,9 +227,9 @@ export default function LsaCalculator() {
               : shownAge === 80
                 ? <>Check the <em>Coverage Period</em> on your client&apos;s illustration before comparing — a
                   <em> Full Pay </em>/ to-100 quote reads far higher (same RM1m male 35 non-smoker: HLA RM480 → RM819,
-                  Allianz RM669 → RM1,593, Prudential RM466 → RM1,049). Switch the toggle above to compare on that basis.</>
+                  Allianz RM669 → RM1,593, Prudential RM472 → RM851). Switch the toggle above to compare on that basis.</>
                 : <>Taken from each insurer&apos;s own to-age-100 figures (AIA “Alternative 2”, Allianz&apos;s to-99 row,
-                  HLA&apos;s recommended to-99 premium, Prudential&apos;s total premium payable). Premiums are paid for the
+                  HLA&apos;s recommended to-99 premium, Prudential&apos;s level premium to ANB 101). Premiums are paid for the
                   full term, so the lifetime outlay is much larger than the to-80 basis.</>}
           </Notice>
           <Notice tone="blue">
@@ -225,6 +237,13 @@ export default function LsaCalculator() {
             is the like-for-like comparator here — a low <em>stepped</em> monthly (GE) can still cost the most.
             {shownAge === 80 && <> GE&apos;s plan is sold only to age 100, so its monthly is not on the same footing as the other four.</>}
           </Notice>
+          {shownPay !== 'full' && (
+            <Notice>
+              <strong>{payTermLabel(shownPay)}:</strong> only Prudential is priced on a limited-pay basis — its
+              premiums stop after {shownPay} years, so its monthly is higher but its total is what to compare. The other
+              insurers have no limited-pay illustration on file and still show Full Pay (flagged BASIS DIFFERS).
+            </Notice>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: 14 }}>
             {results.map((r) => {
@@ -272,6 +291,11 @@ export default function LsaCalculator() {
                         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                             Total to age {r.coverageAge}
+                            {r.paidYears != null && (
+                              <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+                                {' '}· {payTermLabel(r.payTerm)}, {r.paidYears} yrs
+                              </span>
+                            )}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                             <span style={{

@@ -12,7 +12,7 @@ const CATS: { id: Category; label: string; sub: string; icon: string; insurers: 
     label: 'Protection & Medical',
     sub: 'Life · Critical Illness · Medical card',
     icon: '🛡️',
-    insurers: 'AIA · Great Eastern · Allianz · HLA',
+    insurers: 'AIA · Great Eastern · Allianz · HLA · Prudential',
     tone: 'var(--accent2)',
   },
   {

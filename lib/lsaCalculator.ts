@@ -6,6 +6,8 @@
 // lsa_estimator.py. The embedded grid below is generated — do not hand-edit it; run
 // Insurance_Quotations/LSA/_gen_ts_data.py after re-extracting any insurer.
 
+import { pwePremium } from './pruModel';
+
 export type Gender = 'M' | 'F';
 export type LsaInsurer = 'AIA' | 'Allianz' | 'GE' | 'HLA' | 'Prudential';
 
@@ -25,7 +27,8 @@ export type CoverageAge = 70 | 80 | 90 | 100;
  * planning indication, not a quotable premium.
  *
  * 90 stays disabled: it would be the same kind of model, and the user chose not to
- * enable it. (Prudential ages 50-60 were accidentally quoted to 90 — PRU_TO90_AGES.)
+ * enable it. (Prudential is the exception to all of the above: its row is computed by
+ * lib/pruModel.ts for whatever term is selected — see estimatePrudential.)
  */
 export const LSA_COVERAGE_AGES: { age: CoverageAge; label: string; enabled: boolean; derived?: boolean; note?: string }[] = [
   { age: 70, label: 'To age 70', enabled: true, derived: true, note: 'Modelled from the 80/100 quotes — not illustrated by any insurer' },
@@ -35,12 +38,29 @@ export const LSA_COVERAGE_AGES: { age: CoverageAge; label: string; enabled: bool
 ];
 
 /**
- * Prudential entry ages whose "to age 80" rate is really a to-age-90 quotation
- * (the source illustrations are literally named "Up to Age 90"). Those rows buy ten
- * extra years, so they read high on the to-80 basis. Flagged in the UI until the
- * replacement to-80 illustrations arrive.
+ * Prudential is no longer read off LSA_DATA: since 2026-09-24 its row comes from the
+ * premium model in lib/pruModel.ts, reverse-engineered from 233 PRUWealth Enrich 2.0
+ * illustrations (Full / 5 / 10 / 20 Pay, RM300k-1m, ANB 1-60, to ANB 80 and 101). That
+ * retires the old grid's to-age-90 rows at 50/55/60. Prudential only illustrates
+ * to-80 up to entry ANB 50; older entries are quoted to ANB 101, so a to-80 figure past
+ * that is modelled and flagged.
  */
-export const PRU_TO90_AGES = [50, 55, 60];
+const PRU_MAX_TO80_AGE = 49; // age last birthday = ANB 50
+
+/**
+ * Premium payment term. Only Prudential is priced on it (its model handles 5 / 10 / 20
+ * Pay: different allocation schedules and a PRUAllocator cap). The other insurers have
+ * only Full Pay illustrations on file, so on a limited-pay selection they keep their
+ * Full Pay figures and are flagged BASIS DIFFERS.
+ */
+export type PayTerm = 'full' | 20 | 10 | 5;
+export const LSA_PAY_TERMS: { value: PayTerm; label: string }[] = [
+  { value: 'full', label: 'Full Pay' },
+  { value: 20, label: '20 Pay' },
+  { value: 10, label: '10 Pay' },
+  { value: 5, label: '5 Pay' },
+];
+export const payTermLabel = (p: PayTerm) => (p === 'full' ? 'Full Pay' : `${p} Pay`);
 
 export const LSA_PRODUCT: Record<LsaInsurer, string> = {
   AIA: 'A-Life Wealth Builder',
@@ -63,6 +83,8 @@ export const LSA_DEATH_BASIS: Record<LsaInsurer, string> = {
 };
 
 // Sum-assured scaling exponent k, where monthly ≈ monthly(per RM1m) × (SA/1m)^k.
+// (Prudential's entry is historical: its premiums now come from lib/pruModel.ts, which
+// prices each SA band directly.)
 // Premium is sub-linear in SA (larger cover = lower per-RM cost). Calibrated against
 // real M NS RM3,000,000 quotes (2026-07-08): Allianz RM2,498 (age nearest 40),
 // HLA RM1,600 (entry age 40), Prudential RM1,673 — these exponents reproduce them
@@ -103,7 +125,7 @@ export const LSA_COVERAGE_BASIS: Record<LsaInsurer, string> = {
   Allianz: 'Quoted to age 80 (renewable to 100 at a higher premium)',
   GE: 'Sold only to age 100 — premiums continue past 80, so compare total outlay',
   HLA: 'Quoted to age 80 (auto-extends to 100 at a higher premium)',
-  Prudential: 'Quoted to ANB 80 (extendable to 101 at a higher premium)',
+  Prudential: 'Modelled on its own to-ANB-80 term (to-100 = its to-ANB-101 term)',
 };
 
 /** True where the insurer's own quote basis is NOT coverage-to-80. */
@@ -146,6 +168,8 @@ export interface LsaResult {
   annual: number | null;
   outlay80: number | null;  // premiums paid to the selected coverage age (name kept for callers)
   coverageAge: CoverageAge; // the term these figures are quoted on
+  payTerm: PayTerm;         // premium payment term these figures assume
+  paidYears: number | null; // years of premium behind the total outlay
   derived: boolean;         // true = modelled, not read off an illustration (to-70)
   basisWarning?: string;    // set when this row's own quote basis differs from the selection
   note?: string;
@@ -208,7 +232,7 @@ function derive70(p80: number | null, p100: number | null): number | null {
 /** Estimate one insurer. Returns a result with nulls if no quote exists (GE male). */
 export function estimate(
   insurer: LsaInsurer, gender: Gender, smoker: boolean, age: number, sa = BASE_SA,
-  coverageAge: CoverageAge = 80,
+  coverageAge: CoverageAge = 80, payTerm: PayTerm = 'full',
 ): LsaResult {
   const sm = smoker ? 'S' : 'N';
   const to100 = coverageAge === 100;
@@ -229,16 +253,18 @@ export function estimate(
     insurer, product: LSA_PRODUCT[insurer], structure: LSA_STRUCTURE[insurer],
     deathBasis: LSA_DEATH_BASIS[insurer], caveat: LSA_CAVEAT[insurer],
     coverageBasis: LSA_COVERAGE_BASIS[insurer], basisIsTo100: LSA_BASIS_IS_TO_100[insurer],
-    monthly: null, annual: null, outlay80: null, coverageAge,
+    monthly: null, annual: null, outlay80: null, coverageAge, payTerm, paidYears: null,
     derived: to70,
   };
   // GE is sold only to age 100, so on a shorter selection its row is not like-for-like.
   if (!to100 && LSA_BASIS_IS_TO_100[insurer]) {
     base.basisWarning = `Sold only to age 100 — premiums continue past ${coverageAge}`;
   }
-  // Prudential's 50/55/60 rows are to-age-90 illustrations sitting in the to-80 grid.
-  if (!to100 && insurer === 'Prudential' && PRU_TO90_AGES.some((a) => Math.abs(a - age) < 5)) {
-    base.basisWarning = 'Quoted to age 90 at this entry age — buys 10 extra years; awaiting re-quote';
+  if (insurer === 'Prudential') return estimatePrudential(base, gender, smoker, age, sa, coverageAge, payTerm);
+  // Only Prudential has limited-pay illustrations; the rest stay on their Full Pay figures.
+  if (payTerm !== 'full') {
+    base.payTerm = 'full';
+    base.basisWarning = [base.basisWarning, `No ${payTermLabel(payTerm)} illustration — Full Pay figures shown`].filter(Boolean).join('. ');
   }
   if (m == null) {
     base.note = 'No quote available for this age/gender/smoker combination';
@@ -250,24 +276,66 @@ export function estimate(
   base.monthly = monthly;
   base.annual = monthly * 12;
   base.outlay80 = o == null ? null : Math.round(o * saFactor);
+  base.paidYears = Math.max(0, coverageAge - Math.max(20, Math.min(60, age)));
   if (to70 && LSA_DATA_100[insurer] && !base.basisWarning) {
     base.note = 'Modelled from the to-80 / to-100 quotes — no insurer illustrates a to-70 term';
   }
   if (insurer === 'GE') base.note = 'Year-1 stepped premium — rises steeply later; see total outlay';
-  if (to100 && insurer === 'Prudential') base.note = 'Steps up again at 80 — lifetime total not shown';
+  return base;
+}
+
+/**
+ * Prudential via the reverse-engineered PRUWealth Enrich 2.0 model (any payment term). Coverage
+ * to 100 is Prudential's own "to ANB 101" term with a level premium; to 70 runs the same
+ * model on a to-ANB-70 term (still badged DERIVED — Prudential has not illustrated it).
+ */
+function estimatePrudential(
+  base: LsaResult, gender: Gender, smoker: boolean, age: number, sa: number, coverageAge: CoverageAge,
+  payTerm: PayTerm,
+): LsaResult {
+  const termAnb = coverageAge === 100 ? 101 : coverageAge;
+  const termYears = termAnb - (age + 1);
+  if (payTerm !== 'full' && payTerm >= termYears) {
+    base.note = `No estimate — ${payTermLabel(payTerm)} is not shorter than the ${termYears}-year coverage term`;
+    return base;
+  }
+  const est = pwePremium(gender, age, sa, termAnb, payTerm, smoker);
+  if (!est) {
+    base.note = 'No estimate — entry age is at or past the end of the selected term';
+    return base;
+  }
+  // premiums stop after the payment term (Full Pay: at the end of the coverage term)
+  const years = payTerm === 'full' ? termYears : payTerm;
+  base.monthly = est.monthly;
+  base.annual = est.monthly * 12;
+  base.outlay80 = est.monthly * 12 * years;
+  base.paidYears = years;
+  if (coverageAge === 80 && age > PRU_MAX_TO80_AGE) {
+    base.basisWarning = 'Prudential illustrates this entry age only to ANB 101 — to-80 figure is modelled';
+  }
+  const notes = ['Modelled from 233 Prudential illustrations (±2% typical)'];
+  if (smoker) notes.push('smoker = non-smoker model × Prudential S/N ratio');
+  if (coverageAge === 70) notes.push('no to-70 illustration exists');
+  base.note = notes.join('; ');
   return base;
 }
 
 /** Estimate all insurers, ranked cheapest-first (rows without a quote sink to the bottom). */
 export function estimateAll(
   gender: Gender, smoker: boolean, age: number, sa = BASE_SA, coverageAge: CoverageAge = 80,
+  payTerm: PayTerm = 'full',
 ): LsaResult[] {
-  const rows = LSA_INSURERS.map((ins) => estimate(ins, gender, smoker, age, sa, coverageAge));
+  const rows = LSA_INSURERS.map((ins) => estimate(ins, gender, smoker, age, sa, coverageAge, payTerm));
+  // On a limited-pay selection a short-pay monthly is not comparable with the others'
+  // Full Pay monthly, so rank by total premiums paid instead.
+  const key = (r: LsaResult) => (payTerm === 'full' ? r.monthly : r.outlay80);
   rows.sort((a, b) => {
-    if (a.monthly == null && b.monthly == null) return 0;
-    if (a.monthly == null) return 1;
-    if (b.monthly == null) return -1;
-    return a.monthly - b.monthly;
+    const ka = key(a);
+    const kb = key(b);
+    if (ka == null && kb == null) return 0;
+    if (ka == null) return 1;
+    if (kb == null) return -1;
+    return ka - kb;
   });
   return rows;
 }

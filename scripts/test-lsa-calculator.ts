@@ -11,6 +11,10 @@
  *      the interpolation shifted Prudential's off-grid age-39 base, so its exponent
  *      had to be refitted 0.9864 -> 0.9904.
  *
+ * Prudential is exempt from checks 1, 2 and 4 since 2026-09-24: its row is computed by the
+ * reverse-engineered model in lib/pruModel.ts (guarded by scripts/test-pru-model.ts), not
+ * read off LSA_DATA. Its real RM3m quote is now an out-of-sample check (5).
+ *
  * Run: npx tsx scripts/test-lsa-calculator.ts
  */
 import {
@@ -26,9 +30,11 @@ function fail(msg: string) {
   failures++;
 }
 
+const GRID_INSURERS = LSA_INSURERS.filter((i) => i !== 'Prudential');
+
 // 1 — every quoted grid point comes back verbatim
 let points = 0;
-for (const ins of LSA_INSURERS) {
+for (const ins of GRID_INSURERS) {
   for (const g of ['M', 'F'] as Gender[]) {
     for (const smoker of [false, true]) {
       for (const age of AGES) {
@@ -52,7 +58,7 @@ console.log(`1. grid exactness — ${points} quoted points reproduced`);
 // 2 — interpolated ages stay inside their bracket and at or below the old linear value
 //     (the age/premium curve is convex, so linear always over-stated)
 let violations = 0;
-for (const ins of LSA_INSURERS) {
+for (const ins of GRID_INSURERS) {
   for (const g of ['M', 'F'] as Gender[]) {
     for (const smoker of [false, true]) {
       const sm = smoker ? 'S' : 'N';
@@ -89,13 +95,19 @@ console.log(`3. missing-neighbour handling — GE M55S = ${m55s.monthly}, GE M58
 const anchors: Array<[LsaInsurer, number, number]> = [
   ['Allianz', 40, 2498],
   ['HLA', 40, 1600],
-  ['Prudential', 39, 1673],
 ];
 for (const [ins, age, quoted] of anchors) {
   const got = estimate(ins, 'M', false, age, 3_000_000).monthly!;
   if (got !== quoted) fail(`${ins} M${age} RM3m: got ${got}, real quote ${quoted}`);
 }
 console.log(`4. sum-assured anchors — ${anchors.length} real RM3m quotes reproduced`);
+
+// 5 — Prudential's model vs its real RM3m quote (July 2026, older rate version, never
+//     used in fitting): must land within 7%.
+const pru = estimate('Prudential', 'M', false, 39, 3_000_000).monthly!;
+const pruErr = (pru - 1673) / 1673;
+if (Math.abs(pruErr) > 0.07) fail(`Prudential M39 RM3m: model ${pru} vs real 1673 (${(pruErr * 100).toFixed(1)}%)`);
+console.log(`5. Prudential out-of-sample — RM3m M39: model RM${pru} vs real RM1,673 (${(pruErr * 100).toFixed(1)}%)`);
 
 console.log(failures === 0 ? '\nPASS' : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);
