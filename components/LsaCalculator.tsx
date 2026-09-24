@@ -120,10 +120,10 @@ export default function LsaCalculator() {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14;
     doc.setFontSize(7); doc.setTextColor(130, 130, 130);
     const basisNote = shownAge === 70
-      ? 'COVERAGE BASIS - TO AGE 70 (MODELLED, NOT QUOTED). No insurer illustrates a to-age-70 term. Every premium in this proposal has been extrapolated from that insurer\'s real to-80 and to-100 quotations and is a planning indication only - it is NOT a figure any insurer will reproduce on their system. Obtain an actual illustration before relying on it. AIA and GE are unchanged from their to-80 figures because their premium does not vary with the coverage term.'
+      ? 'COVERAGE BASIS - TO AGE 70 (MODELLED, NOT QUOTED). No insurer illustrates a to-age-70 term. Every premium in this proposal has been extrapolated from that insurer\'s real to-80 and to-100 quotations and is a planning indication only - it is NOT a figure any insurer will reproduce on their system (Prudential\'s is run through its pricing model on a to-ANB-70 term). Obtain an actual illustration before relying on it. AIA and GE are unchanged from their to-80 figures because their premium does not vary with the coverage term.'
       : shownAge === 80
-      ? 'COVERAGE BASIS - TO AGE 80. AIA, Allianz, HLA and Prudential are quoted for coverage to age 80; GE\'s SmartProtect Wealth Plus is sold only on a term to age 100, so its monthly premium is not like-for-like - compare "Total to 80", which counts only the premiums paid up to age 80 for every insurer. A "Full Pay" or coverage-to-100 illustration will be materially HIGHER than the figures above (at male 35 non-smoker RM1m: HLA RM480 -> RM819, Allianz RM669 -> RM1,593, Prudential RM466 -> RM1,049).'
-      : 'COVERAGE BASIS - TO AGE 100. Figures are each insurer\'s own to-age-100 quotation (AIA "Alternative 2", Allianz\'s to-99 row, HLA\'s recommended to-99 premium, Prudential\'s total premium payable for sustainability to ANB 101; GE is only ever sold to 100). Premiums are payable for the full term, so the lifetime outlay is far larger than a to-80 plan. Prudential steps up again at 80, so no lifetime total is shown for it.';
+      ? 'COVERAGE BASIS - TO AGE 80. AIA, Allianz, HLA and Prudential are quoted for coverage to age 80; GE\'s SmartProtect Wealth Plus is sold only on a term to age 100, so its monthly premium is not like-for-like - compare "Total to 80", which counts only the premiums paid up to age 80 for every insurer. A "Full Pay" or coverage-to-100 illustration will be materially HIGHER than the figures above (at male 35 non-smoker RM1m: HLA RM480 -> RM819, Allianz RM669 -> RM1,593, Prudential RM472 -> RM851). Prudential figures come from a pricing model reverse-engineered from its own illustrations (typically within 2% of a real quote).'
+      : 'COVERAGE BASIS - TO AGE 100. Figures are each insurer\'s own to-age-100 quotation (AIA "Alternative 2", Allianz\'s to-99 row, HLA\'s recommended to-99 premium, Prudential\'s level premium on its own to-ANB-101 term, modelled; GE is only ever sold to 100). Premiums are payable for the full term, so the lifetime outlay is far larger than a to-80 plan.';
     const disc = doc.splitTextToSize(
       basisNote + ' Always check the Coverage Period on any illustration before comparing. Premiums are estimates interpolated (log-linear on age) from each insurer\'s official RM1,000,000 illustrations (ages 20-60) and scaled by sum assured using a per-insurer volume-discount curve calibrated on RM1m-3m quotes (Allianz, HLA, Prudential; AIA and GE scale linearly pending high-SA quotes); they are not official quotations and must be confirmed against the insurer system before issue. GE\'s stepped premium rises steeply with age; GE male smoker ages 56-60 are not yet quoted. Prudential entry ages 50-60 on the to-80 basis are to-age-90 illustrations pending re-quote. Death-benefit basis and free riders differ materially between insurers - read the comparison above. For advisory discussion only.',
       W - 80,
@@ -215,9 +215,9 @@ export default function LsaCalculator() {
               : shownAge === 80
                 ? <>Check the <em>Coverage Period</em> on your client&apos;s illustration before comparing — a
                   <em> Full Pay </em>/ to-100 quote reads far higher (same RM1m male 35 non-smoker: HLA RM480 → RM819,
-                  Allianz RM669 → RM1,593, Prudential RM466 → RM1,049). Switch the toggle above to compare on that basis.</>
+                  Allianz RM669 → RM1,593, Prudential RM472 → RM851). Switch the toggle above to compare on that basis.</>
                 : <>Taken from each insurer&apos;s own to-age-100 figures (AIA “Alternative 2”, Allianz&apos;s to-99 row,
-                  HLA&apos;s recommended to-99 premium, Prudential&apos;s total premium payable). Premiums are paid for the
+                  HLA&apos;s recommended to-99 premium, Prudential&apos;s level premium to ANB 101). Premiums are paid for the
                   full term, so the lifetime outlay is much larger than the to-80 basis.</>}
           </Notice>
           <Notice tone="blue">

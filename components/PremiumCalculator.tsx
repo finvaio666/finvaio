@@ -11,7 +11,7 @@ import {
 } from '@/components/calculatorUI';
 
 const INSURER_COLOR: Record<Insurer, string> = {
-  AIA: '#3860BE', GE: '#16A34A', Allianz: '#7C3AED', HLA: '#F79E1B',
+  AIA: '#3860BE', GE: '#16A34A', Allianz: '#7C3AED', HLA: '#F79E1B', Prudential: '#DC2626',
 };
 
 export default function PremiumCalculator() {
@@ -36,7 +36,7 @@ export default function PremiumCalculator() {
   const [exclusions, setExclusions] = useState<Exclusion[]>([]);
 
   function calculate() {
-    setExclusions(getExclusions(lifeN, ciN));
+    setExclusions(getExclusions(lifeN, ciN, smoker));
     const r = estimateAll(ageN, gender, smoker, lifeN, ciN, waiver);
     setResults(r);
     setPicked(new Set(r.slice(0, 3).map((x) => x.insurer))); // default = cheapest 3
@@ -113,7 +113,7 @@ export default function PremiumCalculator() {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 14;
     doc.setFontSize(7); doc.setTextColor(130, 130, 130);
     const disc = doc.splitTextToSize(
-      'Important: Premiums are estimates from a reverse-engineered attained-age model that reproduces each insurer\'s official illustrations to ~0.5% at quoted ages; they are not official quotations and must be confirmed against the insurer\'s system before issue. Medical fixed at Room 200; cost of insurance rises with age and medical inflation. HLA package bundles extra riders (TPD lump sum + payors). For advisory discussion only.',
+      'Important: Premiums are estimates from a reverse-engineered attained-age model that reproduces each insurer\'s official illustrations to ~0.5% at quoted ages (Prudential ~1%, non-smoker, no waiver rider); they are not official quotations and must be confirmed against the insurer\'s system before issue. Medical fixed at Room 200; cost of insurance rises with age and medical inflation. HLA package bundles extra riders (TPD lump sum + payors). For advisory discussion only.',
       W - 80,
     );
     doc.text(disc, 40, y);
@@ -313,7 +313,8 @@ export default function PremiumCalculator() {
           <FinePrint>
             Premiums are estimates (~0.5% at quoted ages) from a reverse-engineered model, not official quotations —
             confirm against the insurer system before issue. Medical fixed at Room 200. HLA package also bundles a
-            TPD lump-sum rider + two payor riders. For advisory discussion only.
+            TPD lump-sum rider + two payor riders. Prudential (~1%) is modelled from its own illustrations,
+            non-smoker only, and carries no waiver/payor rider. For advisory discussion only.
           </FinePrint>
         </Section>
       )}
