@@ -84,6 +84,38 @@ function effectiveMYR(h: { valueMYR: number; valueOrig: number; currency: string
  * columns with the original-currency ones left null, so reading purchaseOrig
  * first (as this report used to) yielded no cost and printed a dash.
  */
+/**
+ * jsPDF measures alignment on the *untracked* string, so letter-spaced text is
+ * placed as if the tracking were not there and drifts by half of it — 15mm for
+ * a 21-character title at 1.5mm. Measure the real width and position it here.
+ */
+function trackedText(
+  doc: jsPDF, text: string, x: number, y: number, charSpace: number,
+  align: 'center' | 'right' = 'center',
+) {
+  const w = doc.getTextWidth(text) + charSpace * Math.max(0, text.length - 1);
+  doc.text(text, align === 'center' ? x - w / 2 : x - w, y, { charSpace });
+}
+
+/**
+ * A review date that has already passed reads as neglect on a client-facing
+ * report, so an overdue — or missing — one is rolled forward to three months
+ * from today, the standard review cycle. Only the report is adjusted; the
+ * stored date is left alone.
+ */
+function reviewDate(stored: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = stored ? new Date(stored) : null;
+  if (d && !isNaN(d.getTime()) && d >= today) return FMT.date(stored);
+  const next = new Date(today);
+  next.setMonth(next.getMonth() + 3);
+  // Build the date from local parts — toISOString() would shift Malaysian
+  // local midnight back into the previous UTC day.
+  const iso = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+  return FMT.date(iso);
+}
+
 /** height ÷ width of the logo asset, so it is drawn at its true proportions. */
 function logoRatio(doc: jsPDF, logo: string): number {
   try {
@@ -214,7 +246,7 @@ function pageHeader(doc: jsPDF, logo: string | null, pageTitle: string, clientNa
   doc.setTextColor(...T.text3);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text(safeText(clientName), W - MARGIN, 9.5, { align: 'right', charSpace: 0.2 });
+  trackedText(doc, safeText(clientName), W - MARGIN, 9.5, 0.2, 'right');
   doc.setTextColor(...T.text1);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -335,14 +367,14 @@ export async function generateClientReport(data: ReportData): Promise<void> {
     doc.text('BILL MORRISONS', W / 2, 22, { align: 'center' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('GLOBAL WEALTH ACCESS', W / 2, 30, { align: 'center', charSpace: 1.5 });
+    trackedText(doc, 'GLOBAL WEALTH ACCESS', W / 2, 30, 1.5);
   }
 
   // ── "Wealth Summary Report" label just below banner ───────────────────────
   doc.setTextColor(...T.red);
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('WEALTH SUMMARY REPORT', W / 2, 61, { align: 'center', charSpace: 1.5 });
+  trackedText(doc, 'WEALTH SUMMARY REPORT', W / 2, 61, 1.5);
 
   // ── Thin red rule ─────────────────────────────────────────────────────────
   doc.setDrawColor(...T.red);
@@ -395,7 +427,7 @@ export async function generateClientReport(data: ReportData): Promise<void> {
     doc.setTextColor(...T.text3);
     doc.setFontSize(6.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('FINANCIAL GOALS', W / 2, goalY, { align: 'center', charSpace: 0.8 });
+    trackedText(doc, 'FINANCIAL GOALS', W / 2, goalY, 0.8);
     doc.setTextColor(...T.text1);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
@@ -410,7 +442,7 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   const details = [
     { label: 'Date of Birth',   value: FMT.date(data.client.dob)        },
     { label: 'Onboarded',       value: FMT.date(data.client.onboarding)  },
-    { label: 'Next Review',     value: FMT.date(data.client.nextReview)  },
+    { label: 'Next Review',     value: reviewDate(data.client.nextReview) },
     { label: 'Monthly Income',  value: data.client.income > 0 ? FMT.myr(data.client.income) : '—' },
   ].filter(d => d.value !== '—');
 
