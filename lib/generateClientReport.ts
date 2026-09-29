@@ -78,6 +78,28 @@ function effectiveMYR(h: { valueMYR: number; valueOrig: number; currency: string
   return h.valueOrig * (FX[h.currency] ?? 1);
 }
 
+/**
+ * Cost in MYR, resolved the same way as the value above — and the same way the
+ * Investment page resolves it. MYR holdings carry their figures in the *_myr
+ * columns with the original-currency ones left null, so reading purchaseOrig
+ * first (as this report used to) yielded no cost and printed a dash.
+ */
+/** height ÷ width of the logo asset, so it is drawn at its true proportions. */
+function logoRatio(doc: jsPDF, logo: string): number {
+  try {
+    const p = doc.getImageProperties(logo);
+    if (p?.width > 0 && p?.height > 0) return p.height / p.width;
+  } catch { /* fall through to the shipped asset's ratio */ }
+  return 75 / 396;
+}
+
+function effectivePurchaseMYR(h: { purchaseMYR: number; purchaseOrig: number; currency: string; fxRate: number }) {
+  if (h.purchaseMYR > 0) return h.purchaseMYR;
+  if (h.currency === 'MYR' && h.purchaseOrig > 0) return h.purchaseOrig;
+  if (h.fxRate > 0 && h.purchaseOrig > 0) return h.purchaseOrig * h.fxRate;
+  return 0;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DRAWING PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,11 +203,12 @@ function pageHeader(doc: jsPDF, logo: string | null, pageTitle: string, clientNa
   // Thin top red strip
   doc.setFillColor(...T.red);
   doc.rect(0, 0, W, 1.5, 'F');
-  // Logo left
+  // Logo left — height follows the file's own proportions, so the wordmark is
+  // never stretched if the asset is ever replaced with a different crop.
   if (logo) {
-    doc.setFillColor(...T.white);
-    doc.rect(MARGIN, 4, 44, 12, 'F');
-    doc.addImage(logo, 'PNG', MARGIN, 5, 42, 11);
+    const lw = 42;
+    const lh = lw * logoRatio(doc, logo);
+    doc.addImage(logo, 'PNG', MARGIN, 10 - lh / 2, lw, lh);
   }
   // Page title right
   doc.setTextColor(...T.text3);
@@ -297,10 +320,13 @@ export async function generateClientReport(data: ReportData): Promise<void> {
 
   // ── Logo (white area within banner) ──────────────────────────────────────
   if (logo) {
-    const lw = 70, lh = 18;
-    const lx = (W - lw) / 2, ly = 11;
+    const lw = 76;
+    const lh = lw * logoRatio(doc, logo);
+    const padX = 7, padY = 5;
+    const lx = (W - lw) / 2;
+    const ly = (52 - (lh + padY * 2)) / 2 + padY;   // centre the plate in the banner
     doc.setFillColor(...T.white);
-    doc.roundedRect(lx - 6, ly - 4, lw + 12, lh + 8, 2, 2, 'F');
+    doc.roundedRect(lx - padX, ly - padY, lw + padX * 2, lh + padY * 2, 2.5, 2.5, 'F');
     doc.addImage(logo, 'PNG', lx, ly, lw, lh);
   } else {
     doc.setTextColor(...T.white);
@@ -510,25 +536,45 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   // ── Holdings table ─────────────────────────────────────────────────────────
   y = sectionTitle(doc, y, 'Holdings Detail');
 
+  // "MYR Equiv." only earns a column when something is actually held in another
+  // currency; for an all-MYR book it was a column of dashes.
+  const hasForeign = active.some(h => h.currency && h.currency !== 'MYR');
+
   const holdingRows = active.map(h => {
-    const myr = effectiveMYR(h);
-    const pnl = h.currency === 'MYR'
-      ? (h.purchaseOrig > 0 ? h.valueOrig - h.purchaseOrig : null)
-      : (h.purchaseMYR > 0 ? myr - h.purchaseMYR : null);
-    return [
+    const myr      = effectiveMYR(h);
+    const purchase = effectivePurchaseMYR(h);
+    const pnl      = purchase > 0 ? myr - purchase : null;
+    const ret      = pnl != null ? (pnl / purchase) * 100 : null;
+    const row = [
       safeText(h.name),
       safeText(h.assetClass || '—'),
       safeText(h.institution || '—'),
       h.currency !== 'MYR' ? `${h.currency} ${h.valueOrig.toLocaleString()}` : FMT.myr(myr),
-      h.currency !== 'MYR' ? FMT.myr(myr) : '—',
-      pnl != null ? (pnl >= 0 ? `+${FMT.myr(pnl)}` : FMT.myr(pnl)) : '—',
     ];
+    if (hasForeign) row.push(h.currency !== 'MYR' ? FMT.myr(myr) : '—');
+    row.push(pnl == null ? '—' : pnl >= 0 ? `+${FMT.myr(pnl)}` : `-${FMT.myr(Math.abs(pnl))}`);
+    row.push(ret != null ? `${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%` : '—');
+    return row;
   });
+
+  const holdHead = hasForeign
+    ? ['Holding Name', 'Asset Class', 'Institution', 'Value', 'MYR Equiv.', 'Gain / Loss', 'Return']
+    : ['Holding Name', 'Asset Class', 'Institution', 'Value', 'Gain / Loss', 'Return'];
+
+  const holdCols: Record<number, { cellWidth: number; halign?: 'right'; fontStyle?: 'bold'; textColor?: [number, number, number] }> =
+    hasForeign
+      ? { 0: { cellWidth: 46, fontStyle: 'bold', textColor: T.text1 }, 1: { cellWidth: 20 }, 2: { cellWidth: 22 },
+          3: { cellWidth: 24, halign: 'right' }, 4: { cellWidth: 22, halign: 'right' },
+          5: { cellWidth: 22, halign: 'right' }, 6: { cellWidth: 22, halign: 'right' } }
+      : { 0: { cellWidth: 58, fontStyle: 'bold', textColor: T.text1 }, 1: { cellWidth: 24 }, 2: { cellWidth: 26 },
+          3: { cellWidth: 24, halign: 'right' }, 4: { cellWidth: 24, halign: 'right' }, 5: { cellWidth: 22, halign: 'right' } };
+
+  const pnlCol = hasForeign ? 5 : 4;
 
   autoTable(doc, {
     startY: y,
-    head: [['Holding Name', 'Asset Class', 'Institution', 'Value', 'MYR Equiv.', 'Gain / Loss']],
-    body: holdingRows.length ? holdingRows : [['No active holdings', '', '', '', '', '']],
+    head: [holdHead],
+    body: holdingRows.length ? holdingRows : [holdHead.map(() => '')],
     theme: 'plain',
     styles: {
       fontSize: 8, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
@@ -539,16 +585,9 @@ export async function generateClientReport(data: ReportData): Promise<void> {
       fontSize: 7, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
     },
     alternateRowStyles: { fillColor: T.bg },
-    columnStyles: {
-      0: { cellWidth: 56, fontStyle: 'bold', textColor: T.text1 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 30 },
-      3: { cellWidth: 27, halign: 'right' },
-      4: { cellWidth: 22, halign: 'right' },
-      5: { cellWidth: 23, halign: 'right' },
-    },
+    columnStyles: holdCols,
     didParseCell: d => {
-      if (d.section === 'body' && d.column.index === 5) {
+      if (d.section === 'body' && (d.column.index === pnlCol || d.column.index === pnlCol + 1)) {
         const v = String(d.cell.raw ?? '');
         if (v.startsWith('+')) d.cell.styles.textColor = T.green;
         else if (v.startsWith('-')) d.cell.styles.textColor = T.loss;
