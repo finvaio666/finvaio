@@ -82,6 +82,11 @@ export async function GET(req: NextRequest) {
         name:         h.name,
         assetClass:   h.assetClass,
         institution:  h.institution,
+        // Custodian, account and pot (EPF / Cash / PRS) — the report groups on
+        // these so it reads the same way the Investment page does.
+        platform:      h.platform,
+        fameAccountNo: h.fameAccountNo,
+        fundSource:    h.fundSource,
         currency:     h.currency || 'MYR',
         valueOrig:    h.valueOriginal,
         valueMYR:     h.valueMyr,
@@ -179,6 +184,9 @@ export async function GET(req: NextRequest) {
           name:         title('Holding Name'),
           assetClass:   sel('Asset class'),
           institution:  rt('Institution'),
+          platform:      sel('Platform'),
+          fameAccountNo: rt('FAME Account No'),
+          fundSource:    rt('Fund Source'),
           currency:     sel('Currency') || 'MYR',
           valueOrig:    num('Value (Original Currency)'),
           valueMYR:     num('Value (MYR)'),

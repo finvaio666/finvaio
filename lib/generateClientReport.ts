@@ -116,6 +116,39 @@ function reviewDate(stored: string): string {
   return FMT.date(iso);
 }
 
+/**
+ * "PRS Acc A" / "PRS Acc B" are sub-accounts of one pot; showing the letter
+ * reads as separate categories when it isn't. The account number already tells
+ * them apart. Mirrors the Investment page.
+ */
+const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
+
+/**
+ * The same grouping the Investment page uses: by custodian account where there
+ * is one, else by platform, with anything unattributed last. Holdings were
+ * previously printed as one flat list whose "Institution" column mixed fund
+ * houses (Principal, United) with platforms (iFAST, Phillip) — and an EPF pot
+ * sat next to a cash one with nothing to separate them.
+ */
+function groupHoldings<T extends { platform?: string; fameAccountNo?: string; fundSource?: string }>(rows: T[]) {
+  const byAccount  = new Map<string, T[]>();
+  const byPlatform = new Map<string, T[]>();
+  const loose: T[] = [];
+  for (const h of rows) {
+    if (h.fameAccountNo)  { const a = byAccount.get(h.fameAccountNo) ?? [];  a.push(h); byAccount.set(h.fameAccountNo, a); }
+    else if (h.platform)  { const a = byPlatform.get(h.platform) ?? [];      a.push(h); byPlatform.set(h.platform, a); }
+    else loose.push(h);
+  }
+  const groups = Array.from(byAccount.entries()).map(([acct, rs]) => ({
+    label: [rs[0].platform, `Account ${acct}`, rs[0].fundSource ? normalizeFundSource(rs[0].fundSource) : '']
+      .filter(Boolean).join(' · '),
+    rows: rs,
+  }));
+  for (const [platform, rs] of byPlatform) groups.push({ label: platform, rows: rs });
+  if (loose.length) groups.push({ label: 'Other Holdings (manual entries)', rows: loose });
+  return groups;
+}
+
 /** height ÷ width of the logo asset, so it is drawn at its true proportions. */
 function logoRatio(doc: jsPDF, logo: string): number {
   try {
@@ -299,6 +332,7 @@ type ReportData = {
   };
   portfolio: Array<{
     name: string; assetClass: string; institution: string; currency: string;
+    platform?: string; fameAccountNo?: string; fundSource?: string;
     valueOrig: number; valueMYR: number; purchaseOrig: number; purchaseMYR: number;
     fxRate: number; status: string; maturityDate: string;
   }>;
@@ -572,26 +606,65 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   // currency; for an all-MYR book it was a column of dashes.
   const hasForeign = active.some(h => h.currency && h.currency !== 'MYR');
 
-  const holdingRows = active.map(h => {
-    const myr      = effectiveMYR(h);
-    const purchase = effectivePurchaseMYR(h);
-    const pnl      = purchase > 0 ? myr - purchase : null;
-    const ret      = pnl != null ? (pnl / purchase) * 100 : null;
-    const row = [
-      safeText(h.name),
-      safeText(h.assetClass || '—'),
-      safeText(h.institution || '—'),
-      h.currency !== 'MYR' ? `${h.currency} ${h.valueOrig.toLocaleString()}` : FMT.myr(myr),
-    ];
-    if (hasForeign) row.push(h.currency !== 'MYR' ? FMT.myr(myr) : '—');
-    row.push(pnl == null ? '—' : pnl >= 0 ? `+${FMT.myr(pnl)}` : `-${FMT.myr(Math.abs(pnl))}`);
-    row.push(ret != null ? `${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%` : '—');
-    return row;
-  });
+  const colCount = hasForeign ? 7 : 6;
+  // FMT.myr renders 0 as a dash, so a flat position must not be given a sign —
+  // notes held at par were printing "+—".
+  const signed   = (n: number | null) =>
+    n == null || n === 0 ? '—' : n > 0 ? `+${FMT.myr(n)}` : `-${FMT.myr(Math.abs(n))}`;
+  const pct      = (r: number | null) => r == null ? '—' : `${r >= 0 ? '+' : ''}${r.toFixed(0)}%`;
+
+  // The column is the fund house. Where the data repeats the platform there —
+  // FAME rows often do — the group header above already says it.
+  const fundHouse = (h: ReportData['portfolio'][number]) => {
+    const inst = safeText(h.institution || '');
+    if (!inst || inst.toLowerCase() === safeText(h.platform || '').toLowerCase()) return '—';
+    // Structured-note issuers run long — 'Citigroup Global Markets Funding
+    // Luxembourg S.C.A. ("CGMFL")' wrapped a row to six lines. The holding name
+    // carries the issuer in full, so the column only needs to identify it.
+    const short = inst.split('(')[0].trim();
+    return short.length > 24 ? `${short.slice(0, 22).trim()}...` : short;
+  };
+
+  type Cell = string | { content: string; colSpan?: number };
+  const holdingRows: Cell[][] = [];
+  const groupHeadAt = new Set<number>();
+  const subtotalAt  = new Set<number>();
+
+  for (const g of groupHoldings(active)) {
+    holdingRows.push([{ content: safeText(g.label), colSpan: colCount }]);
+    groupHeadAt.add(holdingRows.length - 1);
+
+    let gValue = 0, gCost = 0;
+    for (const h of g.rows) {
+      const myr      = effectiveMYR(h);
+      const purchase = effectivePurchaseMYR(h);
+      const pnl      = purchase > 0 ? myr - purchase : null;
+      gValue += myr;
+      gCost  += purchase;
+      const row: Cell[] = [
+        safeText(h.name),
+        safeText(h.assetClass || '—'),
+        fundHouse(h),
+        h.currency !== 'MYR' ? `${h.currency} ${h.valueOrig.toLocaleString()}` : FMT.myr(myr),
+      ];
+      if (hasForeign) row.push(h.currency !== 'MYR' ? FMT.myr(myr) : '—');
+      row.push(signed(pnl));
+      row.push(pct(pnl ? (pnl / purchase) * 100 : null));   // flat or unknown → dash
+      holdingRows.push(row);
+    }
+
+    const gPnl = gCost > 0 ? gValue - gCost : null;
+    const sub: Cell[] = [{ content: `Subtotal — ${safeText(g.label)}`, colSpan: 3 }, FMT.myr(gValue)];
+    if (hasForeign) sub.push('');
+    sub.push(signed(gPnl));
+    sub.push(pct(gPnl ? (gPnl / gCost) * 100 : null));
+    holdingRows.push(sub);
+    subtotalAt.add(holdingRows.length - 1);
+  }
 
   const holdHead = hasForeign
-    ? ['Holding Name', 'Asset Class', 'Institution', 'Value', 'MYR Equiv.', 'Gain / Loss', 'Return']
-    : ['Holding Name', 'Asset Class', 'Institution', 'Value', 'Gain / Loss', 'Return'];
+    ? ['Holding Name', 'Asset Class', 'Fund House', 'Value', 'MYR Equiv.', 'Gain / Loss', 'Return']
+    : ['Holding Name', 'Asset Class', 'Fund House', 'Value', 'Gain / Loss', 'Return'];
 
   const holdCols: Record<number, { cellWidth: number; halign?: 'right'; fontStyle?: 'bold'; textColor?: [number, number, number] }> =
     hasForeign
@@ -600,8 +673,6 @@ export async function generateClientReport(data: ReportData): Promise<void> {
           5: { cellWidth: 22, halign: 'right' }, 6: { cellWidth: 22, halign: 'right' } }
       : { 0: { cellWidth: 58, fontStyle: 'bold', textColor: T.text1 }, 1: { cellWidth: 24 }, 2: { cellWidth: 26 },
           3: { cellWidth: 24, halign: 'right' }, 4: { cellWidth: 24, halign: 'right' }, 5: { cellWidth: 22, halign: 'right' } };
-
-  const pnlCol = hasForeign ? 5 : 4;
 
   autoTable(doc, {
     startY: y,
@@ -616,13 +687,25 @@ export async function generateClientReport(data: ReportData): Promise<void> {
       fillColor: T.red, textColor: T.white, fontStyle: 'bold',
       fontSize: 7, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
     },
-    alternateRowStyles: { fillColor: T.bg },
     columnStyles: holdCols,
     didParseCell: d => {
-      if (d.section === 'body' && (d.column.index === pnlCol || d.column.index === pnlCol + 1)) {
-        const v = String(d.cell.raw ?? '');
-        if (v.startsWith('+')) d.cell.styles.textColor = T.green;
-        else if (v.startsWith('-')) d.cell.styles.textColor = T.loss;
+      if (d.section !== 'body') return;
+      if (groupHeadAt.has(d.row.index)) {
+        d.cell.styles.fillColor = [238, 240, 243];
+        d.cell.styles.textColor = T.text1;
+        d.cell.styles.fontStyle = 'bold';
+        d.cell.styles.fontSize  = 7.5;
+        return;
+      }
+      if (subtotalAt.has(d.row.index)) {
+        d.cell.styles.fontStyle = 'bold';
+        d.cell.styles.textColor = T.text1;
+      }
+      // Gain and return carry a leading sign; the em-dash placeholder does not.
+      const raw = d.cell.raw;
+      if (typeof raw === 'string') {
+        if (raw.startsWith('+'))      d.cell.styles.textColor = T.green;
+        else if (raw.startsWith('-')) d.cell.styles.textColor = T.loss;
       }
     },
     didDrawCell: d => {
