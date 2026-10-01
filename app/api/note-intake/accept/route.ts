@@ -216,6 +216,22 @@ export async function POST(req: NextRequest) {
         error: `This only accounts for ${total.toLocaleString()} of the ${issueAmount.toLocaleString()} tranche — ${(issueAmount - total).toLocaleString()} unallocated. The allocations must add up to the full tranche before this note can be added.`,
       }, { status: 400 });
     }
+    // Same re-check discipline as the two above — the form had this check
+    // (previously a dismissible confirm(), fixed to a hard block alongside
+    // this one), but nothing server-side enforced it, so it could still be
+    // skipped by calling the API directly. A denomination parses here
+    // whenever the shortfall/over-allocation checks above couldn't — e.g. a
+    // "Up to USD 300,000" tranche has no single issueAmount to check against,
+    // but a stated denomination is still a real constraint on each slice.
+    const denomination = Number((row.parsed as { denomination?: number } | null)?.denomination) || 0;
+    if (denomination) {
+      const odd = allocations.filter(a => Number(a.amount) % denomination !== 0);
+      if (odd.length) {
+        return NextResponse.json({
+          error: `The term sheet states a denomination of ${denomination.toLocaleString()}, but ${odd.length} allocation(s) are not a whole multiple of it. Check the figures before adding this note.`,
+        }, { status: 400 });
+      }
+    }
 
     const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
     const clientById = new Map(clients.map(c => [c.notionId, c]));

@@ -36,7 +36,7 @@ const SCHEMA = {
     kiPct:        { type: 'number', nullable: true, description: 'Knock-in/conversion/downside barrier as a PERCENTAGE of Initial, e.g. 65 for "65% of Initial Price". Null if the note has none.' },
     koPct:        { type: 'number', nullable: true, description: 'FIRST knock-out/autocall barrier as a percentage of Initial. Null if none.' },
     currency:     { type: 'string', nullable: true, description: 'Three-letter currency code' },
-    issueAmount:  { type: 'number', nullable: true, description: 'Total tranche size in `currency`. Null if not stated as a single figure (e.g. "Up to USD 480,000" — flag that in notes_ instead of guessing).' },
+    issueAmount:  { type: 'number', nullable: true, description: 'Total tranche size in `currency`. If stated as a ceiling ("Up to USD 480,000", "maximum aggregate nominal amount of USD 300,000"), use that printed number — it is an explicit figure, not a guess, and the admin review screen validates allocated amounts against it. Note the "up to" wording in notes_ so the reviewer knows it is a cap, not a confirmed final size. Only return null if the document truly states no number at all — verified live 2026-10-01: nulling out a stated "Up to" ceiling left a real USD 200,000 shortfall on a note with nothing to check it against, since every amount-validation check downstream is skipped entirely when this is null.' },
     denomination: { type: 'number', nullable: true, description: 'Minimum trading unit in `currency`. Null if not stated.' },
     underlyings: {
       type: 'array',
