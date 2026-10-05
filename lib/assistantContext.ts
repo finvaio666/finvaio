@@ -14,8 +14,9 @@
  * a cheap regex so an ordinary question doesn't pay for reads it won't use.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, type FunctionDeclaration, type FunctionCall } from '@google/generative-ai';
 import { AdvisorConfig } from './getAdvisorConfig';
+import { estimateAll, getExclusions, PLAN_TYPES, type Gender as InsGender } from './insuranceCalculator';
 import { listClients, ClientRecord } from './clients';
 import { listHoldings } from './portfolio';
 import { listTasks, setTaskStatus } from './tasks';
@@ -407,3 +408,113 @@ Message: "${question}"`;
 
   return null;
 }
+
+// ── Premium comparison tool (Gemini function calling) ─────────────────────────
+/**
+ * The insurance pricing engine (lib/insuranceCalculator.ts) is exposed to the
+ * model as a CALLABLE TOOL rather than as prompt text, for one reason: the
+ * model must never do the arithmetic. Premiums quoted to a real client have to
+ * come out of the calibrated engine, not out of an LLM's head.
+ *
+ * Mirrors the Premium Calculator page's defaults — plan type `ilp200`
+ * (ILP Protection + Medical, Room 200) and waiver included — so chat and page
+ * can never disagree. ilp200 is currently the only enabled plan type, so there
+ * is deliberately no planType parameter to get wrong.
+ */
+const PLAN_BASIS = PLAN_TYPES.find(p => p.enabled) ?? PLAN_TYPES[0];
+
+export const ENGINE_DISCLAIMER =
+  'Premiums are estimates from a reverse-engineered attained-age model that reproduces each insurer\'s official illustrations to ~0.5% at quoted ages (Prudential ~1%). They are NOT official quotations and must be confirmed against the insurer\'s system before issue. Medical is fixed at Room 200. For advisory discussion only.';
+
+export const PREMIUM_TOOL: FunctionDeclaration = {
+  name: 'compare_premiums',
+  description:
+    'Compare estimated insurance premiums across AIA, Great Eastern, Allianz, HLA and Prudential for one person, ' +
+    `using the firm's calibrated pricing engine (${PLAN_BASIS.label}). ` +
+    'Call this whenever the advisor asks what a plan would cost, which insurer is cheapest, or for a premium comparison. ' +
+    'Do NOT call it until you know age, gender, smoker status AND both sum assured figures — ask the advisor for whatever is missing first. ' +
+    'Never estimate or adjust premiums yourself; every figure you quote must come from this tool.',
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      age:    { type: SchemaType.INTEGER, description: 'Age next birthday of the life assured, 1-75.' },
+      gender: { type: SchemaType.STRING,  format: 'enum', description: "Gender of the life assured: 'M' or 'F'.", enum: ['M', 'F'] },
+      smoker: { type: SchemaType.BOOLEAN, description: 'True if the life assured smokes. Changes the premium materially — never guess it.' },
+      lifeSA: { type: SchemaType.NUMBER,  description: 'Life cover sum assured in MYR, e.g. 500000.' },
+      ciSA:   { type: SchemaType.NUMBER,  description: 'Critical illness sum assured in MYR, e.g. 500000.' },
+      waiver: { type: SchemaType.BOOLEAN, description: 'Include waiver-of-premium rider. Defaults to true (the calculator default) when not specified.' },
+    },
+    required: ['age', 'gender', 'smoker', 'lifeSA', 'ciSA'],
+  },
+};
+
+export interface PremiumToolResult {
+  ok: boolean;
+  error?: string;
+  basis?: string;
+  inputs?: { age: number; gender: string; smoker: boolean; lifeSA: number; ciSA: number; waiver: boolean };
+  quotes?: { insurer: string; product: string; monthly: number; annual: number; verified: boolean; caveat: string }[];
+  excluded?: { insurer: string; reason: string }[];
+  disclaimer?: string;
+}
+
+/** Run the pricing engine. Pure + synchronous — no DB, no network. */
+export function runPremiumComparison(args: Record<string, unknown>): PremiumToolResult {
+  const age    = Number(args.age);
+  const gender = String(args.gender ?? '').toUpperCase() as InsGender;
+  const smoker = Boolean(args.smoker);
+  const lifeSA = Number(args.lifeSA);
+  const ciSA   = Number(args.ciSA);
+  const waiver = args.waiver === undefined ? true : Boolean(args.waiver);
+
+  if (!Number.isFinite(age) || age < 1 || age > 75) {
+    return { ok: false, error: `Age ${args.age} is outside the engine's supported range (1-75). Tell the advisor the engine cannot price this age — do not estimate it yourself.` };
+  }
+  if (gender !== 'M' && gender !== 'F') {
+    return { ok: false, error: 'Gender must be M or F. Ask the advisor.' };
+  }
+  if (!Number.isFinite(lifeSA) || !Number.isFinite(ciSA) || lifeSA < 0 || ciSA < 0) {
+    return { ok: false, error: 'Both life and CI sum assured are required, in MYR. Ask the advisor.' };
+  }
+
+  const results  = estimateAll(age, gender, smoker, lifeSA, ciSA, waiver);
+  const excluded = getExclusions(lifeSA, ciSA, smoker);
+
+  if (results.length === 0) {
+    return { ok: false, error: 'The engine returned no priceable insurer for this combination. Report that plainly; do not invent a figure.', excluded: excluded.map(e => ({ insurer: e.insurer, reason: e.reason })) };
+  }
+
+  return {
+    ok: true,
+    basis: `${PLAN_BASIS.label}; waiver of premium ${waiver ? 'included' : 'excluded'}`,
+    inputs: { age, gender, smoker, lifeSA, ciSA, waiver },
+    quotes: results.map(r => ({
+      insurer:  r.insurer,
+      product:  r.product,
+      monthly:  Math.round(r.monthly * 100) / 100,
+      annual:   Math.round(r.annual * 100) / 100,
+      verified: r.verified,
+      caveat:   r.caveat,
+    })),
+    excluded: excluded.map(e => ({ insurer: e.insurer, reason: e.reason })),
+    disclaimer: ENGINE_DISCLAIMER,
+  };
+}
+
+/** Dispatch a model-requested tool call. Returns null for an unknown tool. */
+export function runAssistantTool(call: FunctionCall): object | null {
+  if (call.name === 'compare_premiums') {
+    return runPremiumComparison((call.args ?? {}) as Record<string, unknown>);
+  }
+  return null;
+}
+
+/** Prompt rules governing how the premium tool may be used and reported. */
+export const PREMIUM_TOOL_RULES = `PREMIUM COMPARISONS (compare_premiums tool):
+- The advisor's client records do NOT store gender, smoker status or marital status. You must ASK for whatever you don't have. Never assume a client's gender, and never guess smoker status — it changes the premium a lot.
+- Before calling the tool you need: age (use the client's date of birth if a client is selected), gender, smoker status, life sum assured and CI sum assured. Ask for the missing ones in ONE short message, then wait. Do not call the tool with assumed figures, and do not fall back to a default sum assured the advisor never stated.
+- EVERY premium figure you give must come from the tool's output. Never compute, adjust, interpolate, inflate or "roughly estimate" a premium yourself, and never reuse a figure from an earlier question with different inputs. If the tool is unavailable or errors, say so and point the advisor at the Premium Calculator page — do NOT answer from memory.
+- Present the result as a short comparison, cheapest first, with monthly (and annual) figures. State the basis line returned by the tool.
+- A quote flagged verified:true is a confirmed official quotation — label it as such. Everything else is an ESTIMATE, never a quotation; include the tool's disclaimer, and carry each insurer's own caveat when you mention that insurer.
+- If the tool returns anything in "excluded", say which insurers were excluded and why. Never quietly drop them from the comparison.
+- The comparison informs the advisor's recommendation; the advisor decides and must confirm figures with the insurer before issue. Never address the end client.`;

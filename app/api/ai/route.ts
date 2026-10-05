@@ -12,7 +12,10 @@ import {
   fetchClients,
   buildSharedContext,
   handleTaskIntents,
+  runAssistantTool,
   SHARED_DATA_RULES,
+  PREMIUM_TOOL,
+  PREMIUM_TOOL_RULES,
 } from '@/lib/assistantContext';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
@@ -329,7 +332,9 @@ TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what 
 DATA SECTIONS:
 ${SHARED_DATA_RULES}
 - Never invent clients, funds, plans or figures. If a section says nothing is on record, say so plainly.
-- NEVER assume a client's gender. Use the client's name or "they/their" unless the data explicitly states otherwise.`;
+- NEVER assume a client's gender. Use the client's name or "they/their" unless the data explicitly states otherwise.
+
+${PREMIUM_TOOL_RULES}`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -404,9 +409,34 @@ export async function POST(req: NextRequest) {
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
-        const model  = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
+        const model = genAI.getGenerativeModel({
+          model: modelId,
+          systemInstruction: systemPrompt,
+          tools: [{ functionDeclarations: [PREMIUM_TOOL] }],
+        });
         const chat   = model.startChat({ history });
-        const result = await chat.sendMessage(lastMessage.content);
+        let result   = await chat.sendMessage(lastMessage.content);
+
+        // ── Tool loop ─────────────────────────────────────────────────────
+        // The model may ask to run the pricing engine instead of replying.
+        // Execute it, hand the real figures back, and let it write the answer
+        // around them — it never computes a premium itself. Bounded so a
+        // misbehaving model can't loop forever.
+        for (let hop = 0; hop < 3; hop++) {
+          const calls = result.response.functionCalls();
+          if (!calls?.length) break;
+          const parts = calls.map(call => ({
+            functionResponse: {
+              name: call.name,
+              response: (runAssistantTool(call) ?? {
+                ok: false,
+                error: `Unknown tool "${call.name}". Tell the advisor you can't answer this and do not invent figures.`,
+              }) as object,
+            },
+          }));
+          result = await chat.sendMessage(parts);
+        }
+
         content = result.response.text();
         usage   = result.response.usageMetadata;
         break;
