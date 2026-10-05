@@ -402,10 +402,11 @@ export async function POST(req: NextRequest) {
     }));
     const lastMessage = messages[messages.length - 1];
 
-    // Try models in order — fall back on 503 overload
+    // Try models in order — fall back when a model is overloaded OR rate-limited
     const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+    type Usage = { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
     let content = '';
-    let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+    let usage: Usage | undefined;
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
@@ -415,7 +416,22 @@ export async function POST(req: NextRequest) {
           tools: [{ functionDeclarations: [PREMIUM_TOOL] }],
         });
         const chat   = model.startChat({ history });
-        let result   = await chat.sendMessage(lastMessage.content);
+
+        // A tool call costs TWO requests (ask + tool result), and each one
+        // reports its own usage. Sum them, or the AI Usage Log records roughly
+        // half the true cost of every premium question.
+        const acc: Usage = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };
+        const addUsage = (u?: Usage) => {
+          if (!u) return;
+          acc.promptTokenCount!     += u.promptTokenCount     ?? 0;
+          acc.candidatesTokenCount! += u.candidatesTokenCount ?? 0;
+          // Gemini's total can exceed prompt+candidates (thinking tokens), so
+          // take the reported total rather than re-deriving it.
+          acc.totalTokenCount!      += u.totalTokenCount      ?? 0;
+        };
+
+        let result = await chat.sendMessage(lastMessage.content);
+        addUsage(result.response.usageMetadata);
 
         // ── Tool loop ─────────────────────────────────────────────────────
         // The model may ask to run the pricing engine instead of replying.
@@ -435,16 +451,23 @@ export async function POST(req: NextRequest) {
             },
           }));
           result = await chat.sendMessage(parts);
+          addUsage(result.response.usageMetadata);
         }
 
         content = result.response.text();
-        usage   = result.response.usageMetadata;
+        usage   = acc;
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         lastErr = err;
-        if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
-          console.warn(`${modelId} overloaded, trying next model…`);
+        // 429 = per-minute quota. The fallback models have their own quotas, so
+        // trying the next one is exactly the right move — previously a rate
+        // limit threw instead, which the tool loop made far more likely by
+        // doubling the requests per question.
+        if (msg.includes('503') || msg.includes('429') ||
+            msg.includes('high demand') || msg.includes('overloaded') ||
+            msg.includes('quota') || msg.includes('rate limit') || msg.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`${modelId} unavailable (overloaded or rate-limited), trying next model…`);
           continue;
         }
         throw err;
