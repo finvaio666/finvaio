@@ -16,6 +16,8 @@ import {
   SHARED_DATA_RULES,
   PREMIUM_TOOL,
   PREMIUM_TOOL_RULES,
+  GAP_TOOL,
+  GAP_TOOL_RULES,
 } from '@/lib/assistantContext';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
@@ -334,7 +336,9 @@ ${SHARED_DATA_RULES}
 - Never invent clients, funds, plans or figures. If a section says nothing is on record, say so plainly.
 - NEVER assume a client's gender. Use the client's name or "they/their" unless the data explicitly states otherwise.
 
-${PREMIUM_TOOL_RULES}`;
+${PREMIUM_TOOL_RULES}
+
+${GAP_TOOL_RULES}`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -395,6 +399,15 @@ export async function POST(req: NextRequest) {
     }
     const systemPrompt = parts.join('\n\n');
 
+    // Tools read the SELECTED client from here, not from a model-supplied id —
+    // the model can't point the gap analysis at someone else's client, and
+    // listPolicies/fetchClients are advisor-scoped underneath anyway.
+    const toolCtx = config ? {
+      config,
+      clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
+      clientName: typeof clientName === 'string' ? clientName.trim() : undefined,
+    } : null;
+
     const genAI   = new GoogleGenerativeAI(GEMINI_KEY);
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
       role:  m.role === 'assistant' ? 'model' : 'user',
@@ -413,7 +426,7 @@ export async function POST(req: NextRequest) {
         const model = genAI.getGenerativeModel({
           model: modelId,
           systemInstruction: systemPrompt,
-          tools: [{ functionDeclarations: [PREMIUM_TOOL] }],
+          ...(toolCtx ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL] }] } : {}),
         });
         const chat   = model.startChat({ history });
 
@@ -441,15 +454,15 @@ export async function POST(req: NextRequest) {
         for (let hop = 0; hop < 3; hop++) {
           const calls = result.response.functionCalls();
           if (!calls?.length) break;
-          const parts = calls.map(call => ({
+          const parts = await Promise.all(calls.map(async call => ({
             functionResponse: {
               name: call.name,
-              response: (runAssistantTool(call) ?? {
+              response: (await (toolCtx ? runAssistantTool(call, toolCtx) : null) ?? {
                 ok: false,
                 error: `Unknown tool "${call.name}". Tell the advisor you can't answer this and do not invent figures.`,
               }) as object,
             },
-          }));
+          })));
           result = await chat.sendMessage(parts);
           addUsage(result.response.usageMetadata);
         }
