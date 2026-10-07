@@ -140,12 +140,23 @@ function buildUnderlyingDetails(
   // determination date EXCEPT the last), and listing it as a KO obs would
   // invent one: with no triggerPct, koBarrier falls back to the underlying's
   // `ko` level and the refresh would test a 100% autocall that does not exist.
-  const obs = (p.schedule ?? []).filter(s => s.determinationDate && s.triggerPct != null);
-  const schedule: NonNullable<PortfolioHolding['underlyingDetails']>['schedule'] = obs.map((s, i) => ({
-    date:       String(s.determinationDate),
-    label:      `KO obs #${s.n ?? i + 1} (trigger ${Number(s.triggerPct)}%)`,
-    triggerPct: Number(s.triggerPct),
-  }));
+  //
+  // A non-final date with NO trigger is a non-call (lock-in) date — the term
+  // sheet prints "n/a" and the note cannot knock out there. It is kept for
+  // display under a label that does NOT start with 'KO obs', so neither the
+  // flag derivation nor update-underlying-prices ever tests it (a 'KO obs' row
+  // with no triggerPct falls back to the 100% `ko` level — which falsely
+  // flagged XS3395171005 as knocked out on its 5 Oct 2026 lock-in date).
+  const all = (p.schedule ?? []).filter(s => s.determinationDate);
+  const schedule: NonNullable<PortfolioHolding['underlyingDetails']>['schedule'] = [];
+  all.forEach((s, i) => {
+    const n = s.n ?? i + 1;
+    if (s.triggerPct != null) {
+      schedule.push({ date: String(s.determinationDate), label: `KO obs #${n} (trigger ${Number(s.triggerPct)}%)`, triggerPct: Number(s.triggerPct) });
+    } else if (i < all.length - 1) {
+      schedule.push({ date: String(s.determinationDate), label: `Non-call #${n} (no KO)` });
+    }
+  });
 
   // Maturity closes the note out. Prefer the reviewer's date; fall back to the
   // last scheduled date so a note without one still ages out of the book

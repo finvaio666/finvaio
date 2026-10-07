@@ -55,7 +55,7 @@ const SCHEMA = {
       items: { type: 'object', properties: {
         n: { type: 'integer', nullable: true },
         determinationDate: { type: 'string', nullable: true },
-        triggerPct: { type: 'number', nullable: true, description: 'null for a date with no autocall barrier (e.g. the final valuation)' },
+        triggerPct: { type: 'number', nullable: true, description: 'null for a date with no autocall barrier: the final valuation, AND any date whose barrier/price is printed as "n/a", "not applicable" or "-" (a non-call / lock-in period — the note cannot knock out on that date). Never fill in 100 for such a date.' },
       }},
     },
     notes_: { type: 'array', items: { type: 'string' }, description: 'Anything a human should double check — an ambiguous field, an unusual structure, low confidence on any value.' },
