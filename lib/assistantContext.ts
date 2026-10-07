@@ -14,13 +14,15 @@
  * a cheap regex so an ordinary question doesn't pay for reads it won't use.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, type FunctionDeclaration, type FunctionCall } from '@google/generative-ai';
 import { AdvisorConfig } from './getAdvisorConfig';
+import { estimateAll, getExclusions, PLAN_TYPES, type Gender as InsGender } from './insuranceCalculator';
 import { listClients, ClientRecord } from './clients';
 import { listHoldings } from './portfolio';
 import { listTasks, setTaskStatus } from './tasks';
 import { listMeetings } from './meetingNotes';
 import { listFunds, listPlans } from './products';
+import { listPolicies } from './insurance';
 import * as kbEntries from './repos/knowledgeEntries';
 
 export const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
@@ -332,6 +334,29 @@ export const SHARED_DATA_RULES = `- When asked which clients own / bought / hold
 // ── Task intents (mark done / create) ─────────────────────────────────────────
 
 export interface PendingTask { task: string; client: string; due: string }
+
+/**
+ * Does this message actually ask to CREATE a task?
+ *
+ * The old test fired on a bare "add|create|record|note" anywhere in the
+ * sentence, which hijacked ordinary questions — "my prospect has no RECORD
+ * with us, is that enough cover?" was turned into a to-do instead of being
+ * answered. Now a trigger word must either lead the sentence (an imperative:
+ * "add a reminder to…") or sit next to a task noun, and plainly analytical
+ * questions are excluded outright.
+ */
+export function looksLikeTaskRequest(q: string): boolean {
+  // Questions that are clearly asking for analysis, never a task.
+  if (/\b(is (that|this|it|he|she|they) enough|enough cover|what(?:'s| is| are)? (lacking|missing)|under-?insured|coverage gap|protection gap|compare|cheapest|how much (should|would|does|is))\b/i.test(q)) {
+    return false;
+  }
+  // Explicit task phrasing anywhere in the message.
+  if (/\b(remind me|new task|add (?:a |an )?(?:task|to-?do|reminder)|create (?:a |an )?(?:task|to-?do|reminder)|note (?:it |this |that )?down|put (?:it |this |that )?down|to-?do list)\b/i.test(q)) {
+    return true;
+  }
+  // Or an imperative opening the message: "add …", "record …", "log …".
+  return /^\s*(?:please\s+)?(add|create|record|note|log)\b/i.test(q);
+}
 export type TaskIntentResult =
   | { kind: 'answer'; answer: string }
   | { kind: 'pending'; pendingTasks: PendingTask[] }
@@ -376,7 +401,7 @@ export async function handleTaskIntents(
   }
 
   // ── Add / record task(s) ───────────────────────────────────────────────────
-  if (/\b(add|create|record|note( down)?|put down|remind me|new task|to-?do)\b/i.test(question) &&
+  if (looksLikeTaskRequest(question) &&
       !/\b(mark|complete[d]?|finish(?:ed)?|done)\b/i.test(question)) {
     try {
       const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }); // YYYY-MM-DD in MYT
@@ -407,3 +432,318 @@ Message: "${question}"`;
 
   return null;
 }
+
+// ── Premium comparison tool (Gemini function calling) ─────────────────────────
+/**
+ * The insurance pricing engine (lib/insuranceCalculator.ts) is exposed to the
+ * model as a CALLABLE TOOL rather than as prompt text, for one reason: the
+ * model must never do the arithmetic. Premiums quoted to a real client have to
+ * come out of the calibrated engine, not out of an LLM's head.
+ *
+ * Mirrors the Premium Calculator page's defaults — plan type `ilp200`
+ * (ILP Protection + Medical, Room 200) and waiver included — so chat and page
+ * can never disagree. ilp200 is currently the only enabled plan type, so there
+ * is deliberately no planType parameter to get wrong.
+ */
+const PLAN_BASIS = PLAN_TYPES.find(p => p.enabled) ?? PLAN_TYPES[0];
+
+export const ENGINE_DISCLAIMER =
+  'Premiums are estimates from a reverse-engineered attained-age model that reproduces each insurer\'s official illustrations to ~0.5% at quoted ages (Prudential ~1%). They are NOT official quotations and must be confirmed against the insurer\'s system before issue. Medical is fixed at Room 200. For advisory discussion only.';
+
+export const PREMIUM_TOOL: FunctionDeclaration = {
+  name: 'compare_premiums',
+  description:
+    'Compare estimated insurance premiums across AIA, Great Eastern, Allianz, HLA and Prudential for one person, ' +
+    `using the firm's calibrated pricing engine (${PLAN_BASIS.label}). ` +
+    'Call this whenever the advisor asks what a plan would cost, which insurer is cheapest, or for a premium comparison. ' +
+    'Do NOT call it until you know age, gender, smoker status AND both sum assured figures — ask the advisor for whatever is missing first. ' +
+    'Never estimate or adjust premiums yourself; every figure you quote must come from this tool.',
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      age:    { type: SchemaType.INTEGER, description: 'Age next birthday of the life assured, 1-75.' },
+      gender: { type: SchemaType.STRING,  format: 'enum', description: "Gender of the life assured: 'M' or 'F'.", enum: ['M', 'F'] },
+      smoker: { type: SchemaType.BOOLEAN, description: 'True if the life assured smokes. Changes the premium materially — never guess it.' },
+      lifeSA: { type: SchemaType.NUMBER,  description: 'Life cover sum assured in MYR, e.g. 500000.' },
+      ciSA:   { type: SchemaType.NUMBER,  description: 'Critical illness sum assured in MYR, e.g. 500000.' },
+      waiver: { type: SchemaType.BOOLEAN, description: 'Include waiver-of-premium rider. Defaults to true (the calculator default) when not specified.' },
+    },
+    required: ['age', 'gender', 'smoker', 'lifeSA', 'ciSA'],
+  },
+};
+
+export interface PremiumToolResult {
+  ok: boolean;
+  error?: string;
+  basis?: string;
+  inputs?: { age: number; gender: string; smoker: boolean; lifeSA: number; ciSA: number; waiver: boolean };
+  quotes?: { insurer: string; product: string; monthly: number; annual: number; verified: boolean; caveat: string }[];
+  excluded?: { insurer: string; reason: string }[];
+  disclaimer?: string;
+}
+
+/** Run the pricing engine. Pure + synchronous — no DB, no network. */
+export function runPremiumComparison(args: Record<string, unknown>): PremiumToolResult {
+  const age    = Number(args.age);
+  const gender = String(args.gender ?? '').toUpperCase() as InsGender;
+  const smoker = Boolean(args.smoker);
+  const lifeSA = Number(args.lifeSA);
+  const ciSA   = Number(args.ciSA);
+  const waiver = args.waiver === undefined ? true : Boolean(args.waiver);
+
+  if (!Number.isFinite(age) || age < 1 || age > 75) {
+    return { ok: false, error: `Age ${args.age} is outside the engine's supported range (1-75). Tell the advisor the engine cannot price this age — do not estimate it yourself.` };
+  }
+  if (gender !== 'M' && gender !== 'F') {
+    return { ok: false, error: 'Gender must be M or F. Ask the advisor.' };
+  }
+  if (!Number.isFinite(lifeSA) || !Number.isFinite(ciSA) || lifeSA < 0 || ciSA < 0) {
+    return { ok: false, error: 'Both life and CI sum assured are required, in MYR. Ask the advisor.' };
+  }
+
+  const results  = estimateAll(age, gender, smoker, lifeSA, ciSA, waiver);
+  const excluded = getExclusions(lifeSA, ciSA, smoker);
+
+  if (results.length === 0) {
+    return { ok: false, error: 'The engine returned no priceable insurer for this combination. Report that plainly; do not invent a figure.', excluded: excluded.map(e => ({ insurer: e.insurer, reason: e.reason })) };
+  }
+
+  return {
+    ok: true,
+    basis: `${PLAN_BASIS.label}; waiver of premium ${waiver ? 'included' : 'excluded'}`,
+    inputs: { age, gender, smoker, lifeSA, ciSA, waiver },
+    quotes: results.map(r => ({
+      insurer:  r.insurer,
+      product:  r.product,
+      monthly:  Math.round(r.monthly * 100) / 100,
+      annual:   Math.round(r.annual * 100) / 100,
+      verified: r.verified,
+      caveat:   r.caveat,
+    })),
+    excluded: excluded.map(e => ({ insurer: e.insurer, reason: e.reason })),
+    disclaimer: ENGINE_DISCLAIMER,
+  };
+}
+
+// ── Coverage gap analysis ─────────────────────────────────────────────────────
+/**
+ * The firm's underinsurance benchmark, set by the advisor:
+ *   life = 10x annual income, CI = 5x annual income, medical >= RM1m annual limit.
+ * Encoded here so the gap is COMPUTED, not opined on by the model.
+ */
+export const GAP_BENCHMARK = { lifeMultiple: 10, ciMultiple: 5, medicalAnnualLimitFloor: 1_000_000 };
+
+/**
+ * Medical annual limit lives in free text on the policy, e.g.
+ * "MediSafe Infinite · Room & Board: RM200/day · Annual Limit: RM1,000,000".
+ * Returns the limit in MYR, Infinity for an unlimited annual limit, or null when
+ * the text carries no annual limit at all (a "Lifetime Limit" is NOT an annual
+ * one, and must not be read as if it were).
+ */
+export function parseAnnualLimit(medicalText: string): number | null {
+  if (!medicalText || medicalText.trim() === '0') return null;
+  const m = medicalText.match(/annual\s*limit\s*:?\s*(unlimited|rm\s*[\d,]+(?:\.\d+)?)/i);
+  if (!m) return null;
+  const v = m[1].toLowerCase();
+  if (v.includes('unlimited')) return Infinity;
+  const n = Number(v.replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+export const GAP_TOOL: FunctionDeclaration = {
+  name: 'analyse_coverage_gap',
+  description:
+    "Work out whether a person's life, critical illness and medical cover meets the firm's benchmark " +
+    `(life ${GAP_BENCHMARK.lifeMultiple}x annual income, CI ${GAP_BENCHMARK.ciMultiple}x annual income, medical at least RM1,000,000 annual limit), ` +
+    'and report the shortfall. Call this whenever the advisor asks if cover is enough, what is lacking, ' +
+    'whether a client is underinsured, or for a coverage/protection gap analysis. ' +
+    'annualIncome is required and is almost never on file — ask the advisor for it first. ' +
+    'For a client selected in the picker, existing cover is read from their policies automatically; ' +
+    'for a prospect with no record, pass their existing cover explicitly (use 0 if they have none). ' +
+    'Never compute the gap yourself — every figure must come from this tool.',
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      annualIncome:                { type: SchemaType.NUMBER, description: 'Annual income in MYR. If the advisor gives a monthly figure, multiply by 12 before calling.' },
+      existingLifeCover:           { type: SchemaType.NUMBER, description: 'Existing life cover in MYR. Omit to read it from the selected client\'s policies; pass 0 for a prospect with none.' },
+      existingCiCover:             { type: SchemaType.NUMBER, description: 'Existing critical illness cover in MYR. Omit to read it from the selected client\'s policies.' },
+      existingMedicalAnnualLimit:  { type: SchemaType.NUMBER, description: 'Existing medical annual limit in MYR. Omit to read it from the selected client\'s policies.' },
+    },
+    required: ['annualIncome'],
+  },
+};
+
+export interface GapToolResult {
+  ok: boolean;
+  error?: string;
+  benchmark?: string;
+  annualIncome?: number;
+  source?: string;
+  life?:    { required: number; existing: number; gap: number };
+  ci?:      { required: number; existing: number; gap: number };
+  medical?: { floor: number; existing: number | 'unlimited' | null; meetsFloor: boolean | null; note?: string };
+  countedPolicies?: string[];
+  excludedPolicies?: string[];
+  caution?: string;
+}
+
+/**
+ * Compute the shortfall. Existing cover for a selected client is summed ONLY
+ * from active policies where that client is the life assured — 172 policies in
+ * the book are owned by one person and assured on another (a child, a spouse),
+ * and counting those would overstate the client's own protection. Anything not
+ * counted is listed back rather than silently dropped, so the advisor can see
+ * what was left out and overrule it.
+ */
+export async function runCoverageGap(
+  args: Record<string, unknown>,
+  ctx: { config: AdvisorConfig; clientId?: string; clientName?: string },
+): Promise<GapToolResult> {
+  const annualIncome = Number(args.annualIncome);
+  if (!Number.isFinite(annualIncome) || annualIncome <= 0) {
+    return { ok: false, error: 'Annual income is required and is almost never stored on the client record. Ask the advisor for it — do not assume a figure.' };
+  }
+
+  const given = (k: string) => args[k] !== undefined && args[k] !== null && Number.isFinite(Number(args[k]));
+  let life    = given('existingLifeCover')          ? Number(args.existingLifeCover) : null;
+  let ci      = given('existingCiCover')            ? Number(args.existingCiCover)   : null;
+  let medical: number | null = given('existingMedicalAnnualLimit') ? Number(args.existingMedicalAnnualLimit) : null;
+
+  const counted: string[] = [];
+  const excluded: string[] = [];
+  let unknownMedical = 0;
+  let source = 'figures supplied by the advisor';
+
+  // Read from the client's policies for anything not supplied.
+  if ((life === null || ci === null || medical === null) && ctx.clientId) {
+    try {
+      const all = await listPolicies(ctx.config);
+      const clients = await fetchClients(ctx.config);
+
+      // The id can arrive in more than one shape: the Supabase uuid the picker
+      // sends, or a Notion page id (dashed or not, depending on the caller).
+      // Match on any of them — matching only `id` silently found nobody and
+      // reported RM0 cover for a client who actually had four policies.
+      const bare   = (s: string) => (s || '').replace(/-/g, '').toLowerCase();
+      const wanted = bare(ctx.clientId);
+      const client = clients.find(c =>
+        c.id === ctx.clientId || c.notionId === ctx.clientId ||
+        bare(c.id) === wanted  || bare(c.notionId) === wanted);
+
+      // A client we cannot resolve is an ERROR, never "no cover". Reporting
+      // zero here would tell the advisor a protected client is uninsured.
+      if (!client) {
+        return { ok: false, error: 'Could not match the selected client to a record, so existing cover is unknown. Do NOT report zero cover — ask the advisor to re-select the client, or to state the existing life/CI cover directly.' };
+      }
+      if (!client.notionId) {
+        return { ok: false, error: `No policy link exists for ${client.name}, so existing cover cannot be read. Ask the advisor to state existing life/CI cover rather than assuming there is none.` };
+      }
+
+      const key   = client.notionId;
+      const cname = norm(client.name || ctx.clientName || '');
+
+      const mine = all.filter(p =>
+        (p.status || '').toLowerCase() === 'active' && p.clientNotionId === key);
+
+      let sumLife = 0, sumCi = 0, maxMed: number | null = null;
+      for (const p of mine) {
+        const assured = norm(p.lifeAssured || '');
+        // Blank life assured = can't tell; include it but say so. A DIFFERENT
+        // name = cover on someone else; exclude and name it.
+        if (assured && cname && assured !== cname) {
+          excluded.push(`${p.policyName || 'policy'} (${p.insurer}) — life assured is ${p.lifeAssured}, not ${client?.name ?? 'this client'}`);
+          continue;
+        }
+        sumLife += p.lifeCover || 0;
+        sumCi   += p.ciCover   || 0;
+        const lim = parseAnnualLimit(p.medicalClass || '');
+        if (lim !== null) maxMed = maxMed === null ? lim : Math.max(maxMed, lim);
+        else if ((p.medicalClass || '').trim() && (p.medicalClass || '').trim() !== '0') unknownMedical++;
+        counted.push(`${p.policyName || 'policy'} (${p.insurer})${assured ? '' : ' — life assured blank on the record'}`);
+      }
+
+      if (life === null)    life = sumLife;
+      if (ci === null)      ci = sumCi;
+      if (medical === null) medical = maxMed;
+      // Say which it is. "Nothing on record" and "nothing counted because every
+      // policy is assured on someone else" look identical in the totals but mean
+      // very different things to an advisor.
+      source = mine.length === 0
+        ? `${client.name} has NO active policies on record — the zero below is a genuine absence of records, not a failed lookup`
+        : `${counted.length} of ${mine.length} active polic${mine.length === 1 ? 'y' : 'ies'} on record for ${client.name}`;
+    } catch {
+      return { ok: false, error: 'Could not read the policies. Say so plainly rather than estimating the gap.' };
+    }
+  }
+
+  if (life === null || ci === null) {
+    return { ok: false, error: 'No client is selected and existing cover was not supplied. Ask the advisor for existing life and CI cover (0 if none).' };
+  }
+
+  const reqLife = annualIncome * GAP_BENCHMARK.lifeMultiple;
+  const reqCi   = annualIncome * GAP_BENCHMARK.ciMultiple;
+  const floor   = GAP_BENCHMARK.medicalAnnualLimitFloor;
+
+  const medExisting: number | 'unlimited' | null =
+    medical === null ? null : (medical === Infinity ? 'unlimited' : medical);
+
+  return {
+    ok: true,
+    benchmark: `life ${GAP_BENCHMARK.lifeMultiple}x annual income, CI ${GAP_BENCHMARK.ciMultiple}x annual income, medical at least RM${floor.toLocaleString()} annual limit`,
+    annualIncome,
+    source,
+    life: { required: reqLife, existing: life, gap: Math.max(0, reqLife - life) },
+    ci:   { required: reqCi,   existing: ci,   gap: Math.max(0, reqCi - ci) },
+    medical: {
+      floor,
+      existing: medExisting,
+      meetsFloor: medExisting === null ? null : (medExisting === 'unlimited' || medExisting >= floor),
+      note: medExisting === null
+        ? (unknownMedical > 0
+            ? `${unknownMedical} medical policy(ies) on record state no annual limit — the limit could NOT be determined. Tell the advisor to verify it rather than treating it as a gap or as adequate.`
+            : 'No medical cover found on record.')
+        : undefined,
+    },
+    countedPolicies: counted,
+    excludedPolicies: excluded,
+    caution: 'Figures come from the records as captured. The advisor should sanity-check against the actual policy documents before advising the client.',
+  };
+}
+
+/** Dispatch a model-requested tool call. Returns null for an unknown tool. */
+export async function runAssistantTool(
+  call: FunctionCall,
+  ctx: { config: AdvisorConfig; clientId?: string; clientName?: string },
+): Promise<object | null> {
+  if (call.name === 'compare_premiums') {
+    return runPremiumComparison((call.args ?? {}) as Record<string, unknown>);
+  }
+  if (call.name === 'analyse_coverage_gap') {
+    return runCoverageGap((call.args ?? {}) as Record<string, unknown>, ctx);
+  }
+  return null;
+}
+
+/** Prompt rules for the gap tool. */
+export const GAP_TOOL_RULES = `COVERAGE GAP ("is that enough?", "what's lacking?", "is this client underinsured?"):
+- Use the analyse_coverage_gap tool. NEVER work the shortfall out yourself, and never state a benchmark figure the tool did not return.
+- The firm's benchmark is life ${GAP_BENCHMARK.lifeMultiple}x annual income, CI ${GAP_BENCHMARK.ciMultiple}x annual income, and medical of at least RM1,000,000 annual limit.
+- ANNUAL INCOME IS ALMOST NEVER ON FILE (only a handful of client records have it). Ask the advisor for it before calling the tool. If they give a monthly figure, multiply by 12. Never guess income, and never infer it from AUM.
+- For a prospect with no record, ask for their existing life/CI cover too and pass it (0 if they have none).
+- Report each line as: required vs existing vs shortfall. If a shortfall is zero, say that line is adequately covered rather than inventing a concern.
+- MEDICAL: if the tool returns meetsFloor: null, the annual limit could NOT be determined from the records — say so and tell the advisor to verify. Do NOT treat an unknown limit as either a gap or as adequate.
+- If "excludedPolicies" is non-empty, list what was excluded and why (cover assured on someone else). The advisor may know better — invite them to correct it.
+- If a counted policy says the life assured is blank on the record, mention it: the total may include cover that isn't actually on this person.
+- End with the tool's caution. This informs the advisor's recommendation; it is not advice to the client, and it is not a substitute for reading the policy documents.`;
+
+/** Prompt rules governing how the premium tool may be used and reported. */
+export const PREMIUM_TOOL_RULES = `PREMIUM COMPARISONS (compare_premiums tool):
+- The advisor's client records do NOT store gender, smoker status or marital status. You must ASK for whatever you don't have. Never assume a client's gender, and never guess smoker status — it changes the premium a lot.
+- Before calling the tool you need: age (use the client's date of birth if a client is selected), gender, smoker status, life sum assured and CI sum assured. Ask for the missing ones in ONE short message, then wait. Do not call the tool with assumed figures, and do not fall back to a default sum assured the advisor never stated.
+- EVERY premium figure you give must come from the tool's output. Never compute, adjust, interpolate, inflate or "roughly estimate" a premium yourself, and never reuse a figure from an earlier question with different inputs. If the tool is unavailable or errors, say so and point the advisor at the Premium Calculator page — do NOT answer from memory.
+- Present the result as a short comparison, cheapest first, with monthly (and annual) figures. State the basis line returned by the tool.
+- A quote flagged verified:true is a confirmed official quotation — label it as such. Everything else is an ESTIMATE, never a quotation; include the tool's disclaimer, and carry each insurer's own caveat when you mention that insurer.
+- If the tool returns anything in "excluded", say which insurers were excluded and why. Never quietly drop them from the comparison.
+- The comparison informs the advisor's recommendation; the advisor decides and must confirm figures with the insurer before issue. Never address the end client.`;

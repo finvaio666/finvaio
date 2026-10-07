@@ -379,9 +379,12 @@ export default function NewNotesTab() {
     if (!f.platform) { alert('Pick a platform (custodian) before adding this — without one, the note has nothing to group by and lands under "manual entries" on the client\'s profile.'); return; }
 
     // Checks against the tranche the term sheet states. Over-allocating is
-    // impossible, so it blocks outright; an amount that isn't a whole number of
-    // denominations is usually a typo (500,000 for 50,000) but can be
-    // legitimate, so it asks rather than refuses.
+    // impossible, so it blocks outright. An amount that isn't a whole number
+    // of denominations is usually a typo (500,000 for 50,000) — this used to
+    // ask via confirm() rather than block, same mistake as the shortfall
+    // check before it was hard-blocked: a dialog a reviewer can click past
+    // under time pressure is exactly how a real mismatch got through
+    // (reported live 2026-10-01). No override — fix the amount instead.
     const total = allocations.reduce((s, a) => s + a.amount, 0);
     if (p.issueAmount && total > p.issueAmount) {
       alert(`These amounts total ${f.currency} ${total.toLocaleString()}, but the whole tranche is only ${f.currency} ${p.issueAmount.toLocaleString()}.\n\nCheck the figures — you cannot hold more of a note than was issued.`);
@@ -389,11 +392,14 @@ export default function NewNotesTab() {
     }
     if (p.denomination) {
       const odd = allocations.filter(a => a.amount % p.denomination! !== 0);
-      if (odd.length && !confirm(
-        `The term sheet states a denomination of ${f.currency} ${p.denomination.toLocaleString()}, but ${odd.length} amount(s) are not a whole multiple of it:\n\n` +
-        odd.map(a => `  ${queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId} — ${f.currency} ${a.amount.toLocaleString()}`).join('\n') +
-        `\n\nContinue anyway?`
-      )) return;
+      if (odd.length) {
+        alert(
+          `The term sheet states a denomination of ${f.currency} ${p.denomination.toLocaleString()}, but ${odd.length} amount(s) are not a whole multiple of it:\n\n` +
+          odd.map(a => `  ${queue?.clients.find(x => x.id === a.clientId)?.name ?? a.clientId} — ${f.currency} ${a.amount.toLocaleString()}`).join('\n') +
+          `\n\nCheck the figures before adding this note.`
+        );
+        return;
+      }
     }
     // A shortfall usually means a client row was forgotten or an amount was
     // mistyped — hard block, same as over-allocation. No confirm-to-override:

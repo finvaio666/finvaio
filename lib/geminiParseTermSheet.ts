@@ -32,11 +32,13 @@ const SCHEMA = {
     tradeDate:    { type: 'string', nullable: true, description: 'MUST be exactly "YYYY-MM-DD" — e.g. "2026-05-12", never "12 May 2026" or any other format.' },
     issueDate:    { type: 'string', nullable: true, description: 'MUST be exactly "YYYY-MM-DD".' },
     maturityDate: { type: 'string', nullable: true, description: 'MUST be exactly "YYYY-MM-DD". AS STATED — never computed. If only relative ("Valuation Date + 2 Business Days"), use the explicit resolved date nearby if the document gives one, else null.' },
-    couponPctPa:  { type: 'number', nullable: true, description: 'Annualized coupon AS A PERCENTAGE NUMBER, e.g. 14.77 for "14.77% p.a." — NEVER a fraction (never 0.1477). ONLY fill this from an annualized figure explicitly printed in the document (look for "% p.a.", "% per annum", or an explicit "annualized" label). If the document states only a per-period rate (e.g. "1.00% payable monthly") with NO annualized figure printed anywhere, leave this null and describe the per-period rate and payment frequency in notes_ instead — do not multiply it out yourself. Verified live: asking the model to do that arithmetic produced two different answers (12 and 6) across identical runs on the same document, both confident-looking.' },
+    couponPctPa:  { type: 'number', nullable: true, description: 'Annualized coupon AS A PERCENTAGE NUMBER, e.g. 14.77 for "14.77% p.a." — NEVER a fraction (never 0.1477). ONLY fill this from an annualized figure explicitly printed in the document (look for "% p.a.", "% per annum", or an explicit "annualized" label). If the document states only a per-period rate, leave this null — fill couponPerPeriodPct and couponPaymentsPerYear below instead. Do not multiply it out yourself: verified live, asking the model to do that arithmetic produced two different answers (12 and 6) across identical runs on the same document, both confident-looking. The multiplication is now done in code from the two fields below, which only requires reading two separately-printed facts, not computing their product.' },
+    couponPerPeriodPct: { type: 'number', nullable: true, description: 'Only when couponPctPa is null: the per-period coupon rate exactly as printed (e.g. 1.446 for "1.446% payable monthly"), as a percentage number, never a fraction. Leave null if an annualized figure was already found above.' },
+    couponPaymentsPerYear: { type: 'integer', nullable: true, description: 'Only when couponPctPa is null: how many times per year the coupon above is paid — read directly from a stated word (monthly=12, quarterly=4, semi-annual=2, annual=1) or counted from an explicit Interest Payment Date schedule the document prints. Null if the frequency isn\'t stated plainly enough to be sure.' },
     kiPct:        { type: 'number', nullable: true, description: 'Knock-in/conversion/downside barrier as a PERCENTAGE of Initial, e.g. 65 for "65% of Initial Price". Null if the note has none.' },
     koPct:        { type: 'number', nullable: true, description: 'FIRST knock-out/autocall barrier as a percentage of Initial. Null if none.' },
     currency:     { type: 'string', nullable: true, description: 'Three-letter currency code' },
-    issueAmount:  { type: 'number', nullable: true, description: 'Total tranche size in `currency`. Null if not stated as a single figure (e.g. "Up to USD 480,000" — flag that in notes_ instead of guessing).' },
+    issueAmount:  { type: 'number', nullable: true, description: 'Total tranche size in `currency`. If stated as a ceiling ("Up to USD 480,000", "maximum aggregate nominal amount of USD 300,000"), use that printed number — it is an explicit figure, not a guess, and the admin review screen validates allocated amounts against it. Note the "up to" wording in notes_ so the reviewer knows it is a cap, not a confirmed final size. Only return null if the document truly states no number at all — verified live 2026-10-01: nulling out a stated "Up to" ceiling left a real USD 200,000 shortfall on a note with nothing to check it against, since every amount-validation check downstream is skipped entirely when this is null.' },
     denomination: { type: 'number', nullable: true, description: 'Minimum trading unit in `currency`. Null if not stated.' },
     underlyings: {
       type: 'array',
@@ -53,7 +55,7 @@ const SCHEMA = {
       items: { type: 'object', properties: {
         n: { type: 'integer', nullable: true },
         determinationDate: { type: 'string', nullable: true },
-        triggerPct: { type: 'number', nullable: true, description: 'null for a date with no autocall barrier (e.g. the final valuation)' },
+        triggerPct: { type: 'number', nullable: true, description: 'null for a date with no autocall barrier: the final valuation, AND any date whose barrier/price is printed as "n/a", "not applicable" or "-" (a non-call / lock-in period — the note cannot knock out on that date). Never fill in 100 for such a date.' },
       }},
     },
     notes_: { type: 'array', items: { type: 'string' }, description: 'Anything a human should double check — an ambiguous field, an unusual structure, low confidence on any value.' },
@@ -68,6 +70,8 @@ export interface GeminiTermSheetResult {
   issueDate:    string | null;
   maturityDate: string | null;
   couponPctPa:  number | null;
+  couponPerPeriodPct:    number | null;
+  couponPaymentsPerYear: number | null;
   kiPct:        number | null;
   koPct:        number | null;
   currency:     string | null;
@@ -115,12 +119,30 @@ export async function parseTermSheetWithGemini(pdf: Buffer): Promise<GeminiTermS
       const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) { lastErr = new Error(`Gemini ${model} returned no content`); continue; }
       const parsed = JSON.parse(text) as Partial<GeminiTermSheetResult>;
+      const notes_ = parsed.notes_ ?? [];
+
+      // The model never multiplies — it only has to read two separately-
+      // printed facts (a per-period rate, a payment frequency). The actual
+      // annualization happens here, in plain deterministic arithmetic,
+      // precisely because asking the model to do this itself was the
+      // non-deterministic failure this split exists to avoid (see
+      // couponPctPa's schema description).
+      let couponPctPa = parsed.couponPctPa ?? null;
+      if (couponPctPa == null && parsed.couponPerPeriodPct != null && parsed.couponPaymentsPerYear != null) {
+        couponPctPa = +(parsed.couponPerPeriodPct * parsed.couponPaymentsPerYear).toFixed(4);
+        notes_.push(
+          `Annualized coupon (${couponPctPa}% p.a.) was computed from a stated per-period rate of ${parsed.couponPerPeriodPct}% × ${parsed.couponPaymentsPerYear}/year — the document itself did not print an annualized figure. Verify this against the term sheet's own wording.`,
+        );
+      }
+
       return {
         institution:  parsed.institution  ?? null,
         tradeDate:    parsed.tradeDate    ?? null,
         issueDate:    parsed.issueDate    ?? null,
         maturityDate: parsed.maturityDate ?? null,
-        couponPctPa:  parsed.couponPctPa  ?? null,
+        couponPctPa,
+        couponPerPeriodPct:    parsed.couponPerPeriodPct    ?? null,
+        couponPaymentsPerYear: parsed.couponPaymentsPerYear ?? null,
         kiPct:        parsed.kiPct        ?? null,
         koPct:        parsed.koPct        ?? null,
         currency:     parsed.currency     ?? null,
@@ -128,7 +150,7 @@ export async function parseTermSheetWithGemini(pdf: Buffer): Promise<GeminiTermS
         denomination: parsed.denomination ?? null,
         underlyings:  parsed.underlyings  ?? [],
         schedule:     parsed.schedule     ?? [],
-        notes_:       parsed.notes_       ?? [],
+        notes_,
       };
     } catch (e) { lastErr = e; }
   }

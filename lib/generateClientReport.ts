@@ -46,9 +46,6 @@ const CW = W - MARGIN * 2;  // content width = 178 mm
 const safeText = (s: string) =>
   s.replace(/[^\x00-\xFF]/g, '').replace(/\s+/g, ' ').trim();
 
-const safeBenefits = (b: string[]) =>
-  b.map(safeText).filter(Boolean).join(', ') || '—';
-
 const FMT = {
   myr: (n: number) =>
     n === 0 ? '—'
@@ -79,6 +76,93 @@ function effectiveMYR(h: { valueMYR: number; valueOrig: number; currency: string
   if (h.fxRate > 0 && h.valueOrig > 0) return h.valueOrig * h.fxRate;
   const FX: Record<string, number> = { MYR:1, USD:4.47, SGD:3.32, GBP:5.65, EUR:4.85, AUD:2.90, HKD:0.57 };
   return h.valueOrig * (FX[h.currency] ?? 1);
+}
+
+/**
+ * Cost in MYR, resolved the same way as the value above — and the same way the
+ * Investment page resolves it. MYR holdings carry their figures in the *_myr
+ * columns with the original-currency ones left null, so reading purchaseOrig
+ * first (as this report used to) yielded no cost and printed a dash.
+ */
+/**
+ * jsPDF measures alignment on the *untracked* string, so letter-spaced text is
+ * placed as if the tracking were not there and drifts by half of it — 15mm for
+ * a 21-character title at 1.5mm. Measure the real width and position it here.
+ */
+function trackedText(
+  doc: jsPDF, text: string, x: number, y: number, charSpace: number,
+  align: 'center' | 'right' = 'center',
+) {
+  const w = doc.getTextWidth(text) + charSpace * Math.max(0, text.length - 1);
+  doc.text(text, align === 'center' ? x - w / 2 : x - w, y, { charSpace });
+}
+
+/**
+ * A review date that has already passed reads as neglect on a client-facing
+ * report, so an overdue — or missing — one is rolled forward to three months
+ * from today, the standard review cycle. Only the report is adjusted; the
+ * stored date is left alone.
+ */
+function reviewDate(stored: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = stored ? new Date(stored) : null;
+  if (d && !isNaN(d.getTime()) && d >= today) return FMT.date(stored);
+  const next = new Date(today);
+  next.setMonth(next.getMonth() + 3);
+  // Build the date from local parts — toISOString() would shift Malaysian
+  // local midnight back into the previous UTC day.
+  const iso = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+  return FMT.date(iso);
+}
+
+/**
+ * "PRS Acc A" / "PRS Acc B" are sub-accounts of one pot; showing the letter
+ * reads as separate categories when it isn't. The account number already tells
+ * them apart. Mirrors the Investment page.
+ */
+const normalizeFundSource = (fs: string) => /^PRS\s*Acc/i.test(fs) ? 'PRS Acc' : fs;
+
+/**
+ * The same grouping the Investment page uses: by custodian account where there
+ * is one, else by platform, with anything unattributed last. Holdings were
+ * previously printed as one flat list whose "Institution" column mixed fund
+ * houses (Principal, United) with platforms (iFAST, Phillip) — and an EPF pot
+ * sat next to a cash one with nothing to separate them.
+ */
+function groupHoldings<T extends { platform?: string; fameAccountNo?: string; fundSource?: string }>(rows: T[]) {
+  const byAccount  = new Map<string, T[]>();
+  const byPlatform = new Map<string, T[]>();
+  const loose: T[] = [];
+  for (const h of rows) {
+    if (h.fameAccountNo)  { const a = byAccount.get(h.fameAccountNo) ?? [];  a.push(h); byAccount.set(h.fameAccountNo, a); }
+    else if (h.platform)  { const a = byPlatform.get(h.platform) ?? [];      a.push(h); byPlatform.set(h.platform, a); }
+    else loose.push(h);
+  }
+  const groups = Array.from(byAccount.entries()).map(([acct, rs]) => ({
+    label: [rs[0].platform, `Account ${acct}`, rs[0].fundSource ? normalizeFundSource(rs[0].fundSource) : '']
+      .filter(Boolean).join(' · '),
+    rows: rs,
+  }));
+  for (const [platform, rs] of byPlatform) groups.push({ label: platform, rows: rs });
+  if (loose.length) groups.push({ label: 'Other Holdings (manual entries)', rows: loose });
+  return groups;
+}
+
+/** height ÷ width of the logo asset, so it is drawn at its true proportions. */
+function logoRatio(doc: jsPDF, logo: string): number {
+  try {
+    const p = doc.getImageProperties(logo);
+    if (p?.width > 0 && p?.height > 0) return p.height / p.width;
+  } catch { /* fall through to the shipped asset's ratio */ }
+  return 75 / 396;
+}
+
+function effectivePurchaseMYR(h: { purchaseMYR: number; purchaseOrig: number; currency: string; fxRate: number }) {
+  if (h.purchaseMYR > 0) return h.purchaseMYR;
+  if (h.currency === 'MYR' && h.purchaseOrig > 0) return h.purchaseOrig;
+  if (h.fxRate > 0 && h.purchaseOrig > 0) return h.purchaseOrig * h.fxRate;
+  return 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,17 +268,18 @@ function pageHeader(doc: jsPDF, logo: string | null, pageTitle: string, clientNa
   // Thin top red strip
   doc.setFillColor(...T.red);
   doc.rect(0, 0, W, 1.5, 'F');
-  // Logo left
+  // Logo left — height follows the file's own proportions, so the wordmark is
+  // never stretched if the asset is ever replaced with a different crop.
   if (logo) {
-    doc.setFillColor(...T.white);
-    doc.rect(MARGIN, 4, 44, 12, 'F');
-    doc.addImage(logo, 'PNG', MARGIN, 5, 42, 11);
+    const lw = 42;
+    const lh = lw * logoRatio(doc, logo);
+    doc.addImage(logo, 'PNG', MARGIN, 10 - lh / 2, lw, lh);
   }
   // Page title right
   doc.setTextColor(...T.text3);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text(safeText(clientName), W - MARGIN, 9.5, { align: 'right', charSpace: 0.2 });
+  trackedText(doc, safeText(clientName), W - MARGIN, 9.5, 0.2, 'right');
   doc.setTextColor(...T.text1);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -247,6 +332,7 @@ type ReportData = {
   };
   portfolio: Array<{
     name: string; assetClass: string; institution: string; currency: string;
+    platform?: string; fameAccountNo?: string; fundSource?: string;
     valueOrig: number; valueMYR: number; purchaseOrig: number; purchaseMYR: number;
     fxRate: number; status: string; maturityDate: string;
   }>;
@@ -254,8 +340,9 @@ type ReportData = {
     policyName: string; insuranceType: string; benefits: string[];
     status: string; insurer: string; policyNumber: string;
     sumAssured: number; lifeCover: number; ciCover: number; paCover: number;
-    tpdCover: number; medicalClass: string; annualPremium: number;
+    tpdCover: number; medicalClass: string; medicalCard?: string; annualPremium: number;
     commencementDate: string; maturityDate: string; beneficiary: string;
+    policyOwner?: string; lifeAssured?: string;
   }>;
   generatedAt: string;
 };
@@ -299,10 +386,13 @@ export async function generateClientReport(data: ReportData): Promise<void> {
 
   // ── Logo (white area within banner) ──────────────────────────────────────
   if (logo) {
-    const lw = 70, lh = 18;
-    const lx = (W - lw) / 2, ly = 11;
+    const lw = 76;
+    const lh = lw * logoRatio(doc, logo);
+    const padX = 7, padY = 5;
+    const lx = (W - lw) / 2;
+    const ly = (52 - (lh + padY * 2)) / 2 + padY;   // centre the plate in the banner
     doc.setFillColor(...T.white);
-    doc.roundedRect(lx - 6, ly - 4, lw + 12, lh + 8, 2, 2, 'F');
+    doc.roundedRect(lx - padX, ly - padY, lw + padX * 2, lh + padY * 2, 2.5, 2.5, 'F');
     doc.addImage(logo, 'PNG', lx, ly, lw, lh);
   } else {
     doc.setTextColor(...T.white);
@@ -311,14 +401,14 @@ export async function generateClientReport(data: ReportData): Promise<void> {
     doc.text('BILL MORRISONS', W / 2, 22, { align: 'center' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('GLOBAL WEALTH ACCESS', W / 2, 30, { align: 'center', charSpace: 1.5 });
+    trackedText(doc, 'GLOBAL WEALTH ACCESS', W / 2, 30, 1.5);
   }
 
   // ── "Wealth Summary Report" label just below banner ───────────────────────
   doc.setTextColor(...T.red);
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('WEALTH SUMMARY REPORT', W / 2, 61, { align: 'center', charSpace: 1.5 });
+  trackedText(doc, 'WEALTH SUMMARY REPORT', W / 2, 61, 1.5);
 
   // ── Thin red rule ─────────────────────────────────────────────────────────
   doc.setDrawColor(...T.red);
@@ -371,7 +461,7 @@ export async function generateClientReport(data: ReportData): Promise<void> {
     doc.setTextColor(...T.text3);
     doc.setFontSize(6.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('FINANCIAL GOALS', W / 2, goalY, { align: 'center', charSpace: 0.8 });
+    trackedText(doc, 'FINANCIAL GOALS', W / 2, goalY, 0.8);
     doc.setTextColor(...T.text1);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
@@ -386,7 +476,7 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   const details = [
     { label: 'Date of Birth',   value: FMT.date(data.client.dob)        },
     { label: 'Onboarded',       value: FMT.date(data.client.onboarding)  },
-    { label: 'Next Review',     value: FMT.date(data.client.nextReview)  },
+    { label: 'Next Review',     value: reviewDate(data.client.nextReview) },
     { label: 'Monthly Income',  value: data.client.income > 0 ? FMT.myr(data.client.income) : '—' },
   ].filter(d => d.value !== '—');
 
@@ -512,25 +602,82 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   // ── Holdings table ─────────────────────────────────────────────────────────
   y = sectionTitle(doc, y, 'Holdings Detail');
 
-  const holdingRows = active.map(h => {
-    const myr = effectiveMYR(h);
-    const pnl = h.currency === 'MYR'
-      ? (h.purchaseOrig > 0 ? h.valueOrig - h.purchaseOrig : null)
-      : (h.purchaseMYR > 0 ? myr - h.purchaseMYR : null);
-    return [
-      safeText(h.name),
-      safeText(h.assetClass || '—'),
-      safeText(h.institution || '—'),
-      h.currency !== 'MYR' ? `${h.currency} ${h.valueOrig.toLocaleString()}` : FMT.myr(myr),
-      h.currency !== 'MYR' ? FMT.myr(myr) : '—',
-      pnl != null ? (pnl >= 0 ? `+${FMT.myr(pnl)}` : FMT.myr(pnl)) : '—',
-    ];
-  });
+  // "MYR Equiv." only earns a column when something is actually held in another
+  // currency; for an all-MYR book it was a column of dashes.
+  const hasForeign = active.some(h => h.currency && h.currency !== 'MYR');
+
+  const colCount = hasForeign ? 7 : 6;
+  // FMT.myr renders 0 as a dash, so a flat position must not be given a sign —
+  // notes held at par were printing "+—".
+  const signed   = (n: number | null) =>
+    n == null || n === 0 ? '—' : n > 0 ? `+${FMT.myr(n)}` : `-${FMT.myr(Math.abs(n))}`;
+  const pct      = (r: number | null) => r == null ? '—' : `${r >= 0 ? '+' : ''}${r.toFixed(0)}%`;
+
+  // The column is the fund house. Where the data repeats the platform there —
+  // FAME rows often do — the group header above already says it.
+  const fundHouse = (h: ReportData['portfolio'][number]) => {
+    const inst = safeText(h.institution || '');
+    if (!inst || inst.toLowerCase() === safeText(h.platform || '').toLowerCase()) return '—';
+    // Structured-note issuers run long — 'Citigroup Global Markets Funding
+    // Luxembourg S.C.A. ("CGMFL")' wrapped a row to six lines. The holding name
+    // carries the issuer in full, so the column only needs to identify it.
+    const short = inst.split('(')[0].trim();
+    return short.length > 24 ? `${short.slice(0, 22).trim()}...` : short;
+  };
+
+  type Cell = string | { content: string; colSpan?: number };
+  const holdingRows: Cell[][] = [];
+  const groupHeadAt = new Set<number>();
+  const subtotalAt  = new Set<number>();
+
+  for (const g of groupHoldings(active)) {
+    holdingRows.push([{ content: safeText(g.label), colSpan: colCount }]);
+    groupHeadAt.add(holdingRows.length - 1);
+
+    let gValue = 0, gCost = 0;
+    for (const h of g.rows) {
+      const myr      = effectiveMYR(h);
+      const purchase = effectivePurchaseMYR(h);
+      const pnl      = purchase > 0 ? myr - purchase : null;
+      gValue += myr;
+      gCost  += purchase;
+      const row: Cell[] = [
+        safeText(h.name),
+        safeText(h.assetClass || '—'),
+        fundHouse(h),
+        h.currency !== 'MYR' ? `${h.currency} ${h.valueOrig.toLocaleString()}` : FMT.myr(myr),
+      ];
+      if (hasForeign) row.push(h.currency !== 'MYR' ? FMT.myr(myr) : '—');
+      row.push(signed(pnl));
+      row.push(pct(pnl ? (pnl / purchase) * 100 : null));   // flat or unknown → dash
+      holdingRows.push(row);
+    }
+
+    const gPnl = gCost > 0 ? gValue - gCost : null;
+    const sub: Cell[] = [{ content: `Subtotal — ${safeText(g.label)}`, colSpan: 3 }, FMT.myr(gValue)];
+    if (hasForeign) sub.push('');
+    sub.push(signed(gPnl));
+    sub.push(pct(gPnl ? (gPnl / gCost) * 100 : null));
+    holdingRows.push(sub);
+    subtotalAt.add(holdingRows.length - 1);
+  }
+
+  const holdHead = hasForeign
+    ? ['Holding Name', 'Asset Class', 'Fund House', 'Value', 'MYR Equiv.', 'Gain / Loss', 'Return']
+    : ['Holding Name', 'Asset Class', 'Fund House', 'Value', 'Gain / Loss', 'Return'];
+
+  const holdCols: Record<number, { cellWidth: number; halign?: 'right'; fontStyle?: 'bold'; textColor?: [number, number, number] }> =
+    hasForeign
+      ? { 0: { cellWidth: 46, fontStyle: 'bold', textColor: T.text1 }, 1: { cellWidth: 20 }, 2: { cellWidth: 22 },
+          3: { cellWidth: 24, halign: 'right' }, 4: { cellWidth: 22, halign: 'right' },
+          5: { cellWidth: 22, halign: 'right' }, 6: { cellWidth: 22, halign: 'right' } }
+      : { 0: { cellWidth: 58, fontStyle: 'bold', textColor: T.text1 }, 1: { cellWidth: 24 }, 2: { cellWidth: 26 },
+          3: { cellWidth: 24, halign: 'right' }, 4: { cellWidth: 24, halign: 'right' }, 5: { cellWidth: 22, halign: 'right' } };
 
   autoTable(doc, {
     startY: y,
-    head: [['Holding Name', 'Asset Class', 'Institution', 'Value', 'MYR Equiv.', 'Gain / Loss']],
-    body: holdingRows.length ? holdingRows : [['No active holdings', '', '', '', '', '']],
+    head: [holdHead],
+    body: holdingRows.length ? holdingRows : [holdHead.map(() => '')],
     theme: 'plain',
     styles: {
       fontSize: 8, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
@@ -540,20 +687,25 @@ export async function generateClientReport(data: ReportData): Promise<void> {
       fillColor: T.red, textColor: T.white, fontStyle: 'bold',
       fontSize: 7, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
     },
-    alternateRowStyles: { fillColor: T.bg },
-    columnStyles: {
-      0: { cellWidth: 56, fontStyle: 'bold', textColor: T.text1 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 30 },
-      3: { cellWidth: 27, halign: 'right' },
-      4: { cellWidth: 22, halign: 'right' },
-      5: { cellWidth: 23, halign: 'right' },
-    },
+    columnStyles: holdCols,
     didParseCell: d => {
-      if (d.section === 'body' && d.column.index === 5) {
-        const v = String(d.cell.raw ?? '');
-        if (v.startsWith('+')) d.cell.styles.textColor = T.green;
-        else if (v.startsWith('-')) d.cell.styles.textColor = T.loss;
+      if (d.section !== 'body') return;
+      if (groupHeadAt.has(d.row.index)) {
+        d.cell.styles.fillColor = [238, 240, 243];
+        d.cell.styles.textColor = T.text1;
+        d.cell.styles.fontStyle = 'bold';
+        d.cell.styles.fontSize  = 7.5;
+        return;
+      }
+      if (subtotalAt.has(d.row.index)) {
+        d.cell.styles.fontStyle = 'bold';
+        d.cell.styles.textColor = T.text1;
+      }
+      // Gain and return carry a leading sign; the em-dash placeholder does not.
+      const raw = d.cell.raw;
+      if (typeof raw === 'string') {
+        if (raw.startsWith('+'))      d.cell.styles.textColor = T.green;
+        else if (raw.startsWith('-')) d.cell.styles.textColor = T.loss;
       }
     },
     didDrawCell: d => {
@@ -580,8 +732,6 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   doc.text('Total Portfolio Value (MYR)', MARGIN + 7, aft2 + 6);
   doc.text(FMT.myr(totalPortfolio), W - MARGIN - 2, aft2 + 6, { align: 'right' });
 
-  pageFooter(doc, 2, 3, today);
-
   /* ══════════════════════════════════════════════════════════════════════
      PAGE 3  —  INSURANCE
   ══════════════════════════════════════════════════════════════════════ */
@@ -596,77 +746,220 @@ export async function generateClientReport(data: ReportData): Promise<void> {
   y = sectionTitle(doc, y, 'Coverage Overview');
 
   const insTiles = [
-    { label: 'Total Sum Assured',  value: FMT.myr(totalSA),            sub: 'All active policies', color: T.red },
-    { label: 'Annual Premium',     value: FMT.myr(totalPremium),        sub: 'Total yearly cost', color: [180,100,6] as [number,number,number] },
-    { label: 'Active Policies',    value: `${activePolicies.length}`,   sub: `of ${data.insurance.length} total`, color: T.green },
+    { label: 'Total Sum Assured',  value: FMT.myr(totalSA),          sub: 'All active policies', color: T.red },
+    { label: 'Premium / Year',     value: FMT.myr(totalPremium),      sub: 'Total yearly cost',   color: T.amber },
+    { label: 'Premium / Month',    value: FMT.myr(totalPremium / 12), sub: 'Average per month',   color: T.amber },
+    { label: 'Active Policies',    value: `${activePolicies.length}`, sub: `of ${data.insurance.length} total`, color: T.green },
   ];
-  const itW = (CW - 8) / 3;
+  const itW = (CW - 12) / 4;
   insTiles.forEach((t, i) => {
     kpiTile(doc, MARGIN + i * (itW + 4), y, itW, 26, t.label, t.value, t.sub, t.color);
   });
   y += 32;
 
-  // ── Individual coverage ────────────────────────────────────────────────────
-  const coverFields = [
-    { key: 'lifeCover', label: 'Life Cover'        },
-    { key: 'ciCover',   label: 'Critical Illness'   },
-    { key: 'paCover',   label: 'Personal Accident'  },
-    { key: 'tpdCover',  label: 'TPD'                },
-  ];
+  // ── What each policy covers ───────────────────────────────────────────────
+  // One row per policy, one column per benefit: the reader sees at a glance
+  // which policy carries which cover, and the TOTAL row is the household's
+  // real protection. Blank means that policy does not carry that benefit.
   const income12 = (data.client.income || 0) * 12;
+  const amt = (n: number) => n > 0 ? Math.round(n).toLocaleString() : '—';
+  const medOf = (p: ReportData['insurance'][number]) => safeText(p.medicalCard || p.medicalClass || '');
+  // The medical field is a long sentence ("… Room & Board: RM200/day · Annual
+  // Limit: …"). The matrix has room for the room-and-board rate only; the full
+  // text gets its own block below.
+  const roomBoard = (s: string) => {
+    const m = s.match(/(?:Room\s*&\s*Board|R&B)\s*:?\s*(RM\s?[\d,]+)/i);
+    return m ? `${m[1].replace(/\s/g, '')}/day` : '';
+  };
+  const sumOf = (k: 'lifeCover' | 'ciCover' | 'tpdCover' | 'paCover') =>
+    activePolicies.reduce((s, p) => s + (p[k] || 0), 0);
+  const anyMedical = activePolicies.some(p => medOf(p) !== '');
 
-  y = sectionTitle(doc, y, 'Individual Coverage Amounts');
+  y = sectionTitle(doc, y, 'What Each Policy Covers');
 
-  const cvW = (CW - 12) / 4;
-  coverFields.forEach((cf, i) => {
-    const total = activePolicies.reduce(
-      (s, p) => s + (((p as unknown) as Record<string, number>)[cf.key] || 0), 0
-    );
-    const rec = cf.key === 'lifeCover' ? income12 * 10
-              : cf.key === 'ciCover'   ? income12 * 5
-              : cf.key === 'paCover'   ? income12 * 3 : 0;
-    const adequate = total > 0 && (rec === 0 || total >= rec * 0.8);
-    const acol: [number,number,number] = total === 0
-      ? [170,170,170] : adequate ? T.green : T.amber;
-    kpiTile(doc, MARGIN + i * (cvW + 4), y, cvW, 26, cf.label, total > 0 ? FMT.myr(total) : 'Not filled', '', acol);
-  });
-  y += 32;
-
-  // Medical class row
-  const medClasses = activePolicies.map(p => p.medicalClass).filter(Boolean);
-  if (medClasses.length > 0) {
-    doc.setFillColor(...T.bg);
-    doc.roundedRect(MARGIN, y, CW, 8, 1, 1, 'F');
-    doc.setFillColor(...T.red);
-    doc.roundedRect(MARGIN, y, 2.5, 8, 1, 1, 'F');
-    doc.rect(MARGIN + 1.2, y, 1.3, 8, 'F');
-    doc.setTextColor(...T.text3);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Medical Coverage:', MARGIN + 6, y + 5.2);
-    doc.setTextColor(...T.text1);
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(medClasses.join('   |   ')), MARGIN + 42, y + 5.2);
-    y += 13;
-  }
-
-  // ── Policy detail table ────────────────────────────────────────────────────
-  y = sectionTitle(doc, y, 'Policy Detail');
-
-  const insRows = data.insurance.map(p => [
+  const matrixRows = activePolicies.map(p => [
     safeText(p.policyName),
     safeText(p.insurer || '—'),
-    safeText(p.insuranceType || '—'),
-    safeBenefits(p.benefits),
-    p.sumAssured    > 0 ? Math.round(p.sumAssured).toLocaleString()    : '—',
+    amt(p.lifeCover),
+    amt(p.ciCover),
+    amt(p.tpdCover),
+    amt(p.paCover),
+    medOf(p) ? (roomBoard(medOf(p)) || 'Yes') : '—',
     p.annualPremium > 0 ? Math.round(p.annualPremium).toLocaleString() : '—',
-    safeText(p.status || '—'),
+  ]);
+  matrixRows.push([
+    'TOTAL', '',
+    amt(sumOf('lifeCover')), amt(sumOf('ciCover')), amt(sumOf('tpdCover')), amt(sumOf('paCover')),
+    anyMedical ? 'Yes' : '—',
+    totalPremium > 0 ? Math.round(totalPremium).toLocaleString() : '—',
   ]);
 
   autoTable(doc, {
     startY: y,
-    head: [['Policy Name', 'Insurer', 'Type', 'Benefits', 'SA (MYR)', 'Premium/yr', 'Status']],
+    head: [['Policy', 'Insurer', 'Life', 'Critical Illness', 'TPD', 'Personal Accident', 'Medical R&B', 'Premium / yr']],
+    body: matrixRows.length > 1 ? matrixRows : [['No active policies', '', '', '', '', '', '', '']],
+    theme: 'plain',
+    styles: { fontSize: 7, cellPadding: { top: 3, bottom: 3, left: 2.5, right: 2.5 }, textColor: T.text2, lineWidth: 0 },
+    headStyles: {
+      fillColor: T.red, textColor: T.white, fontStyle: 'bold',
+      fontSize: 6.5, cellPadding: { top: 3, bottom: 3, left: 2.5, right: 2.5 },
+    },
+    alternateRowStyles: { fillColor: T.bg },
+    columnStyles: {
+      0: { cellWidth: 36, fontStyle: 'bold', textColor: T.text1, halign: 'left' },
+      1: { cellWidth: 20, halign: 'left' },
+      2: { cellWidth: 20, halign: 'right' },
+      3: { cellWidth: 22, halign: 'right' },
+      4: { cellWidth: 18, halign: 'right' },
+      5: { cellWidth: 22, halign: 'right' },
+      6: { cellWidth: 20, halign: 'center' },
+      7: { cellWidth: 20, halign: 'right' },
+    },
+    didParseCell: d => {
+      // Head must line up with the body: names left, money right, medical centred.
+      if (d.section === 'head') {
+        d.cell.styles.halign = d.column.index <= 1 ? 'left'
+                             : d.column.index === 6 ? 'center' : 'right';
+        return;
+      }
+      if (d.section !== 'body') return;
+      const isTotal = d.row.index === matrixRows.length - 1 && matrixRows.length > 1;
+      if (isTotal) {
+        d.cell.styles.fontStyle = 'bold';
+        d.cell.styles.textColor = T.text1;
+        d.cell.styles.fillColor = [238, 240, 243];
+      } else if (String(d.cell.raw) === '—') {
+        d.cell.styles.textColor = T.text4;   // absent cover recedes
+      }
+    },
+    didDrawCell: d => {
+      if (d.section === 'body') {
+        doc.setDrawColor(...T.border);
+        doc.setLineWidth(0.2);
+        doc.line(d.cell.x, d.cell.y + d.cell.height, d.cell.x + d.cell.width, d.cell.y + d.cell.height);
+      }
+    },
+    margin: { left: MARGIN, right: MARGIN },
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 7;
+
+  // ── Medical coverage detail ───────────────────────────────────────────────
+  // The plan wording carries the limits a client actually asks about (room rate,
+  // annual and lifetime caps), so it is printed in full rather than squeezed
+  // into the matrix column.
+  const medLines = activePolicies
+    .map(p => ({ name: safeText(p.policyName), text: medOf(p) }))
+    .filter(m => m.text !== '');
+  if (medLines.length) {
+    y = sectionTitle(doc, y, 'Medical Coverage');
+    for (const m of medLines) {
+      const wrapped = doc.splitTextToSize(m.text, CW - 50) as string[];
+      const blockH  = Math.max(9, wrapped.length * 3.4 + 4.5);
+      doc.setFillColor(...T.bg);
+      doc.roundedRect(MARGIN, y, CW, blockH, 1, 1, 'F');
+      doc.setFillColor(...T.red);
+      doc.roundedRect(MARGIN, y, 2.5, blockH, 1, 1, 'F');
+      doc.rect(MARGIN + 1.2, y, 1.3, blockH, 'F');
+      doc.setTextColor(...T.text1);
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text((doc.splitTextToSize(m.name, 38) as string[])[0], MARGIN + 6, y + 5);
+      doc.setTextColor(...T.text2);
+      doc.setFont('helvetica', 'normal');
+      doc.text(wrapped, MARGIN + 46, y + 5);
+      y += blockH + 2;
+    }
+    y += 4;
+  }
+
+  // ── Protection check ──────────────────────────────────────────────────────
+  // Says plainly, per benefit, whether there is cover at all and how it compares
+  // with the rule-of-thumb target. Targets need income; without it we only
+  // report presence or absence rather than inventing a benchmark.
+  y = sectionTitle(doc, y, 'Protection Check');
+
+  const checks: { label: string; have: number; target: number; flag?: boolean }[] = [
+    { label: 'Life Cover',        have: sumOf('lifeCover'), target: income12 * 10 },
+    { label: 'Critical Illness',  have: sumOf('ciCover'),   target: income12 * 5  },
+    { label: 'TPD',               have: sumOf('tpdCover'),  target: income12 * 10 },
+    { label: 'Personal Accident', have: sumOf('paCover'),   target: income12 * 3  },
+    { label: 'Medical Card',      have: anyMedical ? 1 : 0, target: 1, flag: true },
+  ];
+
+  const chW = (CW - 16) / 5;
+  checks.forEach((c, i) => {
+    const x     = MARGIN + i * (chW + 4);
+    const none  = c.have <= 0;
+    const short = !none && !c.flag && c.target > 0 && c.have < c.target * 0.8;
+    const col   = none ? T.loss : short ? T.amber : T.green;
+    const verdict = none ? 'No cover' : short ? 'Below target' : 'Covered';
+    const detail  = c.flag  ? (none ? 'None in force' : 'In force')
+                  : none    ? 'Nothing in force'
+                  : c.target > 0 ? `${FMT.myr(c.have)} of ${FMT.myr(c.target)}`
+                  : FMT.myr(c.have);
+
+    doc.setFillColor(...T.white);
+    doc.setDrawColor(...T.border);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(x, y, chW, 22, 1.5, 1.5, 'FD');
+    doc.setFillColor(...col);
+    doc.roundedRect(x, y, chW, 2.6, 1.5, 1.5, 'F');
+    doc.rect(x, y + 1.3, chW, 1.3, 'F');
+
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(5.8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(c.label.toUpperCase(), x + 3, y + 8);
+
+    doc.setTextColor(...col);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(verdict, x + 3, y + 14);
+
+    doc.setTextColor(...T.text3);
+    doc.setFontSize(5.8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(detail, x + 3, y + 19);
+  });
+  y += 28;
+
+  if (income12 === 0) {
+    doc.setTextColor(...T.text4);
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Targets need a recorded monthly income — add one to benchmark Life, CI, TPD and PA cover.', MARGIN, y);
+    y += 6;
+  }
+
+  // ── Policy details ────────────────────────────────────────────────────────
+  y = sectionTitle(doc, y, 'Policy Details');
+
+  const insRows = data.insurance.map(p => [
+    // Many policy names already end in the policy number — don't print it twice.
+    safeText(p.policyName) + (p.policyNumber && !p.policyName.includes(p.policyNumber)
+      ? `\nNo. ${safeText(p.policyNumber)}` : ''),
+    safeText([p.insurer, p.insuranceType].filter(Boolean).join(' · ')) || '—',
+    safeText(p.lifeAssured || p.policyOwner || '') || '—',
+    p.commencementDate ? FMT.date(p.commencementDate) : '—',
+    p.maturityDate ? FMT.date(p.maturityDate) : '—',
+    safeText(p.beneficiary || '') || '—',
+    safeText(p.status || '—'),
+  ]);
+
+  // A long policy list spills onto further pages; autoTable adds them but knows
+  // nothing about the branded header, so it is redrawn on each continuation.
+  const detailStartPage = doc.getNumberOfPages();
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Policy', 'Insurer / Type', 'Life Assured', 'Start', 'Maturity', 'Beneficiary', 'Status']],
     body: insRows.length ? insRows : [['No policies recorded', '', '', '', '', '', '']],
+    didDrawPage: () => {
+      if (doc.getNumberOfPages() > detailStartPage) {
+        pageHeader(doc, logo, 'Insurance Summary (cont.)', clientName);
+      }
+    },
     theme: 'plain',
     styles: {
       fontSize: 7.5, cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
@@ -678,12 +971,12 @@ export async function generateClientReport(data: ReportData): Promise<void> {
     },
     alternateRowStyles: { fillColor: T.bg },
     columnStyles: {
-      0: { cellWidth: 44, fontStyle: 'bold', textColor: T.text1 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 20 },
-      3: { cellWidth: 38 },
-      4: { cellWidth: 22, halign: 'right' },
-      5: { cellWidth: 18, halign: 'right' },
+      0: { cellWidth: 40, fontStyle: 'bold', textColor: T.text1 },
+      1: { cellWidth: 24 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: 20 },
+      4: { cellWidth: 20 },
+      5: { cellWidth: 32 },
       6: { cellWidth: 14, halign: 'center' },
     },
     didParseCell: d => {
@@ -700,10 +993,16 @@ export async function generateClientReport(data: ReportData): Promise<void> {
         doc.line(d.cell.x, d.cell.y + d.cell.height, d.cell.x + d.cell.width, d.cell.y + d.cell.height);
       }
     },
-    margin: { left: MARGIN, right: MARGIN },
+    margin: { left: MARGIN, right: MARGIN, top: 28 },
   });
 
-  pageFooter(doc, 3, 3, today);
+  // Footers last: a long policy list can push the report past three pages, so
+  // "Page n of m" is only correct once all the content has been laid out.
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 2; i <= pageCount; i++) {
+    doc.setPage(i);
+    pageFooter(doc, i, pageCount, today);
+  }
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const fname = `${safeText(data.client.name).replace(/\s+/g, '_')}_Wealth_Report_${new Date().toISOString().split('T')[0]}.pdf`;

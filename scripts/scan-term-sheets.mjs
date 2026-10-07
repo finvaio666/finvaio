@@ -375,7 +375,12 @@ function parseNatixis(text) {
   const priceTable = text.match(/Automatic Early\s*\nRedemption\s*\nValuation Date\(t\)\s*\n\s*Automatic Early\s*\nRedemption\s*\nPrice\s*\n([\s\S]{0,700}?)(?:\||Final Redemption)/)?.[1] ?? '';
   const priceRows = [...priceTable.matchAll(/(\d+)\s+(\d{1,2} \w+ \d{4})\s+([\d.]+)%/g)];
   const triggerByN = Object.fromEntries(priceRows.map(r => [+r[1], +r[3]]));
-  const schedule = valRows.map(r => ({ n: +r[1], determinationDate: toIso(r[2]), paymentDate: toIso(r[3]), triggerPct: triggerByN[+r[1]] ?? 100 }));
+  // "n/a" in the Automatic Early Redemption Price column = a non-call (lock-in)
+  // date: the note cannot knock out there even if every share is above its
+  // initial price. Must stay null — defaulting it to 100 invented a KO test
+  // (XS3395171005, 2026-10-05).
+  const nonCall = new Set([...priceTable.matchAll(/(\d+)\s+\d{1,2} \w+ \d{4}\s+n\/a/gi)].map(r => +r[1]));
+  const schedule = valRows.map(r => ({ n: +r[1], determinationDate: toIso(r[2]), paymentDate: toIso(r[3]), triggerPct: nonCall.has(+r[1]) ? null : (triggerByN[+r[1]] ?? 100) }));
   const couponMatch = text.match(/Denomination x\s*([\d.]+)%\s*\/\s*12/);
   const basketBlock = text.match(/Initial Price:\s*\n\s*\ni Share Initial Price\s*\n([\s\S]{0,600}?)\|/)?.[1] ?? '';
   // Same \r\n wrapping risk as the Nomura basket.

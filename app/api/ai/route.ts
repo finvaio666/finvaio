@@ -12,7 +12,12 @@ import {
   fetchClients,
   buildSharedContext,
   handleTaskIntents,
+  runAssistantTool,
   SHARED_DATA_RULES,
+  PREMIUM_TOOL,
+  PREMIUM_TOOL_RULES,
+  GAP_TOOL,
+  GAP_TOOL_RULES,
 } from '@/lib/assistantContext';
 
 // Simple in-process cache — key includes advisorId to prevent cross-advisor leakage
@@ -329,7 +334,11 @@ TO-DOS / ACTION ITEMS: When asked for outstanding tasks, action items, or "what 
 DATA SECTIONS:
 ${SHARED_DATA_RULES}
 - Never invent clients, funds, plans or figures. If a section says nothing is on record, say so plainly.
-- NEVER assume a client's gender. Use the client's name or "they/their" unless the data explicitly states otherwise.`;
+- NEVER assume a client's gender. Use the client's name or "they/their" unless the data explicitly states otherwise.
+
+${PREMIUM_TOOL_RULES}
+
+${GAP_TOOL_RULES}`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -390,6 +399,15 @@ export async function POST(req: NextRequest) {
     }
     const systemPrompt = parts.join('\n\n');
 
+    // Tools read the SELECTED client from here, not from a model-supplied id —
+    // the model can't point the gap analysis at someone else's client, and
+    // listPolicies/fetchClients are advisor-scoped underneath anyway.
+    const toolCtx = config ? {
+      config,
+      clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
+      clientName: typeof clientName === 'string' ? clientName.trim() : undefined,
+    } : null;
+
     const genAI   = new GoogleGenerativeAI(GEMINI_KEY);
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
       role:  m.role === 'assistant' ? 'model' : 'user',
@@ -397,24 +415,72 @@ export async function POST(req: NextRequest) {
     }));
     const lastMessage = messages[messages.length - 1];
 
-    // Try models in order — fall back on 503 overload
+    // Try models in order — fall back when a model is overloaded OR rate-limited
     const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+    type Usage = { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
     let content = '';
-    let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+    let usage: Usage | undefined;
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
-        const model  = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
+        const model = genAI.getGenerativeModel({
+          model: modelId,
+          systemInstruction: systemPrompt,
+          ...(toolCtx ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL] }] } : {}),
+        });
         const chat   = model.startChat({ history });
-        const result = await chat.sendMessage(lastMessage.content);
+
+        // A tool call costs TWO requests (ask + tool result), and each one
+        // reports its own usage. Sum them, or the AI Usage Log records roughly
+        // half the true cost of every premium question.
+        const acc: Usage = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };
+        const addUsage = (u?: Usage) => {
+          if (!u) return;
+          acc.promptTokenCount!     += u.promptTokenCount     ?? 0;
+          acc.candidatesTokenCount! += u.candidatesTokenCount ?? 0;
+          // Gemini's total can exceed prompt+candidates (thinking tokens), so
+          // take the reported total rather than re-deriving it.
+          acc.totalTokenCount!      += u.totalTokenCount      ?? 0;
+        };
+
+        let result = await chat.sendMessage(lastMessage.content);
+        addUsage(result.response.usageMetadata);
+
+        // ── Tool loop ─────────────────────────────────────────────────────
+        // The model may ask to run the pricing engine instead of replying.
+        // Execute it, hand the real figures back, and let it write the answer
+        // around them — it never computes a premium itself. Bounded so a
+        // misbehaving model can't loop forever.
+        for (let hop = 0; hop < 3; hop++) {
+          const calls = result.response.functionCalls();
+          if (!calls?.length) break;
+          const parts = await Promise.all(calls.map(async call => ({
+            functionResponse: {
+              name: call.name,
+              response: (await (toolCtx ? runAssistantTool(call, toolCtx) : null) ?? {
+                ok: false,
+                error: `Unknown tool "${call.name}". Tell the advisor you can't answer this and do not invent figures.`,
+              }) as object,
+            },
+          })));
+          result = await chat.sendMessage(parts);
+          addUsage(result.response.usageMetadata);
+        }
+
         content = result.response.text();
-        usage   = result.response.usageMetadata;
+        usage   = acc;
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         lastErr = err;
-        if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
-          console.warn(`${modelId} overloaded, trying next model…`);
+        // 429 = per-minute quota. The fallback models have their own quotas, so
+        // trying the next one is exactly the right move — previously a rate
+        // limit threw instead, which the tool loop made far more likely by
+        // doubling the requests per question.
+        if (msg.includes('503') || msg.includes('429') ||
+            msg.includes('high demand') || msg.includes('overloaded') ||
+            msg.includes('quota') || msg.includes('rate limit') || msg.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`${modelId} unavailable (overloaded or rate-limited), trying next model…`);
           continue;
         }
         throw err;

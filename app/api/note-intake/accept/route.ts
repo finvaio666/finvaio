@@ -140,12 +140,23 @@ function buildUnderlyingDetails(
   // determination date EXCEPT the last), and listing it as a KO obs would
   // invent one: with no triggerPct, koBarrier falls back to the underlying's
   // `ko` level and the refresh would test a 100% autocall that does not exist.
-  const obs = (p.schedule ?? []).filter(s => s.determinationDate && s.triggerPct != null);
-  const schedule: NonNullable<PortfolioHolding['underlyingDetails']>['schedule'] = obs.map((s, i) => ({
-    date:       String(s.determinationDate),
-    label:      `KO obs #${s.n ?? i + 1} (trigger ${Number(s.triggerPct)}%)`,
-    triggerPct: Number(s.triggerPct),
-  }));
+  //
+  // A non-final date with NO trigger is a non-call (lock-in) date — the term
+  // sheet prints "n/a" and the note cannot knock out there. It is kept for
+  // display under a label that does NOT start with 'KO obs', so neither the
+  // flag derivation nor update-underlying-prices ever tests it (a 'KO obs' row
+  // with no triggerPct falls back to the 100% `ko` level — which falsely
+  // flagged XS3395171005 as knocked out on its 5 Oct 2026 lock-in date).
+  const all = (p.schedule ?? []).filter(s => s.determinationDate);
+  const schedule: NonNullable<PortfolioHolding['underlyingDetails']>['schedule'] = [];
+  all.forEach((s, i) => {
+    const n = s.n ?? i + 1;
+    if (s.triggerPct != null) {
+      schedule.push({ date: String(s.determinationDate), label: `KO obs #${n} (trigger ${Number(s.triggerPct)}%)`, triggerPct: Number(s.triggerPct) });
+    } else if (i < all.length - 1) {
+      schedule.push({ date: String(s.determinationDate), label: `Non-call #${n} (no KO)` });
+    }
+  });
 
   // Maturity closes the note out. Prefer the reviewer's date; fall back to the
   // last scheduled date so a note without one still ages out of the book
@@ -215,6 +226,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         error: `This only accounts for ${total.toLocaleString()} of the ${issueAmount.toLocaleString()} tranche — ${(issueAmount - total).toLocaleString()} unallocated. The allocations must add up to the full tranche before this note can be added.`,
       }, { status: 400 });
+    }
+    // Same re-check discipline as the two above — the form had this check
+    // (previously a dismissible confirm(), fixed to a hard block alongside
+    // this one), but nothing server-side enforced it, so it could still be
+    // skipped by calling the API directly. A denomination parses here
+    // whenever the shortfall/over-allocation checks above couldn't — e.g. a
+    // "Up to USD 300,000" tranche has no single issueAmount to check against,
+    // but a stated denomination is still a real constraint on each slice.
+    const denomination = Number((row.parsed as { denomination?: number } | null)?.denomination) || 0;
+    if (denomination) {
+      const odd = allocations.filter(a => Number(a.amount) % denomination !== 0);
+      if (odd.length) {
+        return NextResponse.json({
+          error: `The term sheet states a denomination of ${denomination.toLocaleString()}, but ${odd.length} allocation(s) are not a whole multiple of it. Check the figures before adding this note.`,
+        }, { status: 400 });
+      }
     }
 
     const [clients, holdings] = await Promise.all([listClients(config), listHoldings(config)]);
