@@ -733,7 +733,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{g.name}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: meta.color, background: meta.bg, border: `1px solid ${meta.border}` }}>
-                    {meta.label}
+                    {g.flag === 'ki' && g.detail.maturityOnlyBarrier ? 'Below barrier' : meta.label}
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
@@ -741,6 +741,27 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
                   {g.advisors.length > 1 && (
                     <span style={{ marginLeft: 6, color: '#F37338', fontWeight: 600 }}>· shared across {g.advisors.length} FAs</span>
                   )}
+                </div>
+                {/* The evidence — what happened, when, and (for KI) which asset —
+                    so a flag can be checked against the term sheet without digging. */}
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {g.detail.eventDate ? (
+                    <span>
+                      <strong>{g.flag === 'likely-ko' ? 'KO date' : g.flag === 'likely-matured' ? 'Maturity date' : g.detail.maturityOnlyBarrier ? 'First below barrier' : 'First KI touch'}:</strong>{' '}
+                      {g.detail.eventDate} <span style={{ color: 'var(--text3)' }}>({g.detail.eventLabel})</span>
+                    </span>
+                  ) : g.flag === 'ki' && (
+                    <span style={{ color: 'var(--text3)' }}>KI date not recorded — currently below KI</span>
+                  )}
+                  {g.detail.kiAssets.map(a => (
+                    <span key={a.name} style={{ color: '#d97706' }}>
+                      <strong>{g.detail.maturityOnlyBarrier ? 'Below barrier' : 'KI asset'}:</strong> {a.name} — KI {a.ki.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                      {typeof a.today === 'number' && `, now ${a.today.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}
+                      {a.touchedOn && `, first below ${a.touchedOn}`}
+                      {g.detail.maturityOnlyBarrier && ' — tested only at maturity'}
+                      {!a.belowNow && ' (recovered)'}
+                    </span>
+                  ))}
                 </div>
               </div>
               {g.flag === 'ki' ? (
@@ -853,6 +874,7 @@ export default function AdminPage() {
       : `${g.rows[0]?.clientName || '—'} (${g.rows[0]?.advisor || '—'})`;
     if (!confirm(
       `Confirm this note has ${label}?\n\n${g.name}\n` +
+      (g.detail.eventDate ? `${label === 'matured' ? 'Maturity' : 'KO'} date: ${g.detail.eventDate} (${g.detail.eventLabel})\n` : '') +
       `Affects: ${who}\nTotal value: ${fmtCcy(g.totalValueOriginal, g.currency)}\n\n` +
       `All ${g.rows.length} holding(s) will be marked Redeemed and removed from active AUM.`
     )) return;

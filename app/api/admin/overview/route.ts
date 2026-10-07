@@ -31,8 +31,21 @@ export interface FAStats {
 
 export interface Slice { name: string; value: number }
 
+/**
+ * What an admin needs to verify a flag against the term sheet: WHEN the event
+ * happened and, for KI, WHICH underlying breached. A bare "Likely KO" badge
+ * gave nothing to check it against.
+ */
+export interface NoteDetail {
+  eventDate:  string;   // KO observation date / final valuation date / first KI touch ('' if none recorded)
+  eventLabel: string;   // what that date is — 'KO obs #2 (trigger 97%)', 'Final / Maturity', 'First KI touch'
+  maturityOnlyBarrier: boolean;   // no KO observations — the barrier is tested only on the final valuation date (ELN/DCN), so being below it is not yet a knock-in
+  kiAssets: { name: string; ki: number; today?: number; touchedOn?: string; belowNow: boolean }[];
+}
+
 /** A note flagged KI or likely-KO/matured, surfaced so an admin can act on it. */
 export interface AttentionNote {
+  detail:        NoteDetail;
   id:            string;
   productName:   string;   // ISIN — what groups this row with its sibling copies below
   name:          string;
@@ -53,6 +66,7 @@ export interface AttentionNote {
  * `rows` is what a single "Confirm exit" click on this group has to update.
  */
 export interface AttentionGroup {
+  detail:       NoteDetail;   // a fact about the note, so identical across the group's rows
   productName:  string;
   name:         string;
   flag:         'ki' | 'likely-ko' | 'likely-matured';
@@ -98,6 +112,28 @@ function deriveNoteFlag(h: PortfolioHolding): AttentionNote['flag'] | null {
   if (d.schedule.some(s => s.label.startsWith('KO obs') && s.resolved && s.cleared)) return 'likely-ko';
   if (d.underlyings.some(u => typeof u.today === 'number' && u.today < u.ki)) return 'ki';
   return null;
+}
+
+function deriveNoteDetail(h: PortfolioHolding, flag: AttentionNote['flag']): NoteDetail {
+  const d = h.underlyingDetails!;
+  const maturityOnlyBarrier = !d.schedule.some(s => s.label.startsWith('KO obs'));
+  const kiAssets = d.underlyings
+    .filter(u => u.kiTouchedOn || (typeof u.today === 'number' && u.today < u.ki))
+    .map(u => ({
+      name: u.name, ki: u.ki, today: u.today, touchedOn: u.kiTouchedOn,
+      belowNow: typeof u.today === 'number' && u.today < u.ki,
+    }));
+
+  if (flag === 'likely-ko') {
+    const row = d.schedule.find(s => s.label.startsWith('KO obs') && s.resolved && s.cleared);
+    return { eventDate: row?.date ?? '', eventLabel: row?.label ?? 'KO observation', maturityOnlyBarrier, kiAssets };
+  }
+  if (flag === 'likely-matured') {
+    const row = d.schedule.find(s => s.label.startsWith('Final'));
+    return { eventDate: row?.date ?? '', eventLabel: row?.label ?? 'Final / Maturity', maturityOnlyBarrier, kiAssets };
+  }
+  const first = kiAssets.map(a => a.touchedOn).filter((x): x is string => !!x).sort()[0] ?? '';
+  return { eventDate: first, eventLabel: 'First KI touch', maturityOnlyBarrier, kiAssets };
 }
 
 export async function GET(req: NextRequest) {
@@ -198,6 +234,7 @@ export async function GET(req: NextRequest) {
     }
     if (flag) {
       attention.push({
+        detail: deriveNoteDetail(h, flag),
         id: h.id, productName: h.productName, name: h.name, advisor: h.advisorName,
         clientName: clientNameById.get(h.clientNotionId) ?? '', flag,
         currency: h.currency || 'MYR', valueOriginal: holdingValueOriginal(h), valueMyr: v,
@@ -234,7 +271,7 @@ export async function GET(req: NextRequest) {
   for (const n of attention) {
     const key = n.productName || `__${n.id}`;
     let g = groupMap.get(key);
-    if (!g) { g = { productName: n.productName, name: n.name, flag: n.flag, currency: n.currency, totalValueOriginal: 0, totalValueMyr: 0, advisors: [], rows: [] }; groupMap.set(key, g); }
+    if (!g) { g = { detail: n.detail, productName: n.productName, name: n.name, flag: n.flag, currency: n.currency, totalValueOriginal: 0, totalValueMyr: 0, advisors: [], rows: [] }; groupMap.set(key, g); }
     g.totalValueOriginal += n.valueOriginal;
     g.totalValueMyr += n.valueMyr;
     if (n.advisor && !g.advisors.includes(n.advisor)) g.advisors.push(n.advisor);

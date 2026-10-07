@@ -930,6 +930,12 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             const flag = deriveNoteFlag(h);
                             if (!flag) return null;
                             if (flag === 'ki') {
+                              const maturityOnly = !h.underlyingDetails?.schedule?.some(s => s.label.startsWith('KO obs'));
+                              if (maturityOnly) return (
+                                <span title="An underlying is currently below the barrier. This note tests the barrier only on the final valuation date, so it is not a knock-in yet — if it is still below then, shares are delivered." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
+                                  ⚠️ Below barrier
+                                </span>
+                              );
                               return (
                                 <span title="An underlying has traded below its Knock-In level (Below Strike Level) — principal protection may no longer apply. The note is still held." style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)' }}>
                                   ⚠️ KI triggered
