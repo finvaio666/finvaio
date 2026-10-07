@@ -733,7 +733,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{g.name}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 6px', color: meta.color, background: meta.bg, border: `1px solid ${meta.border}` }}>
-                    {meta.label}
+                    {g.flag === 'ki' && g.detail.maturityOnlyBarrier ? 'Below barrier' : meta.label}
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
@@ -747,7 +747,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
                 <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {g.detail.eventDate ? (
                     <span>
-                      <strong>{g.flag === 'likely-ko' ? 'KO date' : g.flag === 'likely-matured' ? 'Maturity date' : 'First KI touch'}:</strong>{' '}
+                      <strong>{g.flag === 'likely-ko' ? 'KO date' : g.flag === 'likely-matured' ? 'Maturity date' : g.detail.maturityOnlyBarrier ? 'First below barrier' : 'First KI touch'}:</strong>{' '}
                       {g.detail.eventDate} <span style={{ color: 'var(--text3)' }}>({g.detail.eventLabel})</span>
                     </span>
                   ) : g.flag === 'ki' && (
@@ -755,9 +755,10 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
                   )}
                   {g.detail.kiAssets.map(a => (
                     <span key={a.name} style={{ color: '#d97706' }}>
-                      <strong>KI asset:</strong> {a.name} — KI {a.ki.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                      <strong>{g.detail.maturityOnlyBarrier ? 'Below barrier' : 'KI asset'}:</strong> {a.name} — KI {a.ki.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                       {typeof a.today === 'number' && `, now ${a.today.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}
-                      {a.touchedOn && `, first touched ${a.touchedOn}`}
+                      {a.touchedOn && `, first below ${a.touchedOn}`}
+                      {g.detail.maturityOnlyBarrier && ' — tested only at maturity'}
                       {!a.belowNow && ' (recovered)'}
                     </span>
                   ))}

@@ -39,6 +39,7 @@ export interface Slice { name: string; value: number }
 export interface NoteDetail {
   eventDate:  string;   // KO observation date / final valuation date / first KI touch ('' if none recorded)
   eventLabel: string;   // what that date is — 'KO obs #2 (trigger 97%)', 'Final / Maturity', 'First KI touch'
+  maturityOnlyBarrier: boolean;   // no KO observations — the barrier is tested only on the final valuation date (ELN/DCN), so being below it is not yet a knock-in
   kiAssets: { name: string; ki: number; today?: number; touchedOn?: string; belowNow: boolean }[];
 }
 
@@ -115,6 +116,7 @@ function deriveNoteFlag(h: PortfolioHolding): AttentionNote['flag'] | null {
 
 function deriveNoteDetail(h: PortfolioHolding, flag: AttentionNote['flag']): NoteDetail {
   const d = h.underlyingDetails!;
+  const maturityOnlyBarrier = !d.schedule.some(s => s.label.startsWith('KO obs'));
   const kiAssets = d.underlyings
     .filter(u => u.kiTouchedOn || (typeof u.today === 'number' && u.today < u.ki))
     .map(u => ({
@@ -124,14 +126,14 @@ function deriveNoteDetail(h: PortfolioHolding, flag: AttentionNote['flag']): Not
 
   if (flag === 'likely-ko') {
     const row = d.schedule.find(s => s.label.startsWith('KO obs') && s.resolved && s.cleared);
-    return { eventDate: row?.date ?? '', eventLabel: row?.label ?? 'KO observation', kiAssets };
+    return { eventDate: row?.date ?? '', eventLabel: row?.label ?? 'KO observation', maturityOnlyBarrier, kiAssets };
   }
   if (flag === 'likely-matured') {
     const row = d.schedule.find(s => s.label.startsWith('Final'));
-    return { eventDate: row?.date ?? '', eventLabel: row?.label ?? 'Final / Maturity', kiAssets };
+    return { eventDate: row?.date ?? '', eventLabel: row?.label ?? 'Final / Maturity', maturityOnlyBarrier, kiAssets };
   }
   const first = kiAssets.map(a => a.touchedOn).filter((x): x is string => !!x).sort()[0] ?? '';
-  return { eventDate: first, eventLabel: 'First KI touch', kiAssets };
+  return { eventDate: first, eventLabel: 'First KI touch', maturityOnlyBarrier, kiAssets };
 }
 
 export async function GET(req: NextRequest) {
