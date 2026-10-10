@@ -506,13 +506,22 @@ const PLAN_BASIS = PLAN_TYPES.find(p => p.enabled) ?? PLAN_TYPES[0];
 export const ENGINE_DISCLAIMER =
   'Premiums are estimates from a reverse-engineered attained-age model that reproduces each insurer\'s official illustrations to ~0.5% at quoted ages (Prudential ~1%). They are NOT official quotations and must be confirmed against the insurer\'s system before issue. Medical is fixed at Room 200. For advisory discussion only.';
 
+/**
+ * The firm's STANDARD comparison package, used whenever the advisor does not state
+ * a sum assured: Life RM100k + "36CI" critical illness RM100k + waiver of premium +
+ * medical (ILP with Room & Board RM200 — the enabled PLAN_TYPE). The engine prices
+ * a sum assured, not a condition count, so "36CI" is the package name, not a filter.
+ */
+export const STANDARD_PACKAGE = { lifeSA: 100_000, ciSA: 100_000, waiver: true };
+
 export const PREMIUM_TOOL: FunctionDeclaration = {
   name: 'compare_premiums',
   description:
     'Compare estimated insurance premiums across AIA, Great Eastern, Allianz, HLA and Prudential for one person, ' +
     `using the firm's calibrated pricing engine (${PLAN_BASIS.label}). ` +
     'Call this whenever the advisor asks what a plan would cost, which insurer is cheapest, or for a premium comparison. ' +
-    'Do NOT call it until you know age, gender, smoker status AND both sum assured figures — ask the advisor for whatever is missing first. ' +
+    'Do NOT call it until you know age, gender and smoker status — ask for whatever is missing first. ' +
+    'If the advisor gives NO sum assured, OMIT lifeSA and ciSA: the tool applies the standard package (Life RM100k, 36CI RM100k, waiver of premium, medical Room & Board RM200). ' +
     'Never estimate or adjust premiums yourself; every figure you quote must come from this tool.',
   parameters: {
     type: SchemaType.OBJECT,
@@ -520,11 +529,11 @@ export const PREMIUM_TOOL: FunctionDeclaration = {
       age:    { type: SchemaType.INTEGER, description: 'Age next birthday of the life assured, 1-75.' },
       gender: { type: SchemaType.STRING,  format: 'enum', description: "Gender of the life assured: 'M' or 'F'.", enum: ['M', 'F'] },
       smoker: { type: SchemaType.BOOLEAN, description: 'True if the life assured smokes. Changes the premium materially — never guess it.' },
-      lifeSA: { type: SchemaType.NUMBER,  description: 'Life cover sum assured in MYR, e.g. 500000.' },
-      ciSA:   { type: SchemaType.NUMBER,  description: 'Critical illness sum assured in MYR, e.g. 500000.' },
+      lifeSA: { type: SchemaType.NUMBER,  description: 'Life cover sum assured in MYR, e.g. 500000. OMIT if the advisor did not state one (standard RM100k applies).' },
+      ciSA:   { type: SchemaType.NUMBER,  description: 'Critical illness sum assured in MYR, e.g. 500000. OMIT if the advisor did not state one (standard RM100k applies).' },
       waiver: { type: SchemaType.BOOLEAN, description: 'Include waiver-of-premium rider. Defaults to true (the calculator default) when not specified.' },
     },
-    required: ['age', 'gender', 'smoker', 'lifeSA', 'ciSA'],
+    required: ['age', 'gender', 'smoker'],
   },
 };
 
@@ -536,6 +545,8 @@ export interface PremiumToolResult {
   quotes?: { insurer: string; product: string; monthly: number; annual: number; verified: boolean; caveat: string }[];
   excluded?: { insurer: string; reason: string }[];
   disclaimer?: string;
+  standardPackageApplied?: string[];
+  samples?: { insurer: string; product: string; monthly: number; annual: number }[];
 }
 
 /** Run the pricing engine. Pure + synchronous — no DB, no network. */
@@ -543,8 +554,12 @@ export function runPremiumComparison(args: Record<string, unknown>): PremiumTool
   const age    = Number(args.age);
   const gender = String(args.gender ?? '').toUpperCase() as InsGender;
   const smoker = Boolean(args.smoker);
-  const lifeSA = Number(args.lifeSA);
-  const ciSA   = Number(args.ciSA);
+  const applied: string[] = [];
+  const given = (v: unknown) => v !== undefined && v !== null && v !== '';
+  if (!given(args.lifeSA)) applied.push(`Life RM${STANDARD_PACKAGE.lifeSA.toLocaleString()}`);
+  if (!given(args.ciSA))   applied.push(`36CI critical illness RM${STANDARD_PACKAGE.ciSA.toLocaleString()}`);
+  const lifeSA = given(args.lifeSA) ? Number(args.lifeSA) : STANDARD_PACKAGE.lifeSA;
+  const ciSA   = given(args.ciSA) ? Number(args.ciSA) : STANDARD_PACKAGE.ciSA;
   const waiver = args.waiver === undefined ? true : Boolean(args.waiver);
 
   if (!Number.isFinite(age) || age < 1 || age > 75) {
@@ -578,6 +593,8 @@ export function runPremiumComparison(args: Record<string, unknown>): PremiumTool
     })),
     excluded: excluded.map(e => ({ insurer: e.insurer, reason: e.reason })),
     disclaimer: ENGINE_DISCLAIMER,
+    standardPackageApplied: applied.length ? [...applied, ...(args.waiver === undefined ? ['waiver of premium'] : []), `medical: ${PLAN_BASIS.medicalLabel}`] : undefined,
+    samples: results.slice(0, 3).map(r => ({ insurer: r.insurer, product: r.product, monthly: Math.round(r.monthly * 100) / 100, annual: Math.round(r.annual * 100) / 100 })),
   };
 }
 
@@ -797,7 +814,9 @@ export const GAP_TOOL_RULES = `COVERAGE GAP ("is that enough?", "what's lacking?
 /** Prompt rules governing how the premium tool may be used and reported. */
 export const PREMIUM_TOOL_RULES = `PREMIUM COMPARISONS (compare_premiums tool):
 - The advisor's client records do NOT store gender, smoker status or marital status. You must ASK for whatever you don't have. Never assume a client's gender, and never guess smoker status — it changes the premium a lot.
-- Before calling the tool you need: age (use the client's date of birth if a client is selected), gender, smoker status, life sum assured and CI sum assured. Ask for the missing ones in ONE short message, then wait. Do not call the tool with assumed figures, and do not fall back to a default sum assured the advisor never stated.
+- Before calling the tool you need: age (use the client's date of birth if a client is selected), gender and smoker status. Ask for the missing ones in ONE short message, then wait. NEVER assume gender or smoker status.
+- ⚠️ NEVER ASK FOR A SUM ASSURED. "36 CI" / "36 critical illness" is the name of the firm's CI package (36 conditions), NOT an amount. If the advisor states no sum assured, do NOT ask — call the tool with lifeSA and ciSA omitted so the firm's STANDARD PACKAGE applies (Life RM100k, 36CI critical illness RM100k, waiver of premium, medical Room & Board RM200). If the tool reports standardPackageApplied, say so in one line ("Standard package applied: …") and invite the advisor to give different sums assured. If the advisor states only one of the two, use their figure and the standard for the other, and say so. Never invent a sum assured yourself.
+- SAMPLE FOR THE CLIENT CONVERSATION: when the standard package was applied (standardPackageApplied is present) or the advisor asks for a sample / something to show the client, present the tool's "samples" (the 3 cheapest companies) as a short table: company, plan, monthly, annual, and mention that more insurers can be shown on request. When the advisor gave their own sums assured and asked to compare premiums, show EVERY quote the tool returned, not just three. The engine prices a sum assured, not the number of covered illnesses, so do not claim any insurer's plan covers 36 conditions.
 - EVERY premium figure you give must come from the tool's output. Never compute, adjust, interpolate, inflate or "roughly estimate" a premium yourself, and never reuse a figure from an earlier question with different inputs. If the tool is unavailable or errors, say so and point the advisor at the Premium Calculator page — do NOT answer from memory.
 - Present the result as a short comparison, cheapest first, with monthly (and annual) figures. State the basis line returned by the tool.
 - A quote flagged verified:true is a confirmed official quotation — label it as such. Everything else is an ESTIMATE, never a quotation; include the tool's disclaimer, and carry each insurer's own caveat when you mention that insurer.

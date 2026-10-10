@@ -22,6 +22,7 @@
 import { SignJWT } from 'jose';
 import { CASES, type EvalCase } from '../evals/assistant-cases';
 import { parseAnnualLimit, runCoverageGap, matchHoldingNames, looksLikeTaskRequest, GAP_BENCHMARK } from '../lib/assistantContext';
+import { detectQuoteRequest, priceDetectedRequest } from '../lib/premiumIntent';
 import { estimateAll } from '../lib/insuranceCalculator';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 
@@ -95,6 +96,22 @@ async function unitLayer(): Promise<void> {
   check('funds: partial name returns both Greater China funds',
     matchHoldingNames('who holds the Greater China fund?', names).length === 2);
   check('funds: generic-only names never match', !matchHoldingNames('cash account', names).includes('Cash Account'));
+
+  // Deterministic quote detection (lib/premiumIntent.ts) - decided in code, not by the model.
+  const qr = (...t: string[]) => detectQuoteRequest(t);
+  const fa = qr('45 years old IT consultant, male, married of 2 kids, non smoker is looking for medical insurance with LIFE and 36 Critical illness cover.');
+  check('quote: FA question parses to 45 M non-smoker', fa?.age === 45 && fa.gender === 'M' && fa.smoker === false, JSON.stringify(fa));
+  check('quote: "36 critical illness" is not a sum assured', fa?.ciSA === undefined && fa?.lifeSA === undefined, JSON.stringify(fa));
+  const full = qr('Compare premiums for a 35 year old male, non-smoker, RM500,000 life cover and RM500,000 critical illness.');
+  check('quote: explicit sums assured are kept', full?.lifeSA === 500_000 && full?.ciSA === 500_000, JSON.stringify(full));
+  const k = qr('45 year old female, smoker, 300k life and 300k CI - compare premiums.');
+  check('quote: k-suffix amounts and smoker=true', k?.gender === 'F' && k.smoker === true && k.lifeSA === 300_000 && k.ciSA === 300_000, JSON.stringify(k));
+  check('quote: missing smoker status is NOT a quote', qr('My client is 40 years old. What insurance premium would he pay?') === null);
+  check('quote: gap analysis is NOT a quote', qr('Prospect, 45 years old male non smoker, annual income RM120,000, RM300,000 life cover. Is that enough?') === null);
+  check('quote: follow-up completes an earlier request', qr('40 years old, needs life insurance', 'male, non smoker')?.age === 40);
+  check('quote: contradictory gender is never guessed', qr('45 years old, male and female, non smoker, life insurance') === null);
+  const std = priceDetectedRequest({ age: 45, gender: 'M', smoker: false });
+  check('quote: standard package gives GE 709 / Prudential 746 / AIA 876', std.ok && std.samples?.map(x => x.monthly).join() === '709,746,876', JSON.stringify(std.samples));
 
   // Intent routing.
   check('intent: analysis question is not a task', looksLikeTaskRequest('no record with us, is that enough cover?') === false);

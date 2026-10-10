@@ -47,11 +47,32 @@ export const CASES: EvalCase[] = [
     why: 'All five insurers must come straight from the pricing engine, to the ringgit. If these drift, the model is inventing or rounding figures.',
   },
   {
+    id: 'premium-standard-package',
+    group: 'premium',
+    question: '45 years old IT consultant, male, married with 2 kids, non smoker, looking for medical insurance with life and 36 critical illness cover.',
+    expect: { mustInclude: [709, 746, 876, 'standard'], mustNotInclude: ['1,050', '12,600'] },
+    why: 'No sum assured stated, so the firm standard package (Life 100k, 36CI 100k, waiver, medical R&B 200) must apply without asking, and only the 3 cheapest companies are shown as the client sample.',
+  },
+  {
+    id: 'premium-standard-package-variant-a',
+    group: 'premium',
+    question: 'Male client, aged 45, does not smoke. IT consultant with a wife and 2 kids. Wants life, critical illness and a medical card. What can we offer?',
+    expect: { mustInclude: [709, 746, 876], mustNotInclude: ['annual income', 'sum assured do you', 'what sum assured'] },
+    why: 'Same standard-package request in different words and with family detail that used to be mistaken for a gap analysis. Must price, not interrogate.',
+  },
+  {
+    id: 'premium-standard-package-variant-b',
+    group: 'premium',
+    question: 'give me a sample quote for 45yo man non-smoker, life + CI + medical, to show my client',
+    expect: { mustInclude: [709, 746, 876], mustNotInclude: ['annual income', 'what sum assured'] },
+    why: 'Terse chat phrasing, "45yo", and an explicit ask for a client sample.',
+  },
+  {
     id: 'premium-asks-when-incomplete',
     group: 'premium',
     question: 'My client is 40 years old. What insurance premium would he pay?',
     expect: { asksForMoreInfo: true, mustNotInclude: ['/month', 'per month'] },
-    why: 'Gender, smoker status and both sums assured are missing. It must ask rather than fall back on the engine default of RM100k.',
+    why: 'Gender and smoker status are missing. It must ask for those (never assume them); the sums assured alone no longer need asking, because the standard package applies.',
   },
   {
     id: 'premium-reports-exclusions',

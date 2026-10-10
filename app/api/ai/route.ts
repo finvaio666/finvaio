@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote } from '@/lib/premiumIntent';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listTasks } from '@/lib/tasks';
@@ -397,6 +398,18 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+    // A complete "price this person" request is answered by the engine in code,
+    // before the model is involved - see lib/premiumIntent.ts. The model only
+    // words the result, so it can't ask for a sum assured or mistake the
+    // question for a coverage-gap analysis.
+    let precomputedQuote = false;
+    const quoteReq = detectQuoteRequest(
+      (messages as { role: string; content: string }[]).filter(m => m.role === 'user').map(m => m.content),
+    );
+    if (quoteReq) {
+      const quote = priceDetectedRequest(quoteReq);
+      if (quote.ok) { parts.push(formatPrecomputedQuote(quote)); precomputedQuote = true; }
+    }
     const systemPrompt = parts.join('\n\n');
 
     // Tools read the SELECTED client from here, not from a model-supplied id —
@@ -426,7 +439,7 @@ export async function POST(req: NextRequest) {
         const model = genAI.getGenerativeModel({
           model: modelId,
           systemInstruction: systemPrompt,
-          ...(toolCtx ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL] }] } : {}),
+          ...(toolCtx && !precomputedQuote ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL] }] } : {}),
         });
         const chat   = model.startChat({ history });
 
