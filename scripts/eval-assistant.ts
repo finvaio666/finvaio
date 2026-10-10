@@ -183,9 +183,9 @@ async function liveLayer(): Promise<void> {
     if (c.expect.asksForMoreInfo && !asksSomething) problems.push('expected a request for more information');
 
     check(label, problems.length === 0, problems.join('; '));
-    if (problems.length) {
+    if (problems.length || process.env.EVAL_SHOW) {
       console.log(`     why it matters: ${c.why}`);
-      console.log(`     got: ${answer.replace(/\s+/g, ' ').slice(0, 220)}${answer.length > 220 ? '…' : ''}`);
+      console.log(`     got: ${answer.replace(/\s+/g, ' ').slice(0, process.env.EVAL_SHOW ? 1500 : 220)}${answer.length > (process.env.EVAL_SHOW ? 1500 : 220) ? '…' : ''}`);
     }
     await new Promise(r => setTimeout(r, DELAY_MS));
   }
