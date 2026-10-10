@@ -103,3 +103,25 @@ export function formatPrecomputedQuote(result: PremiumToolResult): string {
     JSON.stringify(result),
   ].join('\n');
 }
+
+// ── COI-curve comparison ──────────────────────────────────────────────────────
+const COI_INTENT = /\b(coi|cost of insurance|spikes?|spiking|sustainab\w*|repric\w*|premium (?:increase|adjust\w*)|rises? (?:faster|slower|quickly))\b/i;
+
+export interface CoiRequest { age: number; gender: 'M' | 'F'; smoker: boolean }
+
+/** A complete "compare COI curves for this person" request - same rule as quotes: parsed in code. */
+export function detectCoiRequest(userTexts: string[]): CoiRequest | null {
+  const all = userTexts.join(' \n ');
+  if (!COI_INTENT.test(all)) return null;
+  const age = parseAge(all), gender = parseGender(all), smoker = parseSmoker(all);
+  if (age === null || gender === null || smoker === null || age >= 80) return null;
+  return { age, gender, smoker };
+}
+
+export function formatPrecomputedCoi(result: unknown): string {
+  return [
+    '\n# PRE-COMPUTED MEDICAL COI COMPARISON (run by the pricing engine before this answer - authoritative)',
+    'The advisor asked about COI. Present THIS result following the COI rules; do not call any tool and do not alter any figure.',
+    JSON.stringify(result),
+  ].join('\n');
+}

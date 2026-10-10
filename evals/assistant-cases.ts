@@ -15,7 +15,7 @@
 
 export interface EvalCase {
   id: string;
-  group: 'premium' | 'gap' | 'intent' | 'safety';
+  group: 'premium' | 'coi' | 'gap' | 'intent' | 'safety';
   question: string;
   /** Selected client in the picker, if the case needs one. */
   client?: { id: string; name: string };
@@ -38,6 +38,13 @@ export interface EvalCase {
 const LIM = { id: '36dde6dd-1dfe-8178-8b8d-d77a8820ee66', name: 'Lim Sheng Yee' };
 
 export const CASES: EvalCase[] = [
+  {
+    id: 'coi-curve-comparison',
+    group: 'coi',
+    question: '45 year old male non-smoker. Compare the medical COI across the insurers - whose COI spikes up faster as he gets older, and who is cheapest at age 80?',
+    expect: { mustInclude: ['GE', 'HLA', '80'], mustNotInclude: ['annual income'] },
+    why: 'The firm judges a medical policy by COI level, speed of rise and cost at 80. FINVA must report these from the engine tables and name who spikes.',
+  },
   // ── Premium comparison ────────────────────────────────────────────────────
   {
     id: 'premium-full-quote',

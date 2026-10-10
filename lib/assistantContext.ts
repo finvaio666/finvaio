@@ -25,6 +25,7 @@ import { listFunds, listPlans } from './products';
 import { listPolicies } from './insurance';
 import * as kbEntries from './repos/knowledgeEntries';
 import { listHouseStructuredTerms } from './repos/portfolio';
+import { compareMedicalCoi } from './coiComparison';
 
 export const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
@@ -786,12 +787,32 @@ export async function runCoverageGap(
 }
 
 /** Dispatch a model-requested tool call. Returns null for an unknown tool. */
+export const COI_TOOL: FunctionDeclaration = {
+  name: 'compare_medical_coi',
+  description:
+    'Compare the medical-card cost of insurance (COI) CURVES of AIA, Great Eastern, Allianz, HLA and Prudential: how high the COI is, how fast it rises with age, which one spikes, and what it costs by age 80. ' +
+    'Call this when the advisor asks about COI, how fast cost rises, premium sustainability at 80, repricing risk, or which medical card gets expensive. ' +
+    'Do NOT call it until you know age, gender and smoker status. Never state a COI figure the tool did not return.',
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      age:    { type: SchemaType.INTEGER, description: 'Age next birthday of the life assured, 1-79.' },
+      gender: { type: SchemaType.STRING, format: 'enum', description: "'M' or 'F'.", enum: ['M', 'F'] },
+      smoker: { type: SchemaType.BOOLEAN, description: 'True if the life assured smokes. Never guess it.' },
+    },
+    required: ['age', 'gender', 'smoker'],
+  },
+};
+
 export async function runAssistantTool(
   call: FunctionCall,
   ctx: { config: AdvisorConfig; clientId?: string; clientName?: string },
 ): Promise<object | null> {
   if (call.name === 'compare_premiums') {
     return runPremiumComparison((call.args ?? {}) as Record<string, unknown>);
+  }
+  if (call.name === 'compare_medical_coi') {
+    return compareMedicalCoi((call.args ?? {}) as Record<string, unknown>);
   }
   if (call.name === 'analyse_coverage_gap') {
     return runCoverageGap((call.args ?? {}) as Record<string, unknown>, ctx);
@@ -800,6 +821,7 @@ export async function runAssistantTool(
 }
 
 /** Prompt rules for the gap tool. */
+
 export const GAP_TOOL_RULES = `COVERAGE GAP ("is that enough?", "what's lacking?", "is this client underinsured?"):
 - Use the analyse_coverage_gap tool. NEVER work the shortfall out yourself, and never state a benchmark figure the tool did not return.
 - The firm's benchmark is life ${GAP_BENCHMARK.lifeMultiple}x annual income, CI ${GAP_BENCHMARK.ciMultiple}x annual income, and medical of at least RM1,000,000 annual limit.
@@ -822,3 +844,10 @@ export const PREMIUM_TOOL_RULES = `PREMIUM COMPARISONS (compare_premiums tool):
 - A quote flagged verified:true is a confirmed official quotation — label it as such. Everything else is an ESTIMATE, never a quotation; include the tool's disclaimer, and carry each insurer's own caveat when you mention that insurer.
 - If the tool returns anything in "excluded", say which insurers were excluded and why. Never quietly drop them from the comparison.
 - The comparison informs the advisor's recommendation; the advisor decides and must confirm figures with the insurer before issue. Never address the end client.`;
+
+export const COI_TOOL_RULES = `MEDICAL COI COMPARISON (compare_medical_coi tool). This is how the firm judges a medical policy: lowest COI across the age range, the slower rise, and sustainability at age 80.
+- Need age, gender and smoker status; ask for what is missing in one short message. Never assume them. COI differs a lot by gender.
+- Build the answer from the tool's "findings" sentences: quote them as written; never recompute, merge or re-attribute a percentage (a spike is ONE year's step-up at ONE age - never say "between ages 65 and 70"). A low rise multiple on an already-high COI is not "gradual" or cheap: always lead with the absolute level. Every COI figure must come from the tool. Present, from the result: (1) who is cheapest at age 80 and cumulatively to 80, (2) who rises most slowly, (3) WHICH insurer spikes and at what age (biggestJump), (4) a compact table of annual COI at the checkpoint ages.
+- Say plainly that COI is only one lens: the medical benefit (annual limit, room & board, co-insurance) is compared FIRST. Mention each insurer's caveat, especially extrapolated ages and that Prudential is non-smoker only.
+- Describe what the numbers show; do not say a company is "bad". Never address the end client.`;
+

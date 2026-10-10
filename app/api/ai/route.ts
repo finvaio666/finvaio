@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote } from '@/lib/premiumIntent';
+import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
+import { compareMedicalCoi } from '@/lib/coiComparison';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listTasks } from '@/lib/tasks';
@@ -17,6 +18,8 @@ import {
   SHARED_DATA_RULES,
   PREMIUM_TOOL,
   PREMIUM_TOOL_RULES,
+  COI_TOOL,
+  COI_TOOL_RULES,
   GAP_TOOL,
   GAP_TOOL_RULES,
 } from '@/lib/assistantContext';
@@ -339,6 +342,8 @@ ${SHARED_DATA_RULES}
 
 ${PREMIUM_TOOL_RULES}
 
+${COI_TOOL_RULES}
+
 ${GAP_TOOL_RULES}`;
 
 export async function POST(req: NextRequest) {
@@ -403,9 +408,15 @@ export async function POST(req: NextRequest) {
     // words the result, so it can't ask for a sum assured or mistake the
     // question for a coverage-gap analysis.
     let precomputedQuote = false;
-    const quoteReq = detectQuoteRequest(
-      (messages as { role: string; content: string }[]).filter(m => m.role === 'user').map(m => m.content),
-    );
+    const userTexts = (messages as { role: string; content: string }[]).filter(m => m.role === 'user').map(m => m.content);
+    // A COI question is checked first: it mentions "medical" and would otherwise
+    // read as a standard-package quote request.
+    const coiReq = detectCoiRequest(userTexts);
+    if (coiReq) {
+      const coi = compareMedicalCoi({ ...coiReq });
+      if (coi.ok) { parts.push(formatPrecomputedCoi(coi)); precomputedQuote = true; }
+    }
+    const quoteReq = precomputedQuote ? null : detectQuoteRequest(userTexts);
     if (quoteReq) {
       const quote = priceDetectedRequest(quoteReq);
       if (quote.ok) { parts.push(formatPrecomputedQuote(quote)); precomputedQuote = true; }
@@ -439,7 +450,7 @@ export async function POST(req: NextRequest) {
         const model = genAI.getGenerativeModel({
           model: modelId,
           systemInstruction: systemPrompt,
-          ...(toolCtx && !precomputedQuote ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL] }] } : {}),
+          ...(toolCtx && !precomputedQuote ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL, COI_TOOL] }] } : {}),
         });
         const chat   = model.startChat({ history });
 

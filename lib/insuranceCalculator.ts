@@ -3,7 +3,7 @@
 // illustrations exactly at quoted grid ages (about 0.5% off-grid). FIGURES ARE ESTIMATES,
 // not official quotations. Do not edit by hand - regenerate from _aria_calc_data.json.
 
-import { pwypPremium } from './pruModel';
+import { pwypPremium, pruMedCoiAnnual } from './pruModel';
 
 export type Gender = 'M' | 'F';
 type ModelInsurer = 'AIA' | 'GE' | 'Allianz' | 'HLA';
@@ -150,4 +150,22 @@ export function estimateAll(age: number, gender: Gender, smoker: boolean, lifeSA
     .map((i) => estimate(i, age, gender, smoker, lifeSA, ciSA, waiver))
     .filter((r): r is PremiumResult => r !== null)
     .sort((a, b) => a.annual - b.annual);
+}
+
+// ── Medical COI curves (for the COI-comparison tool) ──────────────────────────
+// The medical-card charge per year at each attained age, as the pricing engine
+// itself reads it (banded insurers step, the rest interpolate). Prudential is
+// non-smoker only and comes from its own model.
+export function medicalCoiAnnual(insurer: Insurer, age: number, gender: Gender, smoker: boolean): number | null {
+  if (insurer === 'Prudential') return smoker ? null : pruMedCoiAnnual(gender, age);
+  const d = DATA[insurer]; const T = d.master[gender + (smoker ? 'S' : 'N')];
+  if (!T) return null;
+  return d.medBanded ? stepx(T.med, age) : llin(T.med, age);
+}
+
+/** Last age the insurer's own quotes cover; beyond it the curve is extrapolated. */
+export function medicalCoiLastQuotedAge(insurer: Insurer, gender: Gender, smoker: boolean): number | null {
+  if (insurer === 'Prudential') return 80;
+  const T = DATA[insurer].master[gender + (smoker ? 'S' : 'N')];
+  return T ? Math.max(...Object.keys(T.med).map(Number)) : null;
 }

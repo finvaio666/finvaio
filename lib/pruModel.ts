@@ -231,3 +231,9 @@ export function pwypPremium(inp: PwypInput): PruEstimate | null {
   const load = PWYP_LOAD[`${fam}|${inp.gender}`] ?? PWYP_LOAD.default;
   return { monthly: Math.max(PWYP_MIN_PREMIUM, Math.ceil(be * load)), breakEven: be, smokerAdjusted: false };
 }
+
+/** Annual PRUMillion Med 2.0 (Plan 200) charge at age next birthday - the medical COI curve. */
+export function pruMedCoiAnnual(g: PruGender, anb: number): number | null {
+  const tbl = PWYP_RIDER_RATES[`PRUMillion Med 2.0|${g}|flat`];
+  return tbl ? rateAt(tbl, anb) : null;
+}

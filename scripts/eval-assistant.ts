@@ -22,7 +22,8 @@
 import { SignJWT } from 'jose';
 import { CASES, type EvalCase } from '../evals/assistant-cases';
 import { parseAnnualLimit, runCoverageGap, matchHoldingNames, looksLikeTaskRequest, GAP_BENCHMARK } from '../lib/assistantContext';
-import { detectQuoteRequest, priceDetectedRequest } from '../lib/premiumIntent';
+import { detectQuoteRequest, priceDetectedRequest, detectCoiRequest } from '../lib/premiumIntent';
+import { compareMedicalCoi } from '../lib/coiComparison';
 import { estimateAll } from '../lib/insuranceCalculator';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 
@@ -112,6 +113,15 @@ async function unitLayer(): Promise<void> {
   check('quote: contradictory gender is never guessed', qr('45 years old, male and female, non smoker, life insurance') === null);
   const std = priceDetectedRequest({ age: 45, gender: 'M', smoker: false });
   check('quote: standard package gives GE 709 / Prudential 746 / AIA 876', std.ok && std.samples?.map(x => x.monthly).join() === '709,746,876', JSON.stringify(std.samples));
+
+  // COI comparison.
+  const coi = compareMedicalCoi({ age: 45, gender: 'M', smoker: false });
+  check('coi: all five insurers compared for a 45M non-smoker', coi.ok && coi.rows?.length === 5, JSON.stringify(coi.rankings));
+  check('coi: GE cheapest at 80, HLA dearest (engine tables)', coi.rankings?.lowestAt80[0] === 'GE' && coi.rankings?.lowestAt80.at(-1) === 'HLA', JSON.stringify(coi.rankings?.lowestAt80));
+  check('coi: smoker excludes Prudential', compareMedicalCoi({ age: 45, gender: 'M', smoker: true }).excluded?.some(e => e.insurer === 'Prudential') === true);
+  check('coi: age 80+ refused', compareMedicalCoi({ age: 80, gender: 'M', smoker: false }).ok === false);
+  check('coi intent: needs gender and smoker', detectCoiRequest(['whose COI spikes faster at 45?']) === null);
+  check('coi intent: complete request detected', detectCoiRequest(['45 year old male non-smoker, whose COI spikes faster?'])?.age === 45);
 
   // Intent routing.
   check('intent: analysis question is not a task', looksLikeTaskRequest('no record with us, is that enough cover?') === false);
