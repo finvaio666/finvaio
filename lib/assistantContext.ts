@@ -24,6 +24,7 @@ import { listMeetings } from './meetingNotes';
 import { listFunds, listPlans } from './products';
 import { listPolicies } from './insurance';
 import * as kbEntries from './repos/knowledgeEntries';
+import { listHouseStructuredTerms } from './repos/portfolio';
 
 export const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
@@ -303,6 +304,59 @@ export async function lookupCaseStudies(question: string): Promise<string> {
   } catch { return ''; }
 }
 
+// ── House activity — what the firm is actually running right now ─────────────
+// Answers "what FCNs do we do / which underlyings / what coupon levels" from the
+// live book, so there is nothing for anyone to write first. Output policy (Sky,
+// 2026-08-22): names and ranges only — NEVER client names, client counts,
+// per-issuer counts or any amount. Those are sensitive business numbers and
+// don't help an advisor decide anything.
+const HOUSE_TRIGGER =
+  /\b(fcn|fcns|structured|note|notes|autocall\w*|coupon|knock.?(?:in|out)|issuer|underlying\w*|what (?:are|do) we (?:run|do|offer|have)|firm (?:has|is) (?:done|running)|house)\b|結構|票息|發行商|標的/i;
+
+const ISSUER_CANON: [RegExp, string][] = [
+  [/marex/i, 'Marex'], [/natixis/i, 'Natixis'], [/barclays/i, 'Barclays'], [/ubs/i, 'UBS'],
+  [/nomura/i, 'Nomura'], [/csi|citic/i, 'CSI (CITIC Securities guaranteed)'],
+  [/sg issuer|societe generale/i, 'Societe Generale'], [/citigroup|cgmfl/i, 'Citi'],
+  [/maybank|mbib/i, 'Maybank Investment Bank'],
+];
+
+function underlyingKey(name: string): string {
+  const m = name.match(/\(([A-Za-z0-9.=\-]+)\)\s*$/);
+  return (m ? m[1] : name).toUpperCase();
+}
+
+export async function lookupHouseActivity(question: string): Promise<string> {
+  if (!HOUSE_TRIGGER.test(question)) return '';
+  try {
+    const notes = await listHouseStructuredTerms();
+    if (notes.length === 0) return '';
+
+    const freq = new Map<string, number>();
+    const issuers = new Set<string>();
+    const coupons: number[] = [];
+    let stepDown = 0;
+    for (const n of notes) {
+      const d = n.underlyingDetails!;
+      for (const u of new Set((d.underlyings ?? []).map(x => underlyingKey(x.name)))) freq.set(u, (freq.get(u) ?? 0) + 1);
+      const iss = ISSUER_CANON.find(([re]) => re.test(n.institution));
+      if (iss) issuers.add(iss[1]); else if (n.institution) issuers.add(n.institution);
+      if (typeof d.couponRatePa === 'number' && d.couponRatePa > 0) coupons.push(d.couponRatePa);
+      const pcts = (d.schedule ?? []).map(s => s.triggerPct).filter((x): x is number => typeof x === 'number');
+      if (new Set(pcts).size > 1) stepDown++;
+    }
+    const ranked = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    const lines = ['\n# HOUSE ACTIVITY — what the firm is running right now (live structured-note book; ranking and ranges only, deliberately no counts, amounts or client data)'];
+    lines.push(`Underlyings, most-used first: ${ranked.join(', ')}.`);
+    lines.push(`Issuers the firm works with (alphabetical, no ranking): ${[...issuers].sort().join(', ')}.`);
+    if (coupons.length) {
+      const avg = coupons.reduce((s, x) => s + x, 0) / coupons.length;
+      lines.push(`Coupon level on current notes: roughly ${Math.min(...coupons).toFixed(1)}% – ${Math.max(...coupons).toFixed(1)}% p.a., typical ~${avg.toFixed(0)}% p.a. (high coupons come from volatile single-stock underlyings and carry knock-in risk).`);
+    }
+    if (stepDown > 0) lines.push('Structure: a meaningful share of notes are step-down autocalls (the KO barrier lowers each observation date); others use a flat barrier.');
+    return lines.join('\n');
+  } catch { return ''; }
+}
+
 /**
  * Everything that isn't tied to one selected client: mentioned-client profiles,
  * holdings search, the company catalogue and the firm's case-study memory. Run
@@ -314,19 +368,21 @@ export async function buildSharedContext(
   question: string,
   clients: ClientRecord[],
 ): Promise<string> {
-  const [clientData, fundData, kbData, caseData] = await Promise.all([
+  const [clientData, fundData, kbData, caseData, houseData] = await Promise.all([
     lookupMentionedClients(config, question, clients).catch(() => ''),
     lookupFundHoldings(config, question, clients).catch(() => ''),
     lookupKnowledgeBase(config, question).catch(() => ''),
     lookupCaseStudies(question).catch(() => ''),
+    lookupHouseActivity(question).catch(() => ''),
   ]);
-  return [clientData, fundData, kbData, caseData].filter(Boolean).join('\n');
+  return [clientData, fundData, kbData, caseData, houseData].filter(Boolean).join('\n');
 }
 
 /** Prompt rules for the sections buildSharedContext produces. */
 export const SHARED_DATA_RULES = `- When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If SEVERAL funds match the name the advisor used (e.g. two "Greater China" funds), present each fund's holders under its own heading and note they may want to be more specific. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
 - COMPANY KNOWLEDGE BASE: for questions about which fund/insurance plan is best, comparisons between products, returns, sum assured, premiums, EPF approval, risk level, or "what should I recommend" — answer FIRST from the "COMPANY KNOWLEDGE BASE" section. This is the firm's own curated, admin-maintained catalogue and is authoritative — treat it as the house view, not just background info. Only bring in general market/product knowledge if the catalogue doesn't cover what was asked, and say so explicitly when you do (e.g. "not in our catalogue, but generally…"). If the catalogue section says it's empty, tell the advisor no funds/plans have been added yet rather than answering from general knowledge as if it were house data.
 - FIRM KNOWLEDGE BASE (FAQ & CASE STUDIES): this is real, hard-won experience from this firm's own advisors — treat it as more authoritative than general market knowledge, and ALWAYS attribute it ("this is X's case from the firm's knowledge base"), so the advisor knows it is a colleague's real experience and can go ask them for detail. An entry marked "⭐ BIG LESSON" is a firm-level lesson: surface it whenever it is even loosely relevant, and never contradict it.
+- HOUSE ACTIVITY: for questions about what the firm runs / has done in FCNs or structured notes (which underlyings, which issuers, typical coupon), answer from the "HOUSE ACTIVITY" section. Report only what it states. NEVER invent or infer client names, how many clients or notes, per-issuer shares, or any amount — if asked for those, say the knowledge base deliberately doesn't expose them. A high coupon is never a reason to suggest an FCN to a low-risk client (see the risk-tier rule).
 - ⚠️ RISK-TIER SAFETY RULE (this overrides any impulse to be helpful with a bigger number). When the advisor's question signals LOW RISK — "low risk", "conservative", "capital preservation", "safe", "FD alternative", "定存", "保守", "穩健", "低風險" — you must answer ONLY from instruments in that risk tier (cash, government bonds, investment-grade corporate bonds). NEVER present a higher-yielding product (structured notes/FCN, equities, leveraged products) as a way to "hit the target return". FCNs carry knock-in risk: in the worst case the client takes delivery of a collapsed stock and loses a large part of their principal — they are NOT a low-risk instrument no matter how attractive the coupon looks. If the firm's low-risk holdings cannot reach the return the client wants, SAY SO PLAINLY and explain the gap. An honest "we can't reach that at this risk level" is the correct answer; reaching up the risk ladder to produce a nicer number is a harmful one. If you do mention a higher-risk instrument for context, you must state explicitly that it sits in a different risk tier and name the specific risk mechanism.
 - ⚠️ DEFAULTED / DISTRESSED POSITIONS. Before citing any holding as a live option, check its state — a bond can still read as "Active" with no maturity date and yet be in default. If the current value is drastically below cost, treat it as defaulted/distressed: never present it as an available yield, and if it is relevant, cite it as a cautionary case with its recovery rate. (Concrete precedent in the firm: a 6.3% corporate bond that defaulted and recovered ~0.1% of capital.)
 - You describe what the firm has done and what it currently runs; you never tell the advisor what their client should buy. Investment recommendations are the licensed advisor's call, made through the firm's own suitability and compliance process.`;

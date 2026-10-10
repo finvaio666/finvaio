@@ -200,3 +200,24 @@ export async function deleteHolding(config: AdvisorConfig, id: string): Promise<
     .is('deleted_at', null);
   if (error) throw new Error(`portfolio delete failed: ${error.message}`);
 }
+
+/**
+ * Every live structured-product holding across the WHOLE firm, deliberately not
+ * advisor-scoped — and deliberately stripped to terms only (no client, no value,
+ * no cost). Feeds the "what is the firm running" lookup, which must be able to
+ * tell any FA about the house book without leaking who holds what or how much.
+ * Matches by ilike so the singular/plural asset-class drift ("Structured
+ * Product(s)") can't silently empty it.
+ */
+export async function listHouseStructuredTerms(): Promise<{ institution: string; underlyingDetails: PortfolioHolding['underlyingDetails'] }[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE)
+    .select('institution, status, underlying_details')
+    .is('deleted_at', null)
+    .ilike('asset_class', '%structured%')
+    .not('status', 'ilike', '%redeem%');
+  if (error) throw new Error(`house structured list failed: ${error.message}`);
+  return (data as { institution: string | null; underlying_details: PortfolioHolding['underlyingDetails'] }[])
+    .filter(r => r.underlying_details)
+    .map(r => ({ institution: r.institution ?? '', underlyingDetails: r.underlying_details }));
+}
