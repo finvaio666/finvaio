@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listUsageSince, type UsageRecord } from '@/lib/repos/aiUsage';
+import { klDayStartIso } from '@/lib/aiGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,9 @@ export interface AiUsageReport {
   byFeature: UsageGroup[];
   byModel:   UsageGroup[];
   recent:    UsageRecord[];
+  /** Every question asked on `questionsDate` (Malaysia day), newest first, with who/what/cost and whether it was blocked. */
+  questionsDate: string;
+  questions: UsageRecord[];
   note:      string;
 }
 
@@ -49,15 +53,23 @@ export async function GET(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   if (config?.role !== 'Admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
+  const dateParam = new URL(req.url).searchParams.get('date') || '';
   const days = Math.min(Math.max(Number(new URL(req.url).searchParams.get('days')) || 30, 1), 365);
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const rows = await listUsageSince(since);
+  // The question log can reach further back than the summary window.
+  const klToday = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const qDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : klToday;
+  const rows = await listUsageSince(qDate < since ? qDate : since);
 
-  const realRows = rows.filter(r => !r.isTest), testRows = rows.filter(r => r.isTest);
+  // The Malaysia day [00:00, 24:00) the question log is showing.
+  const dayStart = klDayStartIso(new Date(`${qDate}T12:00:00+08:00`));
+  const dayEnd = new Date(new Date(dayStart).getTime() + 24 * 3600_000).toISOString();
+  const summaryRows = rows.filter(r => r.date >= since);
+  const realRows = summaryRows.filter(r => !r.isTest), testRows = summaryRows.filter(r => r.isTest);
   const real = zero(), test = zero();
   realRows.forEach(r => add(real, r)); testRows.forEach(r => add(test, r));
 
-  const byDay = group(rows, r => r.date).map(g => ({
+  const byDay = group(summaryRows, r => r.date).map(g => ({
     ...round(g),
     testCostUsd: Math.round(testRows.filter(r => r.date === g.key).reduce((s, r) => s + r.estCostUsd, 0) * 10000) / 10000,
   })).sort((a, b) => b.key.localeCompare(a.key));
@@ -68,8 +80,10 @@ export async function GET(req: NextRequest) {
     byDay,
     byAdvisor: group(realRows, r => r.advisor).map(round).sort((a, b) => b.costUsd - a.costUsd),
     byFeature: group(realRows, r => r.feature).map(round).sort((a, b) => b.costUsd - a.costUsd),
-    byModel:   group(rows, r => r.model || 'unknown').map(round).sort((a, b) => b.costUsd - a.costUsd),
-    recent: rows.slice(0, 40).map(r => ({ ...r, question: r.question.slice(0, 160) })),
+    byModel:   group(summaryRows, r => r.model || 'unknown').map(round).sort((a, b) => b.costUsd - a.costUsd),
+    recent: summaryRows.slice(0, 40).map(r => ({ ...r, question: r.question.slice(0, 160) })),
+    questionsDate: qDate,
+    questions: rows.filter(r => r.createdAt >= dayStart && r.createdAt < dayEnd),
     note: 'Costs are list-price estimates of the Gemini calls FINVA made, not the Google invoice. Calls made on the free tier show the cost they would have had on the paid tier. Failed or rate-limited calls are not logged.',
   };
   return NextResponse.json(report);

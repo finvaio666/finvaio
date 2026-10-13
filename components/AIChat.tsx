@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import TokenMeter, { type Quota } from '@/components/TokenMeter';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -37,6 +38,7 @@ export default function AIChat({
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [quota, setQuota] = useState<Quota | null>(null);
   const [history, setHistory] = useState<{ role: string; content: string }[]>([]);
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastSeq = useRef<number>(-1);
@@ -70,6 +72,7 @@ export default function AIChat({
         body: JSON.stringify({ messages: newHistory, clientName: clientName ?? null, clientId: clientId ?? null }),
       });
       const data = await res.json();
+      if (data.quota) setQuota(data.quota);
       let reply = data.content;
       if (!reply) {
         // Show a clean error message — strip raw JSON/stack traces
@@ -159,6 +162,8 @@ export default function AIChat({
           </div>
         )}
       </div>
+
+      <div style={{ padding: '0 14px' }}><TokenMeter quota={quota} compact /></div>
 
       <div className="ai-input-area">
         <input

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isEvalRequest } from '@/lib/evalTag';
-import { guardQuestion } from '@/lib/aiGuard';
+import { guardQuestion, quotaStatus } from '@/lib/aiGuard';
 import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
 import { compareMedicalCoi } from '@/lib/coiComparison';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -376,7 +376,7 @@ export async function POST(req: NextRequest) {
         hasClient: Boolean((typeof clientName === 'string' && clientName.trim()) || (typeof clientId === 'string' && clientId.trim())),
         isEval: isEvalRequest(req),
       });
-      if (!gate.allowed) return NextResponse.json({ content: gate.message, blocked: gate.reason });
+      if (!gate.allowed) return NextResponse.json({ content: gate.message, blocked: gate.reason, quota: await quotaStatus(config.name).catch(() => null) });
     }
 
     // ── Task intents: "mark X done" / "remind me to …" ──────────────────────
@@ -528,7 +528,8 @@ export async function POST(req: NextRequest) {
     if (!content) throw lastErr;
 
     await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content, model: usedModel, isTest: isEvalRequest(req) });
-    return NextResponse.json({ content });
+    const quota = config ? await quotaStatus(config.name).catch(() => null) : null;
+    return NextResponse.json({ content, quota });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('AI route error:', msg);

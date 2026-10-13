@@ -158,3 +158,18 @@ export async function guardQuestion(p: {
   }
   return { allowed: true };
 }
+
+// ── What the FA sees ──────────────────────────────────────────────────────────
+export interface QuotaStatus {
+  used: number;
+  limit: number;
+  remaining: number;
+  /** ISO instant of the next 12:00 am Malaysia time, when the allowance refreshes. */
+  resetsAt: string;
+}
+
+export async function quotaStatus(advisor: string): Promise<QuotaStatus> {
+  const [limit, used] = await Promise.all([dailyLimitFor(advisor), tokensUsedToday(advisor)]);
+  const resetsAt = new Date(new Date(klDayStartIso()).getTime() + 24 * 3600_000).toISOString();
+  return { used, limit, remaining: Math.max(limit - used, 0), resetsAt };
+}

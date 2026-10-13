@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { logAiUsage } from '@/lib/aiUsage';
 import { isEvalRequest } from '@/lib/evalTag';
-import { guardQuestion } from '@/lib/aiGuard';
+import { guardQuestion, quotaStatus } from '@/lib/aiGuard';
 import {
   MODEL_FALLBACKS,
   fetchClients,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   // ── Gate: daily token limit + work-only filter (lib/aiGuard.ts) ────────────
   if (config) {
     const gate = await guardQuestion({ advisorName: config.name, question: body.question, apiKey: key, isEval: isEvalRequest(req) });
-    if (!gate.allowed) return NextResponse.json({ answer: gate.message, blocked: gate.reason });
+    if (!gate.allowed) return NextResponse.json({ answer: gate.message, blocked: gate.reason, quota: await quotaStatus(config.name).catch(() => null) });
   }
 
   // ── Task intents: "mark X done" / "remind me to …" ─────────────────────────
@@ -99,7 +99,8 @@ ${sharedCtx}`;
     }
     if (!answer) throw lastErr ?? new Error('All models failed');
     await logAiUsage({ advisorName, feature: 'Ask FINVA', usage, question: body.question, model: usedModel, isTest: isEvalRequest(req) });
-    return NextResponse.json({ answer });
+    const quota = config ? await quotaStatus(config.name).catch(() => null) : null;
+    return NextResponse.json({ answer, quota });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `AI error: ${msg}` }, { status: 500 });

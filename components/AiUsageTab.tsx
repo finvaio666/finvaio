@@ -116,23 +116,76 @@ function LimitsPanel() {
   );
 }
 
+/** Every question asked on one Malaysia day: who, what, how much it cost, and whether FINVA blocked it. */
+function QuestionLog({ report, date, onDate }: { report: AiUsageReport; date: string; onDate: (d: string) => void }) {
+  const [advisor, setAdvisor] = useState('');
+  const [blockedOnly, setBlockedOnly] = useState(false);
+  const [testToo, setTestToo] = useState(false);
+
+  const all = report.questions.filter(q => testToo || !q.isTest);
+  const advisors = [...new Set(all.map(q => q.advisor))].sort();
+  const shown = all.filter(q => (!advisor || q.advisor === advisor) && (!blockedOnly || q.feature.startsWith('Blocked')));
+  const blockedCount = all.filter(q => q.feature.startsWith('Blocked')).length;
+  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' });
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Questions asked</span>
+        <input type="date" value={date} onChange={e => e.target.value && onDate(e.target.value)}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)' }} />
+        <select value={advisor} onChange={e => setAdvisor(e.target.value)}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)' }}>
+          <option value="">All FAs</option>
+          {advisors.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <label style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input type="checkbox" checked={blockedOnly} onChange={e => setBlockedOnly(e.target.checked)} /> Blocked only ({blockedCount})
+        </label>
+        <label style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input type="checkbox" checked={testToo} onChange={e => setTestToo(e.target.checked)} /> Include test runs
+        </label>
+        <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 'auto' }}>{shown.length} question{shown.length === 1 ? '' : 's'} · Malaysia time</span>
+      </div>
+      {shown.length === 0 && <div style={{ padding: 14, fontSize: 12, color: 'var(--text3)' }}>No questions on this day.</div>}
+      {shown.map(q => {
+        const blocked = q.feature.startsWith('Blocked');
+        return (
+          <div key={q.id} style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', fontSize: 12, display: 'flex', gap: 10, alignItems: 'baseline' }}>
+            <span style={{ color: 'var(--text3)', minWidth: 52 }}>{fmtTime(q.createdAt)}</span>
+            <span style={{ color: 'var(--text2)', minWidth: 100, fontWeight: 600 }}>{q.advisor}</span>
+            <span style={{ minWidth: 118, color: blocked ? 'var(--red)' : 'var(--text3)' }}>{blocked ? `🚫 ${q.feature.replace('Blocked: ', 'blocked: ')}` : q.feature}{q.isTest ? ' · test' : ''}</span>
+            <span style={{ color: 'var(--text)', flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{q.question || '—'}</span>
+            <span style={{ color: 'var(--text2)', minWidth: 58, textAlign: 'right' }}>{num(q.totalTokens)}</span>
+            <span style={{ fontWeight: 600, color: 'var(--text)', minWidth: 66, textAlign: 'right' }}>{usd(q.estCostUsd)}</span>
+          </div>
+        );
+      })}
+      <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
+        Questions are stored as typed (first 280 characters) and may mention client names, so this view is Admin-only. Answers are not stored.
+      </div>
+    </div>
+  );
+}
+
 const sub = (t: UsageTotals) => `${num(t.calls)} calls · ${num(t.totalTokens)} tokens`;
 
 /** Company-wide AI usage and estimated cost. Real FA use and test runs are kept apart. */
 export default function AiUsageTab() {
   const [days, setDays] = useState(30);
+  const [qDate, setQDate] = useState(() => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10));
   const [report, setReport] = useState<AiUsageReport | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setError('');
     try {
-      const res = await fetch(`/api/admin/ai-usage?days=${days}`);
+      const res = await fetch(`/api/admin/ai-usage?days=${days}&date=${qDate}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load AI usage');
       setReport(json);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load AI usage'); }
-  }, [days]);
+  }, [days, qDate]);
   useEffect(() => { load(); }, [load]);
 
   if (error)   return <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{error}</div>;
@@ -160,6 +213,8 @@ export default function AiUsageTab() {
       </div>
 
       <LimitsPanel />
+
+      <QuestionLog report={report} date={qDate} onDate={setQDate} />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <GroupTable title="By FA (real use)" rows={report.byAdvisor} keyLabel="Advisor" />
