@@ -99,7 +99,8 @@ export function priceDetectedRequest(req: QuoteRequest): PremiumToolResult {
 export function formatPrecomputedQuote(result: PremiumToolResult): string {
   return [
     '\n# PRE-COMPUTED PREMIUM COMPARISON (run by the pricing engine before this answer — authoritative)',
-    'The advisor asked for a premium. Present THIS result; do not call any tool, do not ask for a sum assured, and do not alter any figure.',
+    'The advisor asked for a premium. Present THIS result first; do not call any tool, do not ask for a sum assured, and do not alter any figure.',
+    'THEN act as the firm\'s senior advisor, not a generic assistant: if the "FIRM KNOWLEDGE BASE" section above has guidance that fits this request (how to judge a medical card, what to check before recommending, which insurers the firm considers first), apply it and attribute it to its contributor ("Sky\'s approach: …"). Tell the FA what to verify next (for a medical card: annual limit, Room & Board, co-insurance — and warn that co-insurance is the item new FAs most often forget to explain to the client), and offer the medical COI comparison (how fast each insurer\'s cost rises, cost at age 80). Keep any insurer-support remarks diplomatic. Do not fall back on a generic financial-planning checklist when firm guidance exists.',
     JSON.stringify(result),
   ].join('\n');
 }
