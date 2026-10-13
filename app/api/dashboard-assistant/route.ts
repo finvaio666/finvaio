@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { logAiUsage } from '@/lib/aiUsage';
+import { isEvalRequest } from '@/lib/evalTag';
 import {
   MODEL_FALLBACKS,
   fetchClients,
@@ -78,17 +79,19 @@ ${sharedCtx}`;
     let answer = '';
     let lastErr: unknown;
     let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+    let usedModel = '';
     for (const modelId of MODEL_FALLBACKS) {
       try {
         const model = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
         const res   = await model.generateContent(body.question);
         answer = res.response.text();
         usage  = res.response.usageMetadata;
+        usedModel = modelId;
         break;
       } catch (e) { lastErr = e; continue; }
     }
     if (!answer) throw lastErr ?? new Error('All models failed');
-    await logAiUsage({ advisorName, feature: 'Ask FINVA', usage, question: body.question });
+    await logAiUsage({ advisorName, feature: 'Ask FINVA', usage, question: body.question, model: usedModel, isTest: isEvalRequest(req) });
     return NextResponse.json({ answer });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

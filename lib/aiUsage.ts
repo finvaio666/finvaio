@@ -10,6 +10,7 @@
 
 import { Client } from '@notionhq/client';
 import * as sbUsage from './repos/aiUsage';
+import { estimateCostUsd, thinkingTokens } from './aiPricing';
 
 export interface AiUsage {
   promptTokenCount?: number;
@@ -26,6 +27,8 @@ export async function logAiUsage(opts: {
   feature: string;          // 'Ask FINVA' | 'Client Chat' | 'Draft Reply' | ...
   usage?: AiUsage;
   question?: string;
+  model?: string;     // the model that actually answered (fallbacks are priced differently)
+  isTest?: boolean;   // eval / dev test run - kept out of real-usage totals
 }): Promise<void> {
   const input  = opts.usage?.promptTokenCount ?? 0;
   const output = opts.usage?.candidatesTokenCount ?? 0;
@@ -47,6 +50,10 @@ export async function logAiUsage(opts: {
         inputTokens:  input,
         outputTokens: output,
         totalTokens:  total,
+        isTest:       opts.isTest ?? false,
+        model:        opts.model,
+        thinkingTokens: thinkingTokens(input, output, total),
+        estCostUsd:   estimateCostUsd(opts.model, input, output, total),
       });
       return;
     }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isEvalRequest } from '@/lib/evalTag';
 import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
 import { compareMedicalCoi } from '@/lib/coiComparison';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -444,6 +445,7 @@ export async function POST(req: NextRequest) {
     type Usage = { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
     let content = '';
     let usage: Usage | undefined;
+    let usedModel = '';
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
@@ -493,6 +495,7 @@ export async function POST(req: NextRequest) {
 
         content = result.response.text();
         usage   = acc;
+        usedModel = modelId;
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -512,7 +515,7 @@ export async function POST(req: NextRequest) {
     }
     if (!content) throw lastErr;
 
-    await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content });
+    await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content, model: usedModel, isTest: isEvalRequest(req) });
     return NextResponse.json({ content });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

@@ -24,6 +24,7 @@ import { CASES, type EvalCase } from '../evals/assistant-cases';
 import { parseAnnualLimit, runCoverageGap, matchHoldingNames, looksLikeTaskRequest, GAP_BENCHMARK } from '../lib/assistantContext';
 import { detectQuoteRequest, priceDetectedRequest, detectCoiRequest } from '../lib/premiumIntent';
 import { compareMedicalCoi } from '../lib/coiComparison';
+import { EVAL_HEADER, evalSignature } from '../lib/evalTag';
 import { estimateAll } from '../lib/insuranceCalculator';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 
@@ -142,7 +143,7 @@ async function askOnce(cookie: string, c: EvalCase): Promise<{ content?: string;
   const messages = [...(c.history ?? []), { role: 'user', content: c.question }];
   const res = await fetch(`${BASE}/api/ai`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', cookie },
+    headers: { 'Content-Type': 'application/json', cookie, [EVAL_HEADER]: evalSignature() },
     body: JSON.stringify({ messages, clientId: c.client?.id ?? null, clientName: c.client?.name ?? null }),
   });
   const text = await res.text();
