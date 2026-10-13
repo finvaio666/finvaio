@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { logAiUsage } from '@/lib/aiUsage';
 import { isEvalRequest } from '@/lib/evalTag';
+import { guardQuestion } from '@/lib/aiGuard';
 import {
   MODEL_FALLBACKS,
   fetchClients,
@@ -38,6 +39,12 @@ export async function POST(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   const advisorName = config?.name || 'the advisor';
   const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
+
+  // ── Gate: daily token limit + work-only filter (lib/aiGuard.ts) ────────────
+  if (config) {
+    const gate = await guardQuestion({ advisorName: config.name, question: body.question, apiKey: key, isEval: isEvalRequest(req) });
+    if (!gate.allowed) return NextResponse.json({ answer: gate.message, blocked: gate.reason });
+  }
 
   // ── Task intents: "mark X done" / "remind me to …" ─────────────────────────
   if (config) {

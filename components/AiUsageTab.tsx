@@ -45,6 +45,77 @@ function GroupTable({ title, rows, keyLabel }: { title: string; rows: UsageGroup
   );
 }
 
+interface LimitRow { advisor: string; usedToday: number; limit: number; isOverride: boolean }
+
+/** Daily token limit per advisor: usage so far today, and an Admin-editable limit. */
+function LimitsPanel() {
+  const [rows, setRows] = useState<LimitRow[] | null>(null);
+  const [defaultLimit, setDefaultLimit] = useState(0);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/ai-limits');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load limits');
+      setRows(json.advisors); setDefaultLimit(json.defaultLimit);
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Failed to load limits'); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(advisor: string, limit: number | null) {
+    setMsg('');
+    const res = await fetch('/api/admin/ai-limits', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ advisor, limit }),
+    });
+    const json = await res.json();
+    if (!res.ok) { setMsg(json.error || 'Could not save'); return; }
+    setDraft(d => { const n = { ...d }; delete n[advisor]; return n; });
+    load();
+  }
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>
+        Daily token limit per FA
+        <span style={{ fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>
+          default {num(defaultLimit)} tokens a day (about 25–30 answers) · resets at midnight Malaysia time · off-topic questions are blocked
+        </span>
+      </div>
+      {msg && <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--red)' }}>{msg}</div>}
+      {!rows && !msg && <div style={{ padding: 14, fontSize: 12, color: 'var(--text3)' }}>Loading…</div>}
+      {rows?.map(r => {
+        const pct = r.limit > 0 ? Math.min(100, Math.round((r.usedToday / r.limit) * 100)) : 100;
+        const val = draft[r.advisor] ?? String(r.limit);
+        return (
+          <div key={r.advisor} style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, flexWrap: 'wrap' }}>
+            <span style={{ minWidth: 130, color: 'var(--text)', fontWeight: 600 }}>{r.advisor}</span>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ height: 6, borderRadius: 99, background: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: pct >= 100 ? 'var(--red)' : '#F37338' }} />
+              </div>
+              <div style={{ color: 'var(--text3)', marginTop: 3 }}>{num(r.usedToday)} of {num(r.limit)} used today ({pct}%){r.isOverride ? ' · custom limit' : ''}</div>
+            </div>
+            <input
+              value={val} inputMode="numeric"
+              onChange={e => setDraft(d => ({ ...d, [r.advisor]: e.target.value.replace(/[^0-9]/g, '') }))}
+              style={{ width: 100, padding: '5px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)' }}
+            />
+            <button onClick={() => save(r.advisor, Number(val))} disabled={draft[r.advisor] === undefined}
+              style={{ padding: '5px 12px', fontSize: 12, borderRadius: 99, border: 'none', background: draft[r.advisor] === undefined ? 'var(--border)' : '#F37338', color: '#fff', cursor: 'pointer' }}>Save</button>
+            {r.isOverride && (
+              <button onClick={() => save(r.advisor, null)}
+                style={{ padding: '5px 12px', fontSize: 12, borderRadius: 99, border: '1px solid var(--border)', background: 'none', color: 'var(--text2)', cursor: 'pointer' }}>Use default</button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const sub = (t: UsageTotals) => `${num(t.calls)} calls · ${num(t.totalTokens)} tokens`;
 
 /** Company-wide AI usage and estimated cost. Real FA use and test runs are kept apart. */
@@ -87,6 +158,8 @@ export default function AiUsageTab() {
         <Card label="Test runs" value={usd(report.test.costUsd)} sub={sub(report.test)} />
         <Card label="Thinking tokens (real)" value={num(report.real.thinkingTokens)} sub="billed as output" />
       </div>
+
+      <LimitsPanel />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <GroupTable title="By FA (real use)" rows={report.byAdvisor} keyLabel="Advisor" />

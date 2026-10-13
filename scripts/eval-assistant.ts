@@ -25,6 +25,7 @@ import { parseAnnualLimit, runCoverageGap, matchHoldingNames, looksLikeTaskReque
 import { detectQuoteRequest, priceDetectedRequest, detectCoiRequest } from '../lib/premiumIntent';
 import { compareMedicalCoi } from '../lib/coiComparison';
 import { EVAL_HEADER, evalSignature } from '../lib/evalTag';
+import { quickWorkVerdict } from '../lib/aiGuard';
 import { estimateAll } from '../lib/insuranceCalculator';
 import type { AdvisorConfig } from '../lib/getAdvisorConfig';
 
@@ -123,6 +124,18 @@ async function unitLayer(): Promise<void> {
   check('coi: age 80+ refused', compareMedicalCoi({ age: 80, gender: 'M', smoker: false }).ok === false);
   check('coi intent: needs gender and smoker', detectCoiRequest(['whose COI spikes faster at 45?']) === null);
   check('coi intent: complete request detected', detectCoiRequest(['45 year old male non-smoker, whose COI spikes faster?'])?.age === 45);
+
+  // Work-only filter: the free first pass.
+  const wv = (q: string, h = false, c = false) => quickWorkVerdict(q, { hasHistory: h, hasClient: c });
+  check('guard: FCN question passes', wv('What FCNs is the firm running at the moment?') === 'work');
+  check('guard: insurance comparison passes', wv('Compare premiums for a 40 year old male') === 'work');
+  check('guard: recipe is blocked', wv('Give me a recipe for nasi lemak') === 'off');
+  check('guard: football is blocked', wv('Who will win the football match tonight?') === 'off');
+  check('guard: a work word beats a stray off-topic one', wv('Client likes football, which medical card suits him?') === 'work');
+  check('guard: unrelated question is left to the AI check', wv('Will it rain tomorrow in Penang?') === 'unclear');
+  check('guard: short follow-up in a conversation passes', wv('yes, male and non-smoker', true) === 'work');
+  check('guard: greeting passes', wv('hi') === 'work');
+  check('guard: Chinese work question passes', wv('這個客戶的保險夠不夠？') === 'work');
 
   // Intent routing.
   check('intent: analysis question is not a task', looksLikeTaskRequest('no record with us, is that enough cover?') === false);

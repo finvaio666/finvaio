@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isEvalRequest } from '@/lib/evalTag';
+import { guardQuestion } from '@/lib/aiGuard';
 import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
 import { compareMedicalCoi } from '@/lib/coiComparison';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -366,6 +367,17 @@ export async function POST(req: NextRequest) {
 
     const lastText: string = messages[messages.length - 1]?.content ?? '';
     const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
+
+    // ── Gate: daily token limit + work-only filter (lib/aiGuard.ts) ──────────
+    if (config && lastText.trim()) {
+      const gate = await guardQuestion({
+        advisorName: config.name, question: lastText, apiKey: GEMINI_KEY,
+        hasHistory: messages.length > 1,
+        hasClient: Boolean((typeof clientName === 'string' && clientName.trim()) || (typeof clientId === 'string' && clientId.trim())),
+        isEval: isEvalRequest(req),
+      });
+      if (!gate.allowed) return NextResponse.json({ content: gate.message, blocked: gate.reason });
+    }
 
     // ── Task intents: "mark X done" / "remind me to …" ──────────────────────
     // Same behaviour as the dashboard widget, so a task can be logged from any
