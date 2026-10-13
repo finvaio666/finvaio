@@ -82,9 +82,11 @@ export default function ClientSearchCombobox({
   const wrapperRef  = useRef<HTMLDivElement>(null);
 
   // Filtered list: match name, email, phone
+  // A client with no name can't be recognised in a list, so it is never offered.
+  const named = clients.filter(c => c.name?.trim());
   const filtered = query.trim() === ''
-    ? clients
-    : clients.filter(c => {
+    ? named
+    : named.filter(c => {
         const q = query.toLowerCase();
         return (
           c.name?.toLowerCase().includes(q) ||

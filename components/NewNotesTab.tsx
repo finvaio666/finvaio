@@ -300,10 +300,12 @@ export default function NewNotesTab() {
   const [forms,   setForms]   = useState<Record<string, FormState>>({});
   const [busyId,  setBusyId]  = useState('');
 
+  const [showAll, setShowAll] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/note-intake');
+      const res = await fetch(`/api/note-intake${showAll ? '?all=1' : ''}`);
       const d = await res.json();
       if (!res.ok) { setErr(d.error ?? 'Could not load the intake queue.'); setQueue(null); }
       else { setQueue(d); setErr(''); }
@@ -311,7 +313,7 @@ export default function NewNotesTab() {
       setErr('Could not load the intake queue — network error.');
     }
     setLoading(false);
-  }, []);
+  }, [showAll]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -465,6 +467,16 @@ export default function NewNotesTab() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <UploadPanel clients={queue.clients} onDone={load} />
+      <div style={{ fontSize: 11.5, color: 'var(--text3)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>
+          {queue.clientScope === 'eam'
+            ? `Client list shows ${queue.clients.length.toLocaleString('en-MY')} EAM clients.`
+            : `Client list shows all ${queue.clients.length.toLocaleString('en-MY')} clients.`}
+        </span>
+        <button onClick={() => setShowAll(v => !v)} style={{ padding: 0, border: 'none', background: 'none', color: '#F37338', cursor: 'pointer', fontSize: 11.5, textDecoration: 'underline' }}>
+          {queue.clientScope === 'eam' ? `Client not listed? Show all ${queue.totalClients.toLocaleString('en-MY')}` : 'Show EAM clients only'}
+        </button>
+      </div>
         <div className="section" style={{ padding: '48px 32px', textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>📭</div>
           <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>No new term sheets</div>
@@ -485,6 +497,16 @@ export default function NewNotesTab() {
         {queue.institutions.map(i => <option key={i} value={i} />)}
       </datalist>
       <UploadPanel clients={queue.clients} onDone={load} />
+      <div style={{ fontSize: 11.5, color: 'var(--text3)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>
+          {queue.clientScope === 'eam'
+            ? `Client list shows ${queue.clients.length.toLocaleString('en-MY')} EAM clients.`
+            : `Client list shows all ${queue.clients.length.toLocaleString('en-MY')} clients.`}
+        </span>
+        <button onClick={() => setShowAll(v => !v)} style={{ padding: 0, border: 'none', background: 'none', color: '#F37338', cursor: 'pointer', fontSize: 11.5, textDecoration: 'underline' }}>
+          {queue.clientScope === 'eam' ? `Client not listed? Show all ${queue.totalClients.toLocaleString('en-MY')}` : 'Show EAM clients only'}
+        </button>
+      </div>
 
       {awaiting > 0 && (
         <div style={{ fontSize: 11.5, padding: '9px 12px', borderRadius: 8, color: '#d97706', background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.30)' }}>
