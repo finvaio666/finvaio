@@ -12,6 +12,8 @@
  */
 
 import { runPremiumComparison, type PremiumToolResult } from './assistantContext';
+import { INSURERS } from './insuranceCalculator';
+import { MEDICAL_BENEFITS, MEDICAL_PLAN_LABEL } from './insuranceMedicalBenefits';
 
 export interface QuoteRequest {
   age: number;
@@ -95,18 +97,36 @@ export function priceDetectedRequest(req: QuoteRequest): PremiumToolResult {
   return runPremiumComparison({ ...req });
 }
 
+/** Per-insurer notes the firm wants an FA to see next to the numbers. Written in code, in diplomatic wording. */
+const INSURER_NOTES: Record<string, string> = {
+  GE: 'Not among the firm\'s recommended choices: the claim procedure can involve more steps than at other insurers, and servicing support for FAs is slower. Confirm the details with the firm before proposing.',
+  AIA: 'Strong benefits, but servicing support for FAs is slower, which matters for a medical card because claims are frequent. If the client insists on AIA, set the expectation early that servicing may take a little longer.',
+};
+
+/** Cost-sharing, annual limit and coverage age per insurer, read from the firm's medical benefit schedule. */
+function costSharingLines(): string[] {
+  const basics = MEDICAL_BENEFITS.find(s => s.section === 'Plan basics')?.rows ?? [];
+  const row = (name: string) => basics.find(r => r.benefit === name);
+  const cs = row('Cost-sharing'), lim = row('Overall annual limit'), to = row('Medical coverage to');
+  if (!cs) return [];
+  return INSURERS.map(i => {
+    const k = i as keyof typeof cs;
+    return `${i} (${MEDICAL_PLAN_LABEL[i]}): cost-sharing = ${cs[k]}; annual limit = ${lim?.[k] ?? 'n/a'}; medical cover to = ${to?.[k] ?? 'n/a'}`;
+  });
+}
+
 /** The block handed to the model in place of a tool call. */
-export function formatPrecomputedQuote(full: PremiumToolResult): string {
-  // Standard package = a client-conversation sample: only the 3 cheapest reach the
-  // model, so "show 3" is enforced here and not left to the model's discipline.
-  // Explicit sums assured keep the full comparison.
-  const result: PremiumToolResult = full.standardPackageApplied && full.samples
-    ? { ...full, quotes: full.quotes?.slice(0, 3), samples: undefined }
-    : full;
+export function formatPrecomputedQuote(result: PremiumToolResult): string {
+  const notes = (result.quotes ?? []).map(q => INSURER_NOTES[q.insurer] ? `${q.insurer}: ${INSURER_NOTES[q.insurer]}` : '').filter(Boolean);
   return [
     '\n# PRE-COMPUTED PREMIUM COMPARISON (run by the pricing engine before this answer — authoritative)',
-    'The advisor asked for a premium. Present THIS result first; do not call any tool, do not ask for a sum assured, and do not alter any figure.',
-    'THEN act as the firm\'s senior advisor, not a generic assistant: if the "FIRM KNOWLEDGE BASE" section above has guidance that fits this request (how to judge a medical card, what to check before recommending, which insurers the firm considers first), apply it and attribute it to the firm\'s experience ("our approach: …"); never name a person. Tell the FA what to verify next (for a medical card: annual limit, Room & Board, co-insurance — and warn that co-insurance is the item new FAs most often forget to explain to the client), and offer the medical COI comparison (how fast each insurer\'s cost rises, cost at age 80). Keep any insurer-support remarks diplomatic. Do not fall back on a generic financial-planning checklist when firm guidance exists.',
+    'The advisor asked for a premium. Present THIS result first, listing ALL insurers returned (the firm shortlists all five); do not call any tool, do not ask for a sum assured, and do not alter any figure.',
+    'State the sustainability basis next to the table so nobody is confused: each premium is the level premium priced so the policy stays sustainable to age 80 (the engine illustrates to age 80). Then tell the FA that the premium can be lower if the sustainability age is set lower, e.g. to age 60 or 70, depending on what each insurer offers; do NOT quote a number for that, because the engine does not price it.',
+    'Add the insurer notes below right after the table, in a diplomatic tone. Explain briefly why GE is not recommended using only the GE note (never criticise an insurer beyond it).',
+    ...(notes.length ? ['INSURER NOTES (use as written, do not sharpen):', ...notes] : []),
+    'COST-SHARING BY INSURER (from the firm\'s medical benefit schedule, Plan 200). Show the FA a small table of cost-sharing, annual limit and cover-to age for ALL insurers, and tell them to confirm against the policy wording. Report it exactly as listed; never assume one insurer\'s percentage or cap applies to another:',
+    ...costSharingLines(),
+    'THEN act as the firm\'s senior advisor, not a generic assistant: if the "FIRM KNOWLEDGE BASE" section above has guidance that fits this request (how to judge a medical card, what to check before recommending, which insurers the firm considers first), apply it and attribute it to the firm\'s experience ("our approach: …"); never name a person. Warn that cost-sharing is the item new FAs most often forget to explain to the client, and offer the medical COI comparison (how fast each insurer\'s cost rises, cost at age 80). Do not fall back on a generic financial-planning checklist when firm guidance exists.',
     JSON.stringify(result),
   ].join('\n');
 }

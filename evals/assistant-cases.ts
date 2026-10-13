@@ -57,8 +57,8 @@ export const CASES: EvalCase[] = [
     id: 'premium-standard-package',
     group: 'premium',
     question: '45 years old IT consultant, male, married with 2 kids, non smoker, looking for medical insurance with life and 36 critical illness cover.',
-    expect: { mustInclude: [709, 746, 876, 'standard'], mustNotInclude: ['1,050', '12,600'] },
-    why: 'No sum assured stated, so the firm standard package (Life 100k, 36CI 100k, waiver, medical R&B 200) must apply without asking, and only the 3 cheapest companies are shown as the client sample.',
+    expect: { mustInclude: [709, 746, 876, 968, 1050, 'standard', '80'] },
+    why: 'No sum assured stated, so the firm standard package (Life 100k, 36CI 100k, waiver, medical R&B 200) must apply without asking, and all five insurers are shown with the age-80 sustainability basis.',
   },
   {
     id: 'premium-standard-package-variant-a',
