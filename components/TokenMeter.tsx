@@ -8,6 +8,9 @@ export interface Quota { used: number; limit: number; remaining: number; resetsA
  * "Tokens left today" for the signed-in FA. Loads itself once, and takes the
  * fresh figure that every Ask FINVA answer carries so it stays current without
  * polling. The allowance refreshes at 12:00 am Malaysia time.
+ *
+ * One quiet line - label, short bar, hint - so it reads as a status, not as a
+ * divider between the question box and the quick buttons.
  */
 export default function TokenMeter({ quota: fresh, compact = false }: { quota?: Quota | null; compact?: boolean }) {
   const [loaded, setLoaded] = useState<Quota | null>(null);
@@ -22,17 +25,25 @@ export default function TokenMeter({ quota: fresh, compact = false }: { quota?: 
   const approxAnswers = Math.floor(q.remaining / 7000);
 
   return (
-    <div title="Your daily FINVA allowance refreshes at 12:00 am (Malaysia time)." style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 6 : 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <span>
-          Tokens left today: <strong style={{ color }}>{q.remaining.toLocaleString('en-MY')}</strong> of {q.limit.toLocaleString('en-MY')}
-          {q.remaining > 0 && ` (about ${approxAnswers} more answers)`}
-        </span>
-        <span>Refreshes 12:00 am</span>
-      </div>
-      <div style={{ height: 4, borderRadius: 99, background: 'var(--border)', overflow: 'hidden', marginTop: 4 }}>
-        <div style={{ width: `${pctLeft}%`, height: '100%', background: color, transition: 'width 0.3s' }} />
-      </div>
+    <div
+      title={`Used ${q.used.toLocaleString('en-MY')} of ${q.limit.toLocaleString('en-MY')} tokens today. Your daily allowance refreshes at 12:00 am (Malaysia time).`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        fontSize: 12, color: 'var(--text2)',
+        margin: compact ? '2px 4px 12px' : '4px 4px 14px',
+      }}
+    >
+      <span>
+        Tokens left today{' '}
+        <strong style={{ color, fontWeight: 700 }}>{q.remaining.toLocaleString('en-MY')}</strong>
+        <span style={{ color: 'var(--text3)' }}> / {q.limit.toLocaleString('en-MY')}</span>
+      </span>
+      <span aria-hidden style={{ width: 110, height: 5, borderRadius: 99, background: 'var(--border)', overflow: 'hidden', display: 'inline-block' }}>
+        <span style={{ display: 'block', width: `${pctLeft}%`, height: '100%', background: color, borderRadius: 99, transition: 'width 0.3s' }} />
+      </span>
+      <span style={{ color: 'var(--text3)' }}>
+        {q.remaining > 0 ? `≈ ${approxAnswers} answers · ` : 'Limit reached · '}refreshes 12:00 am
+      </span>
     </div>
   );
 }
