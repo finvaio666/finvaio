@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import AnswerMarkdown from '@/components/AnswerMarkdown';
 import TokenMeter, { type Quota } from '@/components/TokenMeter';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
@@ -184,7 +184,7 @@ function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: ()
             <div style={{ fontSize: 13, color: 'var(--text3)' }}>🤖 Thinking…</div>
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }} className="aria-answer">
-              <ReactMarkdown>{answer}</ReactMarkdown>
+              <AnswerMarkdown>{answer}</AnswerMarkdown>
             </div>
           )}
           {answer && !loading && (
