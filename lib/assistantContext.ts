@@ -18,11 +18,11 @@ import { GoogleGenerativeAI, SchemaType, type FunctionDeclaration, type Function
 import { AdvisorConfig } from './getAdvisorConfig';
 import { estimateAll, getExclusions, PLAN_TYPES, type Gender as InsGender } from './insuranceCalculator';
 import { listClients, ClientRecord } from './clients';
-import { listHoldings } from './portfolio';
+import { listHoldings, isExitedHolding, type PortfolioHolding } from './portfolio';
 import { listTasks, setTaskStatus } from './tasks';
 import { listMeetings } from './meetingNotes';
 import { listFunds, listPlans } from './products';
-import { listPolicies } from './insurance';
+import { listPolicies, type InsurancePolicy } from './insurance';
 import * as kbEntries from './repos/knowledgeEntries';
 import { listHouseStructuredTerms } from './repos/portfolio';
 import { compareMedicalCoi } from './coiComparison';
@@ -65,9 +65,16 @@ export async function lookupMentionedClients(
     return `\n# CLIENT ROSTER (${clients.length} clients)\n${roster}`;
   }
 
+  // The advisor's own book, read once and only because a client was named: what
+  // this person already holds and is already insured for decides the advice.
+  let allHoldings: PortfolioHolding[] = [];
+  let allPolicies: InsurancePolicy[] = [];
+  try { [allHoldings, allPolicies] = await Promise.all([listHoldings(config), listPolicies(config)]); } catch { /* profile alone still answers */ }
+  const rm = (n: number) => `RM ${Math.round(n).toLocaleString('en-MY')}`;
+
   const blocks: string[] = [];
   for (const c of matched) {
-    const lines: string[] = [`\n# CLIENT: ${c.name}`];
+    const lines: string[] = [`\n# CLIENT: ${c.name} (EXISTING CLIENT - found in the advisor's client records)`];
     if (c.email) lines.push(`Email: ${c.email}`);
     if (c.phone) lines.push(`Phone: ${c.phone}`);
     if (c.status || c.segment || c.risk) lines.push(`Profile: ${[c.status, c.segment, c.risk].filter(Boolean).join(' · ')}`);
@@ -75,6 +82,42 @@ export async function lookupMentionedClients(
     if (c.financialGoals.length) lines.push(`Goals: ${c.financialGoals.join(', ')}`);
     if (c.nextReview) lines.push(`Next review: ${c.nextReview}`);
     if (c.lastReview) lines.push(`Last review: ${c.lastReview}`);
+
+    // Holdings on record, by asset class (live positions only).
+    if (c.notionId) {
+      const hs = allHoldings.filter(h => h.clientNotionId === c.notionId && !isExitedHolding(h));
+      if (hs.length) {
+        const byClass = new Map<string, { n: number; total: number }>();
+        for (const h of hs) {
+          const k = h.assetClass || 'Other';
+          const g = byClass.get(k) ?? { n: 0, total: 0 };
+          g.n++; g.total += h.valueMyr || 0; byClass.set(k, g);
+        }
+        lines.push(`HOLDINGS ON RECORD (live): ${[...byClass.entries()].map(([k, g]) => `${k} ${g.n} holding${g.n === 1 ? '' : 's'} ${rm(g.total)}`).join('; ')}`);
+      } else {
+        lines.push('HOLDINGS ON RECORD: none recorded.');
+      }
+
+      // Insurance on record (active policies), with whose life each one covers.
+      const pols = allPolicies.filter(p => p.clientNotionId === c.notionId && (p.status || '').toLowerCase() === 'active');
+      if (pols.length) {
+        lines.push(`INSURANCE ON RECORD (${pols.length} active polic${pols.length === 1 ? 'y' : 'ies'}):`);
+        for (const p of pols.slice(0, 12)) {
+          const parts = [
+            p.insurer, p.insuranceType,
+            p.lifeAssured ? `life assured: ${p.lifeAssured}` : 'life assured: not stated',
+            p.lifeCover ? `life ${rm(p.lifeCover)}` : '',
+            p.ciCover ? `CI ${rm(p.ciCover)}` : '',
+            p.tpdCover ? `TPD ${rm(p.tpdCover)}` : '',
+            p.medicalCard ? `medical: ${p.medicalCard}` : '',
+            p.annualPremium ? `premium ${rm(p.annualPremium)}/yr` : '',
+          ].filter(Boolean);
+          lines.push(`- ${parts.join(' · ')}`);
+        }
+      } else {
+        lines.push('INSURANCE ON RECORD: no active policies recorded for this client. Say so, and ask the advisor to confirm with the client; do not state that he is uninsured.');
+      }
+    }
 
     if (config.tasksDbId) {
       try {
@@ -399,7 +442,8 @@ export async function buildSharedContext(
 export const SHARED_DATA_RULES = `- When asked which clients own / bought / hold a particular fund or product, answer from the "FUND HOLDINGS LOOKUP" section: list each client with the current value and category (Cash / EPF). If the advisor asks for one category only (e.g. "under EPF" or "cash only"), filter to that asset class and say how many were excluded. If SEVERAL funds match the name the advisor used (e.g. two "Greater China" funds), present each fund's holders under its own heading and note they may want to be more specific. If the lookup says no holding matched, tell the advisor the fund isn't in the holdings records — and if a similar name appears in the distinct list, suggest it ("did you mean …?").
 - COMPANY KNOWLEDGE BASE: for questions about which fund/insurance plan is best, comparisons between products, returns, sum assured, premiums, EPF approval, risk level, or "what should I recommend" — answer FIRST from the "COMPANY KNOWLEDGE BASE" section. This is the firm's own curated, admin-maintained catalogue and is authoritative — treat it as the house view, not just background info. Only bring in general market/product knowledge if the catalogue doesn't cover what was asked, and say so explicitly when you do (e.g. "not in our catalogue, but generally…"). If the catalogue section says it's empty, tell the advisor no funds/plans have been added yet rather than answering from general knowledge as if it were house data.
 - FIRM KNOWLEDGE BASE (FAQ & CASE STUDIES): this is real, hard-won experience from this firm's own advisors — treat it as more authoritative than general market knowledge, and attribute it to the firm's own experience ("from the firm's experience…", "our house view…"), so the advisor knows it is real company experience rather than general market knowledge. NEVER name the person who contributed it, or any colleague, in an answer — refer to "the firm" or "our experience" only. Entries marked "GENERAL INDUSTRY TECHNIQUE" are public sales practice, not the firm's own experience: open the answer with "A commonly used approach is…", never say "from the firm's experience" or "our experience" for the technique itself, and when a firm-experience entry covers the same point, lead with that one. Only the lines that start with "Adaptation to confirm with the firm" describe the firm's own practice: give those separately under "How this applies at the firm". An entry marked "⭐ BIG LESSON" is a firm-level lesson: surface it whenever it is even loosely relevant, and never contradict it.
-- PORTFOLIO / ALLOCATION ANSWERS: use EXACTLY this markdown layout so it is easy to scan - one summary sentence; then these headings, each on its own line with short bullets underneath: "### Step 1 - Protect the family first" (insurance benchmarks), "### Step 2 - Ring-fence cash", "### Step 3 - Illustrative portfolio" (this one MUST contain a markdown table with the header row | Bucket | Share | Amount (RM) | What goes in it | followed by the |---|---|---|---| separator row and one row per bucket - never replace the table with a list), "### Cautions" (3-5 bullets: bonds, structured notes, issuer concentration, suitability), "### Ask the client first" (bullets). Keep the whole answer under about 350 words; skip the compounding illustration unless asked. Protection (insurance) comes first, before returns. Open with "A general starting framework is…" and never say it comes from the firm's experience; only the benchmarks and rules the entry marks as the firm's (protection benchmark, the low-risk rule, bond due-diligence lesson) are the firm's own. Structured notes only for Sophisticated or Accredited Investors; never present a structured note as a way to meet a low-risk target.
+- NAMED CLIENT CHECK (every question that names a person): first establish whether they are an existing client. If a "# CLIENT:" section exists for the name, open with ONE line that says so, for example "X is an existing client: Affluent, Moderate risk profile, AUM RM …, goals …", and then USE the record: the recorded risk profile calibrates the mix, the goals shape it, the holdings and insurance on record replace generic assumptions, and any amount or fact the advisor states that differs from the record (for example "RM1 million" against a recorded AUM of RM 461,894) must be pointed out as a difference to confirm, not silently accepted. Also name what is MISSING from the record (for example no medical card or no critical-illness cover among the policies) as something to confirm with the client, and in "Ask the client first" leave out anything the record already answers (risk profile, goals, existing cover) - ask only what is genuinely unknown. If there is no "# CLIENT:" section for the name, say plainly "I can't find <name> in your client records, so I'm treating this as a prospect", and do not invent a profile.
+- PORTFOLIO / ALLOCATION ANSWERS: use EXACTLY this markdown layout so it is easy to scan - one summary sentence; then, ONLY when the person is an existing client, "### Client on record" with 2-4 bullets (profile and risk profile, goals, AUM and holdings against the amount stated, existing insurance); then these headings, each on its own line with short bullets underneath: "### Step 1 - Protect the family first" (insurance benchmarks), "### Step 2 - Ring-fence cash", "### Step 3 - Illustrative portfolio" (this one MUST contain a markdown table with the header row | Bucket | Share | Amount (RM) | What goes in it | followed by the |---|---|---|---| separator row and one row per bucket - never replace the table with a list), "### Cautions" (3-5 bullets: bonds, structured notes, issuer concentration, suitability), "### Ask the client first" (bullets). Keep the whole answer under about 350 words; skip the compounding illustration unless asked. Protection (insurance) comes first, before returns. Open with "A general starting framework is…" and never say it comes from the firm's experience; only the benchmarks and rules the entry marks as the firm's (protection benchmark, the low-risk rule, bond due-diligence lesson) are the firm's own. Structured notes only for Sophisticated or Accredited Investors; never present a structured note as a way to meet a low-risk target.
 - HOUSE ACTIVITY: for questions about what the firm runs / has done in FCNs or structured notes (which underlyings, which issuers, typical coupon), answer from the "HOUSE ACTIVITY" section. Report only what it states. NEVER invent or infer client names, how many clients or notes, per-issuer shares, or any amount — if asked for those, say the knowledge base deliberately doesn't expose them. A high coupon is never a reason to suggest an FCN to a low-risk client (see the risk-tier rule).
 - ⚠️ RISK-TIER SAFETY RULE (this overrides any impulse to be helpful with a bigger number). When the advisor's question signals LOW RISK — "low risk", "conservative", "capital preservation", "safe", "FD alternative", "定存", "保守", "穩健", "低風險" — you must answer ONLY from instruments in that risk tier (cash, government bonds, investment-grade corporate bonds). NEVER present a higher-yielding product (structured notes/FCN, equities, leveraged products) as a way to "hit the target return". FCNs carry knock-in risk: in the worst case the client takes delivery of a collapsed stock and loses a large part of their principal — they are NOT a low-risk instrument no matter how attractive the coupon looks. If the firm's low-risk holdings cannot reach the return the client wants, SAY SO PLAINLY and explain the gap. An honest "we can't reach that at this risk level" is the correct answer; reaching up the risk ladder to produce a nicer number is a harmful one. If you do mention a higher-risk instrument for context, you must state explicitly that it sits in a different risk tier and name the specific risk mechanism.
 - ⚠️ DEFAULTED / DISTRESSED POSITIONS. Before citing any holding as a live option, check its state — a bond can still read as "Active" with no maturity date and yet be in default. If the current value is drastically below cost, treat it as defaulted/distressed: never present it as an available yield, and if it is relevant, cite it as a cautionary case with its recovery rate. (Concrete precedent in the firm: a 6.3% corporate bond that defaulted and recovered ~0.1% of capital.)
