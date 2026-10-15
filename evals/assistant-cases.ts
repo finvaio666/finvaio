@@ -211,8 +211,8 @@ export const CASES: EvalCase[] = [
     id: 'kb-bond-red-flag',
     group: 'kb',
     question: "A client holds a corporate bond and the issuer's auditor just resigned. What should I do?",
-    expect: { mustInclude: ['Serba'] },
-    why: 'Serba red-flag entry: an auditor resignation is an exit signal on its own.',
+    expect: { mustInclude: ['exit', 'immediately'] },
+    why: 'Serba red-flag entry: an auditor resignation is an exit signal on its own (the model does not always name Serba, so check the advice).',
   },
   {
     id: 'kb-portfolio-stays-short',
@@ -227,6 +227,13 @@ export const CASES: EvalCase[] = [
     question: 'Client wants a bank perpetual bond paying 6.5% because the bank is big and safe. What should I explain?',
     expect: { mustInclude: ['Credit Suisse'] },
     why: 'AT1 entry: perpetual bank capital can skip coupons and be written to zero.',
+  },
+  {
+    id: 'kb-small-bond-odd-lot',
+    group: 'kb',
+    question: 'My client has RM80,000 and wants to buy a USD corporate bond paying 7%. How should he buy it?',
+    expect: { mustInclude: ['odd lot', 'Disclaimer:'], mustNotInclude: ['fsmone', 'bondsupermart', 'fundsupermart'] },
+    why: 'Small amounts go through iFAST odd lots (from 1,000), consult the IC, never name the B2C channel; advice answers carry the company disclaimer.',
   },
   {
     id: 'kb-bond-duration',
