@@ -214,4 +214,25 @@ export const CASES: EvalCase[] = [
     expect: { mustInclude: ['Serba'] },
     why: 'Serba red-flag entry: an auditor resignation is an exit signal on its own.',
   },
+  {
+    id: 'kb-portfolio-stays-short',
+    group: 'kb',
+    question: 'Client is 45, has RM800k to invest, married with one child. What is your portfolio suggestion?',
+    expect: { mustInclude: ['strike'], mustNotInclude: ['net after coupons', 'four outcomes', 'worked example'] },
+    why: 'Portfolio answers mention the FCN worst case in one line only; the full walkthrough is for FCN questions.',
+  },
+  {
+    id: 'kb-bank-perpetual',
+    group: 'kb',
+    question: 'Client wants a bank perpetual bond paying 6.5% because the bank is big and safe. What should I explain?',
+    expect: { mustInclude: ['Credit Suisse'] },
+    why: 'AT1 entry: perpetual bank capital can skip coupons and be written to zero.',
+  },
+  {
+    id: 'kb-bond-duration',
+    group: 'kb',
+    question: 'Why is my client’s 30-year zero coupon US Treasury bond down 20% when the US government will not default?',
+    expect: { mustInclude: ['duration'] },
+    why: 'Bond basics entry: price falls when rates rise; long duration magnifies it.',
+  },
 ];
