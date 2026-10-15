@@ -11,6 +11,7 @@ import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import NewNotesTab from '@/components/NewNotesTab';
+import AiUsageTab from '@/components/AiUsageTab';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -802,7 +803,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
   );
 }
 
-type AdminTab = 'today' | 'investment' | 'action' | 'newnotes' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality';
+type AdminTab = 'today' | 'investment' | 'action' | 'newnotes' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality' | 'aiusage';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -964,6 +965,7 @@ export default function AdminPage() {
               { id: 'clients',    label: '📋 All Clients' },
               { id: 'platforms',  label: '🏦 Platforms'  },
               { id: 'quality',    label: '🩺 Data Quality' },
+              { id: 'aiusage',    label: '💸 AI Usage' },
             ] as { id: AdminTab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -1084,6 +1086,8 @@ export default function AdminPage() {
           {tab === 'platforms' && <PlatformsTab />}
 
           {tab === 'quality' && <DataQualityTab report={quality} error={qualErr} onRescan={loadOverview} />}
+
+          {tab === 'aiusage' && <AiUsageTab />}
 
           {tab === 'clients' && (
             <ClientsTab

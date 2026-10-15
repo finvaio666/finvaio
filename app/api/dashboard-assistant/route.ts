@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { logAiUsage } from '@/lib/aiUsage';
+import { isEvalRequest } from '@/lib/evalTag';
+import { guardQuestion, quotaStatus } from '@/lib/aiGuard';
 import {
   MODEL_FALLBACKS,
   fetchClients,
@@ -37,6 +39,12 @@ export async function POST(req: NextRequest) {
   const config = await getAdvisorConfig(advisorId);
   const advisorName = config?.name || 'the advisor';
   const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
+
+  // ── Gate: daily token limit + work-only filter (lib/aiGuard.ts) ────────────
+  if (config) {
+    const gate = await guardQuestion({ advisorName: config.name, question: body.question, apiKey: key, isEval: isEvalRequest(req) });
+    if (!gate.allowed) return NextResponse.json({ answer: gate.message, blocked: gate.reason, quota: await quotaStatus(config.name).catch(() => null) });
+  }
 
   // ── Task intents: "mark X done" / "remind me to …" ─────────────────────────
   if (config) {
@@ -78,18 +86,21 @@ ${sharedCtx}`;
     let answer = '';
     let lastErr: unknown;
     let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+    let usedModel = '';
     for (const modelId of MODEL_FALLBACKS) {
       try {
         const model = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
         const res   = await model.generateContent(body.question);
         answer = res.response.text();
         usage  = res.response.usageMetadata;
+        usedModel = modelId;
         break;
       } catch (e) { lastErr = e; continue; }
     }
     if (!answer) throw lastErr ?? new Error('All models failed');
-    await logAiUsage({ advisorName, feature: 'Ask FINVA', usage, question: body.question });
-    return NextResponse.json({ answer });
+    await logAiUsage({ advisorName, feature: 'Ask FINVA', usage, question: body.question, model: usedModel, isTest: isEvalRequest(req) });
+    const quota = config ? await quotaStatus(config.name).catch(() => null) : null;
+    return NextResponse.json({ answer, quota });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `AI error: ${msg}` }, { status: 500 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listClients } from '@/lib/clients';
 import { listHoldings } from '@/lib/portfolio';
-import { getPlatformGroups } from '@/lib/platformGroups';
+import { getPlatformGroups, derivePlatform } from '@/lib/platformGroups';
 import { signedTermSheetUrl } from '@/lib/storage';
 import { canUseNoteIntake } from '@/lib/noteIntakeAccess';
 import * as sbIntake from '@/lib/repos/noteIntake';
@@ -85,6 +85,14 @@ export interface IntakeQueue {
   platforms: string[];
   /** Issuers already in the book — a datalist, so an existing spelling is one click but a new issuer is still typeable. */
   institutions: string[];
+  /**
+   * Which clients `clients` holds. The picker defaults to EAM clients only (those
+   * with a holding on an EAM platform group, plus any client already tied to a
+   * pending note) - a structured note is an EAM product, and loading the whole
+   * book of ~950 made the list slow and hard to search. `all` is on request.
+   */
+  clientScope: 'eam' | 'all';
+  totalClients: number;
 }
 
 async function requireAccess(req: NextRequest) {
@@ -98,6 +106,8 @@ async function requireAccess(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const gate = await requireAccess(req);
   if (gate.error) return gate.error;
+
+  const showAll = new URL(req.url).searchParams.get('all') === '1';
 
   try {
     const [rows, clients, holdings, groups] = await Promise.all([
@@ -119,6 +129,18 @@ export async function GET(req: NextRequest) {
     const instCount = new Map<string, number>();
     for (const h of holdings) if (h.institution) instCount.set(h.institution, (instCount.get(h.institution) ?? 0) + 1);
     const institutions = [...instCount.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+
+    // EAM clients: anyone holding something on a platform in an EAM group, or
+    // already linked to a pending note. A client with no name can't be picked
+    // by anyone, so it never enters the list (17 of them sorted to the top and
+    // showed as empty rows).
+    const eamPlatforms = new Set(groups.filter(g => /eam/i.test(`${g.id} ${g.name}`)).flatMap(g => g.platforms.map(p => p.toLowerCase())));
+    const eamIds = new Set(
+      holdings.filter(h => eamPlatforms.has((h.platform || derivePlatform(h.institution, h.fameAccountNo)).toLowerCase())).map(h => h.clientNotionId),
+    );
+    for (const r of rows) if (r.clientNotionId) eamIds.add(r.clientNotionId);
+    const named = clients.filter(c => c.name?.trim());
+    const listed = showAll ? named : named.filter(c => eamIds.has(c.notionId));
 
     const clientById = new Map(clients.map(c => [c.notionId, c]));
     const perHash = new Map<string, number>();
@@ -157,11 +179,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       candidates,
-      clients: clients
+      clients: listed
         .map(c => ({ id: c.notionId, name: c.name, advisorName: c.advisorName, segment: c.segment, email: c.email, phone: c.phone }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       platforms,
       institutions,
+      clientScope: showAll ? 'all' : 'eam',
+      totalClients: named.length,
     } as IntakeQueue);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

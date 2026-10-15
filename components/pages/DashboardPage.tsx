@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import AnswerMarkdown from '@/components/AnswerMarkdown';
+import TokenMeter, { type Quota } from '@/components/TokenMeter';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
 import { DEFAULT_THEMES, type Theme } from '@/lib/emailThemes';
@@ -20,6 +21,7 @@ function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: ()
   const [loading,  setLoading]  = useState(false);
   const [asked,    setAsked]    = useState('');
   const [pending,  setPending]  = useState<PendingTask[] | null>(null);
+  const [quota,    setQuota]    = useState<Quota | null>(null);
   const [savingTasks, setSavingTasks] = useState(false);
 
   async function ask(q: string) {
@@ -33,6 +35,7 @@ function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: ()
         body: JSON.stringify({ question: query, context: buildContext() }),
       });
       const data = await res.json();
+      if (data.quota) setQuota(data.quota);
       if (Array.isArray(data.pendingTasks)) {
         setPending(data.pendingTasks.length ? data.pendingTasks : []);
       } else {
@@ -114,6 +117,7 @@ function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: ()
           }}
         >{loading ? '…' : 'Ask'}</button>
       </div>
+      <TokenMeter quota={quota} compact />
 
       {/* Quick buttons */}
       {!answer && !loading && !pending && (
@@ -180,7 +184,7 @@ function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: ()
             <div style={{ fontSize: 13, color: 'var(--text3)' }}>🤖 Thinking…</div>
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }} className="aria-answer">
-              <ReactMarkdown>{answer}</ReactMarkdown>
+              <AnswerMarkdown>{answer}</AnswerMarkdown>
             </div>
           )}
           {answer && !loading && (

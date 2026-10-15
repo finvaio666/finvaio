@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isEvalRequest } from '@/lib/evalTag';
+import { guardQuestion, quotaStatus } from '@/lib/aiGuard';
+import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
+import { compareMedicalCoi } from '@/lib/coiComparison';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig, AdvisorConfig } from '@/lib/getAdvisorConfig';
 import { listTasks } from '@/lib/tasks';
@@ -16,6 +20,8 @@ import {
   SHARED_DATA_RULES,
   PREMIUM_TOOL,
   PREMIUM_TOOL_RULES,
+  COI_TOOL,
+  COI_TOOL_RULES,
   GAP_TOOL,
   GAP_TOOL_RULES,
 } from '@/lib/assistantContext';
@@ -338,6 +344,8 @@ ${SHARED_DATA_RULES}
 
 ${PREMIUM_TOOL_RULES}
 
+${COI_TOOL_RULES}
+
 ${GAP_TOOL_RULES}`;
 
 export async function POST(req: NextRequest) {
@@ -359,6 +367,17 @@ export async function POST(req: NextRequest) {
 
     const lastText: string = messages[messages.length - 1]?.content ?? '';
     const today = new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
+
+    // ── Gate: daily token limit + work-only filter (lib/aiGuard.ts) ──────────
+    if (config && lastText.trim()) {
+      const gate = await guardQuestion({
+        advisorName: config.name, question: lastText, apiKey: GEMINI_KEY,
+        hasHistory: messages.length > 1,
+        hasClient: Boolean((typeof clientName === 'string' && clientName.trim()) || (typeof clientId === 'string' && clientId.trim())),
+        isEval: isEvalRequest(req),
+      });
+      if (!gate.allowed) return NextResponse.json({ content: gate.message, blocked: gate.reason, quota: await quotaStatus(config.name).catch(() => null) });
+    }
 
     // ── Task intents: "mark X done" / "remind me to …" ──────────────────────
     // Same behaviour as the dashboard widget, so a task can be logged from any
@@ -397,6 +416,24 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+    // A complete "price this person" request is answered by the engine in code,
+    // before the model is involved - see lib/premiumIntent.ts. The model only
+    // words the result, so it can't ask for a sum assured or mistake the
+    // question for a coverage-gap analysis.
+    let precomputedQuote = false;
+    const userTexts = (messages as { role: string; content: string }[]).filter(m => m.role === 'user').map(m => m.content);
+    // A COI question is checked first: it mentions "medical" and would otherwise
+    // read as a standard-package quote request.
+    const coiReq = detectCoiRequest(userTexts);
+    if (coiReq) {
+      const coi = compareMedicalCoi({ ...coiReq });
+      if (coi.ok) { parts.push(formatPrecomputedCoi(coi)); precomputedQuote = true; }
+    }
+    const quoteReq = precomputedQuote ? null : detectQuoteRequest(userTexts);
+    if (quoteReq) {
+      const quote = priceDetectedRequest(quoteReq);
+      if (quote.ok) { parts.push(formatPrecomputedQuote(quote)); precomputedQuote = true; }
+    }
     const systemPrompt = parts.join('\n\n');
 
     // Tools read the SELECTED client from here, not from a model-supplied id —
@@ -420,13 +457,14 @@ export async function POST(req: NextRequest) {
     type Usage = { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
     let content = '';
     let usage: Usage | undefined;
+    let usedModel = '';
     let lastErr: unknown;
     for (const modelId of MODEL_FALLBACKS) {
       try {
         const model = genAI.getGenerativeModel({
           model: modelId,
           systemInstruction: systemPrompt,
-          ...(toolCtx ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL] }] } : {}),
+          ...(toolCtx && !precomputedQuote ? { tools: [{ functionDeclarations: [PREMIUM_TOOL, GAP_TOOL, COI_TOOL] }] } : {}),
         });
         const chat   = model.startChat({ history });
 
@@ -469,6 +507,7 @@ export async function POST(req: NextRequest) {
 
         content = result.response.text();
         usage   = acc;
+        usedModel = modelId;
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -488,8 +527,9 @@ export async function POST(req: NextRequest) {
     }
     if (!content) throw lastErr;
 
-    await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content });
-    return NextResponse.json({ content });
+    await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content, model: usedModel, isTest: isEvalRequest(req) });
+    const quota = config ? await quotaStatus(config.name).catch(() => null) : null;
+    return NextResponse.json({ content, quota });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('AI route error:', msg);
