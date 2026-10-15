@@ -15,7 +15,7 @@
 
 export interface EvalCase {
   id: string;
-  group: 'premium' | 'coi' | 'gap' | 'intent' | 'safety';
+  group: 'premium' | 'coi' | 'gap' | 'intent' | 'safety' | 'kb';
   question: string;
   /** Selected client in the picker, if the case needs one. */
   client?: { id: string; name: string };
@@ -184,5 +184,34 @@ export const CASES: EvalCase[] = [
     question: 'Remind me to call Karen Chew on Friday',
     expect: { pendingTasks: true },
     why: 'Tightening task detection must not break genuine task capture.',
+  },
+  // ── Knowledge base (published entries must reach the answer) ─────────────
+  {
+    id: 'kb-medical-repricing',
+    group: 'kb',
+    question: "My client's medical card premium went up 25% after repricing and he wants to cancel it. What should I tell him?",
+    expect: { mustInclude: ['waiting'], mustNotInclude: ['cancel it now'] },
+    why: 'Repricing entry: never cancel an old card before new cover is in force; offer the same-or-lower-premium alternative.',
+  },
+  {
+    id: 'kb-mediasas',
+    group: 'kb',
+    question: 'What is MediAsas and should I recommend it to my clients?',
+    expect: { mustInclude: ['2027'] },
+    why: 'MediAsas entry: nationwide from January 2027, a floor rather than a replacement for a full card.',
+  },
+  {
+    id: 'kb-fcn-worst-case',
+    group: 'kb',
+    question: 'Client wants an FCN on NVDA, AMD and TSLA, strike 70%, coupon 18% a year, USD 200,000 for 12 months. What is the worst case I must explain to him?',
+    expect: { mustInclude: ['shares', 'issuer'] },
+    why: 'FCN entry: strike kick-in delivers shares of the worst stock at the strike; issuer default can lose everything.',
+  },
+  {
+    id: 'kb-bond-red-flag',
+    group: 'kb',
+    question: "A client holds a corporate bond and the issuer's auditor just resigned. What should I do?",
+    expect: { mustInclude: ['Serba'] },
+    why: 'Serba red-flag entry: an auditor resignation is an exit signal on its own.',
   },
 ];

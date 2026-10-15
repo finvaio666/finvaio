@@ -301,7 +301,7 @@ export async function lookupKnowledgeBase(config: AdvisorConfig, question: strin
 // few by design, so carrying them on any advisory-shaped question is cheap
 // insurance against the AI reaching for a higher-yield product it shouldn't.
 const CASE_TRIGGER =
-  /\b(case|experience|before|previously|handled|happened|lesson|learn|advice|advise|recommend|suggest|propose|option|invest|investment|risk|return|yield|bond|fcn|note|structured|fund|insurance|policy|client|objection|complain|surrender|claim|default|fd|fixed deposit|portfolio|allocation|retire\w*|financial plan\w*|process|procedure|how do (?:i|we))\b|案例|經驗|教訓|處理|建議|投資|風險|報酬|債券|違約|定存|流程/i;
+  /\b(case|experience|before|previously|handled|happened|lesson|learn|advice|advise|recommend|suggest|propose|option|invest|investment|risk|return|yield|bond|fcn|note|structured|fund|insurance|policy|client|objection|complain|surrender|claim|default|fd|fixed deposit|portfolio|allocation|retire\w*|financial plan\w*|process|procedure|how do (?:i|we)|medical|premium|repric\w*|mediasas|mhit|co-?payment|deductible|strike|knock\w*|coupon|issuer|sukuk|worst case)\b|案例|經驗|教訓|處理|建議|投資|風險|報酬|債券|違約|定存|流程/i;
 
 /** Words worth scoring on — drops noise so a long question doesn't match everything. */
 function keywordsOf(text: string): string[] {
@@ -337,8 +337,12 @@ export async function lookupCaseStudies(question: string): Promise<string> {
     if (picked.length === 0) return '';
 
     const isIndustry = (e: { source: string }) => e.source === 'industry_reference' || e.source === 'ai_synthesis';
-    const firm = picked.filter(e => !isIndustry(e));
+    // Public rules (BNM, SC, budget measures): facts, not sales technique, so
+    // they get their own label instead of the "unverified" industry one.
+    const isRegulation = (e: { source: string }) => e.source === 'public_regulation';
+    const firm = picked.filter(e => !isIndustry(e) && !isRegulation(e));
     const industry = picked.filter(isIndustry);
+    const regulation = picked.filter(isRegulation);
     const out: string[] = [];
 
     if (firm.length) {
@@ -358,6 +362,15 @@ export async function lookupCaseStudies(question: string): Promise<string> {
         if (e.keyTakeaway) out.push(`KEY TAKEAWAY: ${e.keyTakeaway}`);
         if (e.situation)   out.push(`Situation: ${e.situation}`);
         if (e.resolution)  out.push(`Technique: ${e.resolution}`);
+      }
+    }
+    if (regulation.length) {
+      out.push('\n# PUBLIC RULES AND REGULATORY FACTS — from Bank Negara, the Securities Commission and government announcements, checked against public sources. State them as facts ("Under Bank Negara\'s rules…"), keep any "indicative" or "to be confirmed" wording, and suggest the FA confirm final terms with the insurer or the official source. Lines that say "the firm" are the firm\'s own practice.');
+      for (const e of regulation) {
+        out.push(`\n## ${e.title}`);
+        if (e.keyTakeaway) out.push(`KEY TAKEAWAY: ${e.keyTakeaway}`);
+        if (e.situation)   out.push(`Background: ${e.situation}`);
+        if (e.resolution)  out.push(`Details: ${e.resolution}`);
       }
     }
     return out.join('\n');
