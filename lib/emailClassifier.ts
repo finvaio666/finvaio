@@ -4,6 +4,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { logAiUsage } from './aiUsage';
 // NOTE: Email FILTERING and THEME CATEGORISATION are intentionally AI-FREE.
 // They run on keyword rules in lib/emailThemes (categorizeByThemes) inside the
 // email/list + email/categorize routes — no Gemini calls. The only AI in the
@@ -17,8 +18,12 @@ const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-fl
 
 /**
  * Generate text with automatic model fallback. Throws only if ALL models fail.
+ * Pass `log` to record the call in the AI usage log (who, which feature).
  */
-export async function generateText(prompt: string): Promise<string> {
+export async function generateText(
+  prompt: string,
+  log?: { advisorName: string; feature: string; question?: string },
+): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY not set');
   const genAI = new GoogleGenerativeAI(key);
@@ -28,6 +33,7 @@ export async function generateText(prompt: string): Promise<string> {
     try {
       const model = genAI.getGenerativeModel({ model: modelId });
       const res   = await model.generateContent(prompt);
+      if (log) await logAiUsage({ ...log, usage: res.response.usageMetadata, model: modelId });
       return res.response.text();
     } catch (err) {
       lastErr = err;
@@ -67,6 +73,7 @@ export async function summarizeEmail(
   from:    string,
   subject: string,
   body:    string,
+  advisorName = 'Unknown',
 ): Promise<SummaryResult> {
   const truncatedBody = cleanEmailBody(body); // Clean HTML before sending to AI
 
@@ -90,7 +97,7 @@ Respond ONLY in this exact JSON format (no markdown):
 Set "needsFollowUp" to true ONLY if the advisor must take an action (reply, submit a document, chase a status, inform/contact the client, complete a request). Set it to false for pure FYI/confirmation/receipt emails that need no action.`;
 
   try {
-    const text = (await generateText(prompt)).trim();
+    const text = (await generateText(prompt, { advisorName, feature: 'Email Summary', question: subject })).trim();
     const json = text.replace(/^```json\s*|```$/g, '').trim();
     const parsed = JSON.parse(json) as SummaryResult;
     return { ...parsed, needsFollowUp: !!parsed.needsFollowUp, followUpTask: parsed.followUpTask ?? '' };
@@ -148,7 +155,7 @@ Write a professional, concise email that fulfils the advisor's instruction above
 - Output ONLY the email body — no subject line, no markdown.`;
 
   try {
-    return (await generateText(prompt)).trim();
+    return (await generateText(prompt, { advisorName: opts.advisorName, feature: 'Email Draft', question: opts.instruction || opts.subject })).trim();
   } catch {
     // Fallback still honours the instruction if the AI is unavailable
     const intent = opts.instruction
@@ -189,7 +196,7 @@ Respond ONLY in this exact JSON format (no markdown):
 }`;
 
   try {
-    const text = (await generateText(prompt)).trim();
+    const text = (await generateText(prompt, { advisorName: opts.advisorName, feature: 'Email Draft', question: opts.purpose })).trim();
     const json = text.replace(/^```json\s*|```$/g, '').trim();
     return JSON.parse(json) as { subject: string; body: string };
   } catch {

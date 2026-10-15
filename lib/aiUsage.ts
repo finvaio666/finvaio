@@ -18,6 +18,17 @@ export interface AiUsage {
   totalTokenCount?: number;
 }
 
+/**
+ * Features that spend the FA's daily Ask FINVA allowance. Everything else
+ * (email drafts, term-sheet reads, meeting capture, the market digest...) is
+ * still logged so the Admin bill reconciles with Google, but does not use up
+ * the allowance shown in the "Tokens left today" meter.
+ */
+const QUOTA_FEATURES = new Set(['Ask FINVA', 'Client Chat', 'Task Extract', 'Work Check']);
+export function countsTowardQuota(feature: string): boolean {
+  return QUOTA_FEATURES.has(feature) || feature.startsWith('Blocked');
+}
+
 function useSupabase(): boolean {
   return process.env.DATA_SOURCE_AI_USAGE === 'supabase';
 }

@@ -17,6 +17,9 @@ const PRICES: Record<string, { in: number; out: number }> = {
 };
 const DEFAULT_PRICE = PRICES['gemini-2.5-flash'];
 
+/** Display-only conversion for the Admin page. Google bills in USD; this is an approximate rate, override with USD_TO_MYR. */
+export const USD_TO_MYR = Number(process.env.USD_TO_MYR) || 4.2;
+
 export function estimateCostUsd(model: string | undefined, input: number, output: number, total: number): number {
   const p = (model && PRICES[model]) || DEFAULT_PRICE;
   const billedOutput = Math.max(total - input, output, 0);

@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   // ── Task intents: "mark X done" / "remind me to …" ─────────────────────────
   if (config) {
-    const intent = await handleTaskIntents(config, body.question, key, today).catch(() => null);
+    const intent = await handleTaskIntents(config, body.question, key, today, isEvalRequest(req)).catch(() => null);
     if (intent?.kind === 'answer')  return NextResponse.json({ answer: intent.answer });
     if (intent?.kind === 'pending') return NextResponse.json({ pendingTasks: intent.pendingTasks });
   }

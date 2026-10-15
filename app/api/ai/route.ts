@@ -383,7 +383,7 @@ export async function POST(req: NextRequest) {
     // Same behaviour as the dashboard widget, so a task can be logged from any
     // page via the launcher. Pending tasks come back for the caller to confirm.
     if (config && lastText.trim()) {
-      const intent = await handleTaskIntents(config, lastText, GEMINI_KEY, today).catch(() => null);
+      const intent = await handleTaskIntents(config, lastText, GEMINI_KEY, today, isEvalRequest(req)).catch(() => null);
       if (intent?.kind === 'answer')  return NextResponse.json({ content: intent.answer });
       if (intent?.kind === 'pending') return NextResponse.json({ pendingTasks: intent.pendingTasks });
     }

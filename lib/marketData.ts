@@ -97,7 +97,7 @@ Write a concise digest in markdown:
 Keep it under 180 words. No disclaimers about being an AI.`;
 
   try {
-    return (await generateText(prompt)).trim();
+    return (await generateText(prompt, { advisorName: 'System', feature: 'Market Digest', question: `Daily digest ${d.dataDate}` })).trim();
   } catch {
     // No-AI fallback — still fresh, just unformatted
     return `**Malaysia Market Snapshot — ${d.dataDate}**\n\n${figures}\n\n_AI commentary unavailable; figures are live from Bank Negara Malaysia._`;

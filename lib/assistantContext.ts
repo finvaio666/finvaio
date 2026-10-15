@@ -26,6 +26,7 @@ import { listPolicies, type InsurancePolicy } from './insurance';
 import * as kbEntries from './repos/knowledgeEntries';
 import { listHouseStructuredTerms } from './repos/portfolio';
 import { compareMedicalCoi } from './coiComparison';
+import { logAiUsage } from './aiUsage';
 
 export const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
@@ -503,6 +504,7 @@ export async function handleTaskIntents(
   question: string,
   geminiKey: string,
   todayLabel: string,
+  isTest = false,
 ): Promise<TaskIntentResult> {
   if (!config.tasksDbId) return null;
 
@@ -548,7 +550,11 @@ Message: "${question}"`;
       const genAI = new GoogleGenerativeAI(geminiKey);
       let raw = '';
       for (const modelId of MODEL_FALLBACKS) {
-        try { raw = (await genAI.getGenerativeModel({ model: modelId }).generateContent(extractPrompt)).response.text(); break; }
+        try {
+          const res = await genAI.getGenerativeModel({ model: modelId }).generateContent(extractPrompt);
+          await logAiUsage({ advisorName: config.name ?? 'Unknown', feature: 'Task Extract', usage: res.response.usageMetadata, model: modelId, question, isTest });
+          raw = res.response.text(); break;
+        }
         catch { continue; }
       }
       const json = raw.replace(/^```json\s*|```$/gim, '').trim();

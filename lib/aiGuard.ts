@@ -18,7 +18,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getSupabase } from './supabase';
-import { logAiUsage, type AiUsage } from './aiUsage';
+import { logAiUsage, countsTowardQuota, type AiUsage } from './aiUsage';
 
 export const DEFAULT_DAILY_TOKEN_LIMIT = Number(process.env.AI_DAILY_TOKEN_LIMIT) || 200_000;
 const CLASSIFIER_MODEL = 'gemini-2.5-flash-lite';
@@ -54,9 +54,11 @@ export function klDayStartIso(now = new Date()): string {
 export async function tokensUsedToday(advisor: string): Promise<number> {
   try {
     const { data, error } = await getSupabase().from('ai_usage_log')
-      .select('total_tokens').eq('advisor', advisor).eq('is_test', false).gte('created_at', klDayStartIso());
+      .select('total_tokens, feature').eq('advisor', advisor).eq('is_test', false).gte('created_at', klDayStartIso());
     if (error) return 0;
-    return (data as { total_tokens: number | null }[]).reduce((s, r) => s + (r.total_tokens ?? 0), 0);
+    return (data as { total_tokens: number | null; feature: string | null }[])
+      .filter(r => countsTowardQuota(r.feature ?? ''))
+      .reduce((s, r) => s + (r.total_tokens ?? 0), 0);
   } catch { return 0; }
 }
 
@@ -156,6 +158,8 @@ export async function guardQuestion(p: {
     await logAiUsage({ advisorName, feature: 'Blocked: off-topic', question, usage, model: CLASSIFIER_MODEL, isTest: !!p.isEval });
     return { allowed: false, reason: 'off_topic', message: OFF_TOPIC_MESSAGE };
   }
+  // The AI check ran and let the question through - still a billed call.
+  if (usage) await logAiUsage({ advisorName, feature: 'Work Check', question, usage, model: CLASSIFIER_MODEL, isTest: !!p.isEval });
   return { allowed: true };
 }
 

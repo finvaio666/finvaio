@@ -62,12 +62,14 @@ export async function POST(req: NextRequest) {
   let ids: string[] = [];
   let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
   let lastErr: unknown;
+  let usedModel = '';
   for (const modelId of MODEL_FALLBACKS) {
     try {
       const model = genAI.getGenerativeModel({ model: modelId, systemInstruction: systemPrompt });
       const result = await model.generateContent(userMsg);
       const text = result.response.text();
       usage = result.response.usageMetadata;
+      usedModel = modelId;
       ids = parseIds(text);
       break;
     } catch (err) {
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ matches: scored.slice(0, 10).map(stripScore), usedAI: false });
   }
 
-  await logAiUsage({ advisorName: config.name ?? 'Unknown', feature: 'Form Match', usage, question: letter.slice(0, 200) });
+  await logAiUsage({ advisorName: config.name ?? 'Unknown', feature: 'Form Match', usage, model: usedModel, question: letter.slice(0, 200) });
 
   const byId = new Map(pool.map(f => [f.id, f]));
   const matches = ids.map(id => byId.get(id)).filter((f): f is MatchForm => !!f).slice(0, 10);

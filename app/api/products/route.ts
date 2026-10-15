@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getAdvisorConfig } from '@/lib/getAdvisorConfig';
 import * as sbProducts from '@/lib/repos/products';
 import { jwtVerify } from 'jose';
+import { logAiUsage } from '@/lib/aiUsage';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,7 @@ ${text.slice(0, 8000)}
 
     try {
       const result = await model.generateContent(prompt);
+      await logAiUsage({ advisorName: config.name ?? 'Unknown', feature: 'Product Extract', usage: result.response.usageMetadata, model: 'gemini-2.5-flash', question: text.slice(0, 200) });
       const raw    = result.response.text().trim();
       // Strip any accidental markdown fences
       const clean  = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');

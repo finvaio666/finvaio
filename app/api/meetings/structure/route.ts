@@ -76,12 +76,14 @@ ${isAudio ? '' : `Advisor's notes:\n"""${body.notes}"""`}`;
     let raw = '';
     let usage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
     let lastErr: unknown;
+    let usedModel = '';
     for (const modelId of MODEL_FALLBACKS) {
       try {
         const model = genAI.getGenerativeModel({ model: modelId, generationConfig: { responseMimeType: 'application/json' } });
         const res   = await model.generateContent(parts);
         raw   = res.response.text();
         usage = res.response.usageMetadata;
+        usedModel = modelId;
         break;
       } catch (e) { lastErr = e; continue; }
     }
@@ -104,7 +106,7 @@ ${isAudio ? '' : `Advisor's notes:\n"""${body.notes}"""`}`;
       },
     };
 
-    await logAiUsage({ advisorName, feature: 'Meeting Capture', usage, question: isAudio ? '(voice memo)' : body.notes?.slice(0, 200) });
+    await logAiUsage({ advisorName, feature: 'Meeting Capture', usage, model: usedModel, question: isAudio ? '(voice memo)' : body.notes?.slice(0, 200) });
     return NextResponse.json(out);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
