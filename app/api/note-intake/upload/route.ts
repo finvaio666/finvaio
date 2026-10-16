@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
       let issuerFamily = '';
       let parseWarnings: string[] = [];
       try {
-        const g = await parseTermSheetWithGemini(buffer);
+        const g = await parseTermSheetWithGemini(buffer, config.name);
         issuerFamily = g.institution ?? '';
         parseWarnings = g.notes_;
         parsed = { ...g, institution: undefined };   // institution lives in issuer_family, not duplicated inside parsed

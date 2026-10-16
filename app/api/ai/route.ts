@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isEvalRequest } from '@/lib/evalTag';
+import { withDisclaimer, stripDisclaimer } from '@/lib/disclaimer';
 import { guardQuestion, quotaStatus } from '@/lib/aiGuard';
 import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
 import { compareMedicalCoi } from '@/lib/coiComparison';
@@ -383,7 +384,7 @@ export async function POST(req: NextRequest) {
     // Same behaviour as the dashboard widget, so a task can be logged from any
     // page via the launcher. Pending tasks come back for the caller to confirm.
     if (config && lastText.trim()) {
-      const intent = await handleTaskIntents(config, lastText, GEMINI_KEY, today).catch(() => null);
+      const intent = await handleTaskIntents(config, lastText, GEMINI_KEY, today, isEvalRequest(req)).catch(() => null);
       if (intent?.kind === 'answer')  return NextResponse.json({ content: intent.answer });
       if (intent?.kind === 'pending') return NextResponse.json({ pendingTasks: intent.pendingTasks });
     }
@@ -448,7 +449,7 @@ export async function POST(req: NextRequest) {
     const genAI   = new GoogleGenerativeAI(GEMINI_KEY);
     const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
       role:  m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+      parts: [{ text: m.role === 'assistant' ? stripDisclaimer(m.content) : m.content }],
     }));
     const lastMessage = messages[messages.length - 1];
 
@@ -529,7 +530,7 @@ export async function POST(req: NextRequest) {
 
     await logAiUsage({ advisorName: config?.name ?? 'Unknown', feature: 'Client Chat', usage, question: lastMessage?.content, model: usedModel, isTest: isEvalRequest(req) });
     const quota = config ? await quotaStatus(config.name).catch(() => null) : null;
-    return NextResponse.json({ content, quota });
+    return NextResponse.json({ content: withDisclaimer(String(lastMessage?.content ?? ''), content), quota });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('AI route error:', msg);

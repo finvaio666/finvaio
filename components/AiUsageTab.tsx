@@ -16,7 +16,8 @@ function Card({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function GroupTable({ title, rows, keyLabel }: { title: string; rows: UsageGroup[]; keyLabel: string }) {
+/** Totals by one dimension. Clicking a row filters the whole page to it; clicking again clears it. */
+function GroupTable({ title, rows, keyLabel, onPick, active }: { title: string; rows: UsageGroup[]; keyLabel: string; onPick?: (key: string) => void; active?: string }) {
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', flex: 1, minWidth: 300 }}>
       <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{title}</div>
@@ -30,10 +31,11 @@ function GroupTable({ title, rows, keyLabel }: { title: string; rows: UsageGroup
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && <tr><td colSpan={4} style={{ padding: 14, color: 'var(--text3)' }}>No usage in this period.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={4} style={{ padding: 14, color: 'var(--text3)' }}>No usage matches these filters.</td></tr>}
           {rows.map(r => (
-            <tr key={r.key} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={{ padding: '8px 14px', color: 'var(--text)' }}>{r.key}</td>
+            <tr key={r.key} onClick={() => onPick?.(r.key)} title={onPick ? (active === r.key ? 'Clear this filter' : 'Filter to this') : undefined}
+              style={{ borderTop: '1px solid var(--border)', cursor: onPick ? 'pointer' : undefined, background: active === r.key ? 'rgba(243,115,56,0.08)' : undefined }}>
+              <td style={{ padding: '8px 14px', color: 'var(--text)', fontWeight: active === r.key ? 700 : 400 }}>{r.key}</td>
               <td style={{ padding: '8px 8px', textAlign: 'right', color: 'var(--text2)' }}>{num(r.calls)}</td>
               <td style={{ padding: '8px 8px', textAlign: 'right', color: 'var(--text2)' }}>{num(r.totalTokens)}</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{usd(r.costUsd)}</td>
@@ -81,7 +83,7 @@ function LimitsPanel() {
       <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>
         Daily token limit per FA
         <span style={{ fontWeight: 400, color: 'var(--text3)', marginLeft: 8 }}>
-          default {num(defaultLimit)} tokens a day (about 25–30 answers) · resets at midnight Malaysia time · off-topic questions are blocked
+          default {num(defaultLimit)} tokens a day (about 25–30 answers) · resets at midnight Malaysia time · off-topic questions are blocked · only chat features count
         </span>
       </div>
       {msg && <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--red)' }}>{msg}</div>}
@@ -170,60 +172,123 @@ function QuestionLog({ report, date, onDate }: { report: AiUsageReport; date: st
 
 const sub = (t: UsageTotals) => `${num(t.calls)} calls · ${num(t.totalTokens)} tokens`;
 
-/** Company-wide AI usage and estimated cost. Real FA use and test runs are kept apart. */
+const ctl: React.CSSProperties = { padding: '5px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)' };
+const pill = (on: boolean): React.CSSProperties => ({
+  padding: '5px 12px', fontSize: 12, borderRadius: 99, cursor: 'pointer',
+  border: '1px solid var(--border)', background: on ? '#F37338' : 'none', color: on ? '#fff' : 'var(--text2)',
+});
+const klToday = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+const daysAgo = (n: number) => new Date(Date.now() + 8 * 3600_000 - (n - 1) * 86400000).toISOString().slice(0, 10);
+
+interface Filters { from: string; to: string; advisor: string; feature: string; model: string; scope: 'all' | 'real' | 'test'; q: string }
+const defaultFilters = (): Filters => ({ from: daysAgo(30), to: klToday(), advisor: '', feature: '', model: '', scope: 'all', q: '' });
+
+function toQuery(f: Filters, extra: Record<string, string> = {}): string {
+  const p = new URLSearchParams({ from: f.from, to: f.to, scope: f.scope, ...extra });
+  if (f.advisor) p.set('advisor', f.advisor);
+  if (f.feature) p.set('feature', f.feature);
+  if (f.model) p.set('model', f.model);
+  if (f.q) p.set('q', f.q);
+  return p.toString();
+}
+
+/** Company-wide AI usage and estimated cost. Every number on the page follows the filter bar. */
 export default function AiUsageTab() {
-  const [days, setDays] = useState(30);
-  const [qDate, setQDate] = useState(() => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10));
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  const [search, setSearch] = useState('');
+  const [qDate, setQDate] = useState(klToday);
   const [report, setReport] = useState<AiUsageReport | null>(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showCalls, setShowCalls] = useState(50);
+
+  const set = useCallback((patch: Partial<Filters>) => { setFilters(f => ({ ...f, ...patch })); setShowCalls(50); }, []);
+
+  // The search box applies after a short pause rather than on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => set({ q: search.trim() }), 400);
+    return () => clearTimeout(t);
+  }, [search, set]);
 
   const load = useCallback(async () => {
-    setError('');
+    setError(''); setLoading(true);
     try {
-      const res = await fetch(`/api/admin/ai-usage?days=${days}&date=${qDate}`);
+      const res = await fetch(`/api/admin/ai-usage?${toQuery(filters, { date: qDate })}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load AI usage');
       setReport(json);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load AI usage'); }
-  }, [days, qDate]);
+    finally { setLoading(false); }
+  }, [filters, qDate]);
   useEffect(() => { load(); }, [load]);
 
-  if (error)   return <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{error}</div>;
+  if (error && !report) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{error}</div>;
   if (!report) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading AI usage…</div>;
 
+  const rm = (n: number) => `≈ RM${(n * report.usdToMyr).toFixed(2)}`;
+  const preset = [7, 30, 90].find(d => filters.from === daysAgo(d) && filters.to === klToday());
+  const isToday = filters.from === klToday() && filters.to === klToday();
+  const anyFilter = !!(filters.advisor || filters.feature || filters.model || filters.q || filters.scope !== 'all');
+  const total = {
+    costUsd: report.real.costUsd + report.test.costUsd,
+    calls: report.real.calls + report.test.calls,
+    totalTokens: report.real.totalTokens + report.test.totalTokens,
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontSize: 12, color: 'var(--text3)' }}>Since {report.since} · estimated at list price, not the Google invoice</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[7, 30, 90].map(d => (
-            <button key={d} onClick={() => setDays(d)} style={{
-              padding: '6px 12px', fontSize: 12, borderRadius: 99, cursor: 'pointer',
-              border: '1px solid var(--border)', background: days === d ? '#F37338' : 'none',
-              color: days === d ? '#fff' : 'var(--text2)',
-            }}>{d} days</button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}>
+      {/* Filter bar - drives every card, table and the CSV */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', minWidth: 44 }}>Period</span>
+          <button style={pill(isToday)} onClick={() => set({ from: klToday(), to: klToday() })}>Today</button>
+          {[7, 30, 90].map(d => <button key={d} style={pill(preset === d)} onClick={() => set({ from: daysAgo(d), to: klToday() })}>{d} days</button>)}
+          <input type="date" value={filters.from} max={filters.to} onChange={e => e.target.value && set({ from: e.target.value })} style={ctl} aria-label="From" />
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>to</span>
+          <input type="date" value={filters.to} min={filters.from} onChange={e => e.target.value && set({ to: e.target.value })} style={ctl} aria-label="To" />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', minWidth: 44 }}>Filter</span>
+          <select value={filters.advisor} onChange={e => set({ advisor: e.target.value })} style={ctl} aria-label="FA">
+            <option value="">All FAs</option>
+            {report.options.advisors.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={filters.feature} onChange={e => set({ feature: e.target.value })} style={ctl} aria-label="Feature">
+            <option value="">All features</option>
+            {report.options.features.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={filters.model} onChange={e => set({ model: e.target.value })} style={ctl} aria-label="Model">
+            <option value="">All models</option>
+            {report.options.models.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          {(['all', 'real', 'test'] as const).map(s => (
+            <button key={s} style={pill(filters.scope === s)} onClick={() => set({ scope: s })}>{s === 'all' ? 'Real + test' : s === 'real' ? 'Real only' : 'Test only'}</button>
           ))}
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search questions…" style={{ ...ctl, minWidth: 170, flex: 1 }} />
+          {anyFilter && (
+            <button style={pill(false)} onClick={() => { setSearch(''); setFilters(f => ({ ...defaultFilters(), from: f.from, to: f.to })); }}>Clear filters</button>
+          )}
+          <a href={`/api/admin/ai-usage?${toQuery(filters, { format: 'csv' })}`} style={{ ...pill(false), textDecoration: 'none' }}>⬇ Download CSV</a>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Card label="Real FA usage" value={usd(report.real.costUsd)} sub={sub(report.real)} />
-        <Card label="Test runs" value={usd(report.test.costUsd)} sub={sub(report.test)} />
+        <Card label="Total" value={usd(total.costUsd)} sub={`${rm(total.costUsd)} · ${num(total.calls)} calls · ${num(total.totalTokens)} tokens`} />
+        <Card label="Real FA usage" value={usd(report.real.costUsd)} sub={`${rm(report.real.costUsd)} · ${sub(report.real)}`} />
+        <Card label="Test runs" value={usd(report.test.costUsd)} sub={`${rm(report.test.costUsd)} · ${sub(report.test)}`} />
         <Card label="Thinking tokens (real)" value={num(report.real.thinkingTokens)} sub="billed as output" />
       </div>
 
-      <LimitsPanel />
-
-      <QuestionLog report={report} date={qDate} onDate={setQDate} />
-
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <GroupTable title="By FA (real use)" rows={report.byAdvisor} keyLabel="Advisor" />
-        <GroupTable title="By feature (real use)" rows={report.byFeature} keyLabel="Feature" />
-        <GroupTable title="By model (all calls)" rows={report.byModel} keyLabel="Model" />
+        <GroupTable title="By FA" rows={report.byAdvisor} keyLabel="Advisor" active={filters.advisor} onPick={k => set({ advisor: filters.advisor === k ? '' : k })} />
+        <GroupTable title="By feature" rows={report.byFeature} keyLabel="Feature" active={filters.feature} onPick={k => set({ feature: filters.feature === k ? '' : k })} />
+        <GroupTable title="By model" rows={report.byModel} keyLabel="Model" active={filters.model} onPick={k => set({ model: filters.model === k ? '' : k })} />
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>By day (real + test)</div>
+        <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>
+          By day <span style={{ fontWeight: 400, color: 'var(--text3)' }}>· click a day to show only that day</span>
+        </div>
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ color: 'var(--text3)', textAlign: 'left' }}>
@@ -235,13 +300,16 @@ export default function AiUsageTab() {
             </tr>
           </thead>
           <tbody>
+            {report.byDay.length === 0 && <tr><td colSpan={5} style={{ padding: 14, color: 'var(--text3)' }}>No usage matches these filters.</td></tr>}
             {report.byDay.map(d => (
-              <tr key={d.key} style={{ borderTop: '1px solid var(--border)' }}>
+              <tr key={d.key} onClick={() => set({ from: d.key, to: d.key })} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                 <td style={{ padding: '8px 14px', color: 'var(--text)' }}>{d.key}</td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', color: 'var(--text2)' }}>{num(d.calls)}</td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', color: 'var(--text2)' }}>{num(d.totalTokens)}</td>
                 <td style={{ padding: '8px 8px', textAlign: 'right', color: 'var(--text3)' }}>{usd(d.testCostUsd)}</td>
-                <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{usd(d.costUsd)}</td>
+                <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>
+                  {usd(d.costUsd)} <span style={{ fontWeight: 400, color: 'var(--text3)' }}>{rm(d.costUsd)}</span>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -249,18 +317,38 @@ export default function AiUsageTab() {
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>Latest calls</div>
-        {report.recent.map(r => (
-          <div key={r.id} style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', fontSize: 12, display: 'flex', gap: 10, alignItems: 'baseline' }}>
-            <span style={{ color: 'var(--text3)', minWidth: 78 }}>{r.date}</span>
-            <span style={{ color: 'var(--text2)', minWidth: 90 }}>{r.advisor}</span>
-            <span style={{ color: 'var(--text3)', minWidth: 90 }}>{r.feature}{r.isTest ? ' · test' : ''}</span>
-            <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.question || '—'}</span>
+        <div style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>
+          Call log{' '}
+          <span style={{ fontWeight: 400, color: 'var(--text3)' }}>
+            · {num(report.callsTotal)} matching call{report.callsTotal === 1 ? '' : 's'}
+            {report.callsTotal > report.calls.length ? ` · newest ${report.calls.length} loaded, download the CSV for all` : ''}
+          </span>
+        </div>
+        {report.calls.length === 0 && <div style={{ padding: 14, fontSize: 12, color: 'var(--text3)' }}>No calls match these filters.</div>}
+        {report.calls.slice(0, showCalls).map(r => (
+          <div key={r.id} style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', fontSize: 12, display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text3)', minWidth: 112 }}>
+              {new Date(r.createdAt).toLocaleString('en-MY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' })}
+            </span>
+            <span style={{ color: 'var(--text2)', minWidth: 90, fontWeight: 600 }}>{r.advisor}</span>
+            <span style={{ color: r.feature.startsWith('Blocked') ? 'var(--red)' : 'var(--text3)', minWidth: 110 }}>{r.feature}{r.isTest ? ' · test' : ''}</span>
+            <span title={r.question} style={{ color: 'var(--text)', flex: 1, minWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.question || '—'}</span>
+            <span style={{ color: 'var(--text3)', minWidth: 80, fontSize: 11 }}>{r.model || 'unknown'}</span>
             <span style={{ color: 'var(--text2)', minWidth: 62, textAlign: 'right' }}>{num(r.totalTokens)}</span>
             <span style={{ fontWeight: 600, color: 'var(--text)', minWidth: 70, textAlign: 'right' }}>{usd(r.estCostUsd)}</span>
           </div>
         ))}
+        {report.calls.length > showCalls && (
+          <button onClick={() => setShowCalls(n => n + 100)}
+            style={{ width: '100%', padding: 10, fontSize: 12, border: 'none', borderTop: '1px solid var(--border)', background: 'none', color: '#F37338', cursor: 'pointer', fontWeight: 600 }}>
+            Show more ({report.calls.length - showCalls} more loaded)
+          </button>
+        )}
       </div>
+
+      <LimitsPanel />
+
+      <QuestionLog report={report} date={qDate} onDate={setQDate} />
 
       <div style={{ fontSize: 11, color: 'var(--text3)' }}>{report.note}</div>
     </div>

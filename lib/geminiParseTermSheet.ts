@@ -23,6 +23,8 @@
  * produced the draft.
  */
 
+import { logAiUsage, type AiUsage } from './aiUsage';
+
 const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
 const SCHEMA = {
@@ -88,7 +90,7 @@ export interface GeminiTermSheetResult {
  * to 'awaiting_parse' so it can still be picked up by the local pypdf worker
  * later, rather than losing the candidate.
  */
-export async function parseTermSheetWithGemini(pdf: Buffer): Promise<GeminiTermSheetResult> {
+export async function parseTermSheetWithGemini(pdf: Buffer, advisorName = 'Unknown'): Promise<GeminiTermSheetResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
   const b64 = pdf.toString('base64');
@@ -115,7 +117,8 @@ export async function parseTermSheetWithGemini(pdf: Buffer): Promise<GeminiTermS
         }),
       });
       if (!res.ok) { lastErr = new Error(`Gemini ${model} returned ${res.status}: ${(await res.text()).slice(0, 500)}`); continue; }
-      const body = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      const body = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: AiUsage };
+      await logAiUsage({ advisorName, feature: 'Term Sheet Parse', usage: body.usageMetadata, model, question: '(term sheet PDF)' });
       const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) { lastErr = new Error(`Gemini ${model} returned no content`); continue; }
       const parsed = JSON.parse(text) as Partial<GeminiTermSheetResult>;

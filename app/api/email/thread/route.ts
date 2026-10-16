@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
         inboundMsg.from,
         thread.subject,
         rawBody,
+        config.name || 'Unknown',
       ).catch(() => null);
     }
 

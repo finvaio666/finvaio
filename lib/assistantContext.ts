@@ -26,6 +26,8 @@ import { listPolicies, type InsurancePolicy } from './insurance';
 import * as kbEntries from './repos/knowledgeEntries';
 import { listHouseStructuredTerms } from './repos/portfolio';
 import { compareMedicalCoi } from './coiComparison';
+import { logAiUsage } from './aiUsage';
+import { getBnmMarketData, type FxRate } from './marketData';
 
 export const MODEL_FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
@@ -430,6 +432,24 @@ export async function lookupHouseActivity(question: string): Promise<string> {
   } catch { return ''; }
 }
 
+// ── Live FX: conversions follow the market rate, never a remembered one ──────
+const FX_TRIGGER = /\b(usd|sgd|aud|gbp|eur|jpy|cny|rmb|dollars?|ringgit|exchange rate|fx|forex|currency|convert\w*)\b|us\$|s\$|a\$/i;
+let fxCache: { at: number; rates: FxRate[]; date: string } | null = null;
+
+/** Today's Bank Negara rates when the question involves another currency (cached for an hour). */
+export async function lookupFxRates(question: string): Promise<string> {
+  if (!FX_TRIGGER.test(question)) return '';
+  try {
+    if (!fxCache || Date.now() - fxCache.at > 3600_000) {
+      const d = await getBnmMarketData();
+      if (d.fx.length) fxCache = { at: Date.now(), rates: d.fx, date: d.fx[0]?.date || d.dataDate };
+    }
+    if (!fxCache) return '';
+    const lines = fxCache.rates.map(f => `${f.unit} ${f.code} = RM${f.rate.toFixed(4)}`);
+    return `\n# LIVE EXCHANGE RATES (Bank Negara Malaysia middle rate, ${fxCache.date})\n${lines.join(' · ')}`;
+  } catch { return ''; }
+}
+
 /**
  * Everything that isn't tied to one selected client: mentioned-client profiles,
  * holdings search, the company catalogue and the firm's case-study memory. Run
@@ -441,14 +461,15 @@ export async function buildSharedContext(
   question: string,
   clients: ClientRecord[],
 ): Promise<string> {
-  const [clientData, fundData, kbData, caseData, houseData] = await Promise.all([
+  const [clientData, fundData, kbData, caseData, houseData, fxData] = await Promise.all([
     lookupMentionedClients(config, question, clients).catch(() => ''),
     lookupFundHoldings(config, question, clients).catch(() => ''),
     lookupKnowledgeBase(config, question).catch(() => ''),
     lookupCaseStudies(question).catch(() => ''),
     lookupHouseActivity(question).catch(() => ''),
+    lookupFxRates(question).catch(() => ''),
   ]);
-  return [clientData, fundData, kbData, caseData, houseData].filter(Boolean).join('\n');
+  return [clientData, fundData, kbData, caseData, houseData, fxData].filter(Boolean).join('\n');
 }
 
 /** Prompt rules for the sections buildSharedContext produces. */
@@ -457,6 +478,8 @@ export const SHARED_DATA_RULES = `- When asked which clients own / bought / hold
 - FIRM KNOWLEDGE BASE (FAQ & CASE STUDIES): this is real, hard-won experience from this firm's own advisors — treat it as more authoritative than general market knowledge, and attribute it to the firm's own experience ("from the firm's experience…", "our house view…"), so the advisor knows it is real company experience rather than general market knowledge. NEVER name the person who contributed it, or any colleague, in an answer — refer to "the firm" or "our experience" only. Entries marked "GENERAL INDUSTRY TECHNIQUE" are public sales practice, not the firm's own experience: open the answer with "A commonly used approach is…", never say "from the firm's experience" or "our experience" for the technique itself, and when a firm-experience entry covers the same point, lead with that one. Only the lines that start with "Adaptation to confirm with the firm" describe the firm's own practice: give those separately under "How this applies at the firm". An entry marked "⭐ BIG LESSON" is a firm-level lesson: surface it whenever it is even loosely relevant, and never contradict it.
 - NAMED CLIENT CHECK (every question that names a person): first establish whether they are an existing client. If a "# CLIENT:" section exists for the name, open with ONE line that says so, for example "X is an existing client: Affluent, Moderate risk profile, AUM RM …, goals …", and then USE the record: the recorded risk profile calibrates the mix, the goals shape it, the holdings and insurance on record replace generic assumptions, and any amount or fact the advisor states that differs from the record (for example "RM1 million" against a recorded AUM of RM 461,894) must be pointed out as a difference to confirm, not silently accepted. Also name what is MISSING from the record (for example no medical card or no critical-illness cover among the policies) as something to confirm with the client, and in "Ask the client first" leave out anything the record already answers (risk profile, goals, existing cover) - ask only what is genuinely unknown. If there is no "# CLIENT:" section for the name, say plainly "I can't find <name> in your client records, so I'm treating this as a prospect", and do not invent a profile.
 - PORTFOLIO / ALLOCATION ANSWERS: use EXACTLY this markdown layout so it is easy to scan - one summary sentence; then, ONLY when the person is an existing client, "### Client on record" with 2-4 bullets (profile and risk profile, goals, AUM and holdings against the amount stated, existing insurance); then these headings, each on its own line with short bullets underneath: "### Step 1 - Protect the family first" (insurance benchmarks), "### Step 2 - Ring-fence cash", "### Step 3 - Illustrative portfolio" (this one MUST contain a markdown table with the header row | Bucket | Share | Amount (RM) | What goes in it | followed by the |---|---|---|---| separator row and one row per bucket - never replace the table with a list), "### Cautions" (3-5 bullets of ONE sentence each: bonds, structured notes, issuer concentration, suitability - for structured notes state only the worst case in one sentence, e.g. if the worst stock ends below the strike the client receives that stock's shares and can lose most of the principal, and an issuer failure can lose everything; for bonds one sentence on credit and issuer risk. Never paste the full FCN worst-case walkthrough, the worked table or a bond checklist into a portfolio answer - those are for questions about one specific note or bond, and the FA can ask a follow-up), "### Ask the client first" (bullets). Keep the whole answer under about 350 words; skip the compounding illustration unless asked. Protection (insurance) comes first, before returns. Open with "A general starting framework is…" and never say it comes from the firm's experience; only the benchmarks and rules the entry marks as the firm's (protection benchmark, the low-risk rule, bond due-diligence lesson) are the firm's own. Structured notes only for Sophisticated or Accredited Investors; never present a structured note as a way to meet a low-risk target.
+- CURRENCY CONVERSION: convert between ringgit and another currency ONLY with the "LIVE EXCHANGE RATES" section, and say which rate and date you used (e.g. "at Bank Negara's rate of RM4.21 per USD on 2026-10-15"). Never assume or remember a rate; if that section is missing, give the figure in the original currency and say the live rate was not available.
+- CHANNELS AND PEOPLE TO REFER TO: never name or recommend FSMOne, Fundsupermart, Bondsupermart or any other direct-to-consumer (B2C) investment platform - they compete with the firm's advisors. Refer to the iFAST platform the firm uses instead. For choosing a specific bond paper, suggest the advisor consult the company's IC (Investment Consultant). Do not write your own disclaimer at the end of an answer; the app adds the company disclaimer automatically.
 - HOUSE ACTIVITY: for questions about what the firm runs / has done in FCNs or structured notes (which underlyings, which issuers, typical coupon), answer from the "HOUSE ACTIVITY" section. Report only what it states. NEVER invent or infer client names, how many clients or notes, per-issuer shares, or any amount — if asked for those, say the knowledge base deliberately doesn't expose them. A high coupon is never a reason to suggest an FCN to a low-risk client (see the risk-tier rule).
 - ⚠️ RISK-TIER SAFETY RULE (this overrides any impulse to be helpful with a bigger number). When the advisor's question signals LOW RISK — "low risk", "conservative", "capital preservation", "safe", "FD alternative", "定存", "保守", "穩健", "低風險" — you must answer ONLY from instruments in that risk tier (cash, government bonds, investment-grade corporate bonds). NEVER present a higher-yielding product (structured notes/FCN, equities, leveraged products) as a way to "hit the target return". FCNs carry knock-in risk: in the worst case the client takes delivery of a collapsed stock and loses a large part of their principal — they are NOT a low-risk instrument no matter how attractive the coupon looks. If the firm's low-risk holdings cannot reach the return the client wants, SAY SO PLAINLY and explain the gap. An honest "we can't reach that at this risk level" is the correct answer; reaching up the risk ladder to produce a nicer number is a harmful one. If you do mention a higher-risk instrument for context, you must state explicitly that it sits in a different risk tier and name the specific risk mechanism.
 - ⚠️ DEFAULTED / DISTRESSED POSITIONS. Before citing any holding as a live option, check its state — a bond can still read as "Active" with no maturity date and yet be in default. If the current value is drastically below cost, treat it as defaulted/distressed: never present it as an available yield, and if it is relevant, cite it as a cautionary case with its recovery rate. (Concrete precedent in the firm: a 6.3% corporate bond that defaulted and recovered ~0.1% of capital.)
@@ -503,6 +526,7 @@ export async function handleTaskIntents(
   question: string,
   geminiKey: string,
   todayLabel: string,
+  isTest = false,
 ): Promise<TaskIntentResult> {
   if (!config.tasksDbId) return null;
 
@@ -548,7 +572,11 @@ Message: "${question}"`;
       const genAI = new GoogleGenerativeAI(geminiKey);
       let raw = '';
       for (const modelId of MODEL_FALLBACKS) {
-        try { raw = (await genAI.getGenerativeModel({ model: modelId }).generateContent(extractPrompt)).response.text(); break; }
+        try {
+          const res = await genAI.getGenerativeModel({ model: modelId }).generateContent(extractPrompt);
+          await logAiUsage({ advisorName: config.name ?? 'Unknown', feature: 'Task Extract', usage: res.response.usageMetadata, model: modelId, question, isTest });
+          raw = res.response.text(); break;
+        }
         catch { continue; }
       }
       const json = raw.replace(/^```json\s*|```$/gim, '').trim();
