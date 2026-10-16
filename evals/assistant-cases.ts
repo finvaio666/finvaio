@@ -236,6 +236,20 @@ export const CASES: EvalCase[] = [
     why: 'Small amounts go through iFAST odd lots (from 1,000), consult the IC, never name the B2C channel; advice answers carry the company disclaimer.',
   },
   {
+    id: 'kb-fcn-below-minimum',
+    group: 'kb',
+    question: 'My client is a sophisticated investor and wants to put RM50,000 into an FCN on NVDA. Can I propose it?',
+    expect: { mustInclude: ['100,000'] },
+    why: 'FCN minimum is RM100,000 per note; a smaller amount must not be proposed.',
+  },
+  {
+    id: 'kb-portfolio-under-1m-no-fcn',
+    group: 'kb',
+    question: 'Client is 45, has RM600k to invest, married with one child. What is your portfolio suggestion?',
+    expect: { mustInclude: ['100,000'], mustNotInclude: ['| structured notes', "can't find \"client\"", "can't find 'client'"] },
+    why: '10% of RM600k is below the RM100,000 FCN minimum, so no structured-note row; "Client" is not a person name.',
+  },
+  {
     id: 'kb-bond-duration',
     group: 'kb',
     question: 'Why is my client’s 30-year zero coupon US Treasury bond down 20% when the US government will not default?',
