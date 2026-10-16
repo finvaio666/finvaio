@@ -4,6 +4,16 @@ import { listUsageSince, type UsageRecord } from '@/lib/repos/aiUsage';
 import { klDayStartIso } from '@/lib/aiGuard';
 import { countsTowardQuota } from '@/lib/aiUsage';
 import { USD_TO_MYR } from '@/lib/aiPricing';
+import { getBnmMarketData } from '@/lib/marketData';
+
+/** Market rate from Bank Negara for the RM figures; the fixed fallback only if BNM is unreachable. */
+async function usdToMyrNow(): Promise<{ rate: number; date: string }> {
+  try {
+    const usd = (await getBnmMarketData()).fx.find(f => f.code === 'USD');
+    if (usd?.rate) return { rate: usd.rate / (usd.unit || 1), date: usd.date };
+  } catch { /* fall back */ }
+  return { rate: USD_TO_MYR, date: '' };
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -87,7 +97,7 @@ export async function GET(req: NextRequest) {
 
   // The question log can reach outside the summary window.
   const qDate = isDate(sp.get('date')) ? sp.get('date')! : klToday;
-  const rows = await listUsageSince(qDate < from ? qDate : from);
+  const [rows, fx] = await Promise.all([listUsageSince(qDate < from ? qDate : from), usdToMyrNow()]);
 
   const inRange = rows.filter(r => r.date >= from && r.date <= to);
   const matching = inRange.filter(r =>
@@ -103,7 +113,7 @@ export async function GET(req: NextRequest) {
       new Date(r.createdAt).toLocaleString('en-CA', { timeZone: 'Asia/Kuala_Lumpur', hour12: false }),
       r.date, r.advisor, r.feature, r.model || 'unknown', r.isTest ? 'yes' : 'no', countsTowardQuota(r.feature) ? 'yes' : 'no',
       r.inputTokens, r.outputTokens, r.thinkingTokens, r.totalTokens,
-      r.estCostUsd.toFixed(6), (r.estCostUsd * USD_TO_MYR).toFixed(4), r.question,
+      r.estCostUsd.toFixed(6), (r.estCostUsd * fx.rate).toFixed(4), r.question,
     ].map(csvCell).join(','));
     return new NextResponse([head.join(','), ...lines].join('\n'), {
       headers: {
@@ -135,7 +145,7 @@ export async function GET(req: NextRequest) {
       features: sortedUniq(inRange.map(r => r.feature)),
       models:   sortedUniq(inRange.map(r => r.model || 'unknown')),
     },
-    usdToMyr: USD_TO_MYR,
+    usdToMyr: fx.rate,
     real: round(real), test: round(test),
     byDay,
     byAdvisor: group(matching, r => r.advisor).map(round).sort((a, b) => b.costUsd - a.costUsd),
@@ -145,7 +155,7 @@ export async function GET(req: NextRequest) {
     callsTotal: matching.length,
     questionsDate: qDate,
     questions: rows.filter(r => r.createdAt >= dayStart && r.createdAt < dayEnd && r.feature !== 'Work Check'),
-    note: `Costs are list-price estimates of the Gemini calls FINVA made, not the Google invoice (RM shown at about RM${USD_TO_MYR} per US$1). Calls made on the free tier show the cost they would have had on the paid tier. Failed or rate-limited calls are not logged. Only chat features (Ask FINVA, Client Chat, task extraction, the work check) count toward an FA's daily limit; email drafts, term-sheet reads, meeting capture and similar are logged here but do not use up the limit.`,
+    note: `Costs are list-price estimates of the Gemini calls FINVA made, not the Google invoice (RM shown at ${fx.date ? `Bank Negara's rate of RM${fx.rate.toFixed(4)} per US$1 on ${fx.date}` : `about RM${fx.rate} per US$1 - live rate unavailable`}). Calls made on the free tier show the cost they would have had on the paid tier. Failed or rate-limited calls are not logged. Only chat features (Ask FINVA, Client Chat, task extraction, the work check) count toward an FA's daily limit; email drafts, term-sheet reads, meeting capture and similar are logged here but do not use up the limit.`,
   };
   return NextResponse.json(report);
 }
