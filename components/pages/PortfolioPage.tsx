@@ -8,6 +8,7 @@ import PortfolioFormModal, { type HoldingDraft } from '@/components/PortfolioFor
 import { useClients } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
 import DonutBreakdown from '@/components/DonutBreakdown';
+import FcnWorstCase, { fitsWorstCase } from '@/components/FcnWorstCase';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { PlatformGroup } from '@/lib/platformGroups';
 
@@ -1156,6 +1157,11 @@ export default function PortfolioPage({ groupSlug }: { groupSlug?: string } = {}
                             ))}
                           </div>
                         )}
+                        {fitsWorstCase(noteType(h.name), h.underlyingDetails.underlyings) && <FcnWorstCase terms={{
+                          principal: h.purchaseOrig, currency: h.currency, couponRatePa: h.underlyingDetails.couponRatePa,
+                          issueDate: h.issueDate, maturity: h.maturity, institution: h.institution,
+                          underlyings: h.underlyingDetails.underlyings,
+                        }} />}
                       </div>
                     )}
                     </div>
