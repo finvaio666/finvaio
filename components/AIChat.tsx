@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import AnswerMarkdown from '@/components/AnswerMarkdown';
+import SuggestToKb from '@/components/SuggestToKb';
 import TokenMeter, { type Quota } from '@/components/TokenMeter';
 
 interface Message {
@@ -133,7 +134,10 @@ export default function AIChat({
         {messages.map((msg, i) => (
           <div key={i} className={`ai-msg ${msg.role}`}>
             {msg.role === 'assistant' ? (
-              <AnswerMarkdown>{msg.content}</AnswerMarkdown>
+              <>
+                <AnswerMarkdown>{msg.content}</AnswerMarkdown>
+                <SuggestToKb answer={msg.content} question={[...messages.slice(0, i)].reverse().find(m => m.role === 'user')?.content ?? ''} />
+              </>
             ) : (
               msg.content
             )}

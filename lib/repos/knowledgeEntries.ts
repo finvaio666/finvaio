@@ -25,12 +25,26 @@ export interface KnowledgeEntry {
   resolution:    string;
   keyTakeaway:   string;
   tags:          string[];
-  status:        'draft' | 'published';
+  status:        'draft' | 'published' | 'rejected';
   isBigLesson:   boolean;
   source:        string;
   authorAdvisor: string;
   helpfulCount:  number;
   createdAt:     string;
+}
+
+/** Review fields - Admin console only, never sent to the AI. */
+export interface ReviewEntry extends KnowledgeEntry {
+  suggestedBy:       string;
+  originalQuestion:  string;
+  originalAnswer:    string;
+  faNote:            string;
+  similarEntryId:    string;
+  similarEntryTitle: string;
+  reviewedBy:        string;
+  reviewedAt:        string;
+  reviewNote:        string;
+  updatedAt:         string;
 }
 
 interface Row {
@@ -83,6 +97,45 @@ export async function listPublished(): Promise<KnowledgeEntry[]> {
   return (data as Row[]).map(toEntry);
 }
 
+const REVIEW_COLS = `${COLS}, suggested_by, original_question, original_answer, fa_note, similar_entry_id, similar_entry_title, reviewed_by, reviewed_at, review_note, updated_at`;
+
+function toReview(r: Row & Record<string, unknown>): ReviewEntry {
+  const s = (k: string) => (r[k] == null ? '' : String(r[k]));
+  return {
+    ...toEntry(r),
+    suggestedBy: s('suggested_by'), originalQuestion: s('original_question'), originalAnswer: s('original_answer'),
+    faNote: s('fa_note'), similarEntryId: s('similar_entry_id'), similarEntryTitle: s('similar_entry_title'),
+    reviewedBy: s('reviewed_by'), reviewedAt: s('reviewed_at'), reviewNote: s('review_note'), updatedAt: s('updated_at'),
+  };
+}
+
+/** Every entry with its review fields, newest first - Admin KB Review only. */
+export async function listForReview(): Promise<ReviewEntry[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).select(REVIEW_COLS).order('created_at', { ascending: false });
+  if (error) throw new Error(`knowledge_entries listForReview failed: ${error.message}`);
+  return (data as (Row & Record<string, unknown>)[]).map(toReview);
+}
+
+/** An FA's suggestion: always a draft, so nothing reaches the AI before an Admin approves it. */
+export async function createSuggestion(input: {
+  entryType: string; category: string; title: string; situation: string; resolution: string;
+  keyTakeaway: string; tags: string[]; suggestedBy: string; originalQuestion: string;
+  originalAnswer: string; faNote: string; similarEntryId?: string; similarEntryTitle?: string;
+}): Promise<{ id: string }> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from(TABLE).insert({
+    entry_type: input.entryType, category: input.category, title: input.title,
+    situation: input.situation, resolution: input.resolution, key_takeaway: input.keyTakeaway,
+    tags: input.tags, status: 'draft', is_big_lesson: false, source: 'fa_suggestion',
+    author_advisor: input.suggestedBy, suggested_by: input.suggestedBy,
+    original_question: input.originalQuestion, original_answer: input.originalAnswer, fa_note: input.faNote,
+    similar_entry_id: input.similarEntryId || null, similar_entry_title: input.similarEntryTitle || null,
+  }).select('id').single();
+  if (error) throw new Error(`knowledge_entries suggestion insert failed: ${error.message}`);
+  return { id: (data as { id: string }).id };
+}
+
 /** All entries including drafts — Admin review console only. */
 export async function listAll(): Promise<KnowledgeEntry[]> {
   const sb = getSupabase();
@@ -129,6 +182,7 @@ export async function createEntry(input: {
 export async function updateEntry(id: string, patch: Partial<{
   entryType: string; category: string; title: string; situation: string;
   resolution: string; keyTakeaway: string; tags: string[]; status: string; isBigLesson: boolean;
+  source: string; reviewedBy: string; reviewNote: string;
 }>): Promise<void> {
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.entryType   !== undefined) row.entry_type    = patch.entryType;
@@ -140,6 +194,9 @@ export async function updateEntry(id: string, patch: Partial<{
   if (patch.tags        !== undefined) row.tags          = patch.tags;
   if (patch.status      !== undefined) row.status        = patch.status;
   if (patch.isBigLesson !== undefined) row.is_big_lesson = patch.isBigLesson;
+  if (patch.source      !== undefined) row.source        = patch.source;
+  if (patch.reviewNote  !== undefined) row.review_note   = patch.reviewNote;
+  if (patch.reviewedBy  !== undefined) { row.reviewed_by = patch.reviewedBy; row.reviewed_at = new Date().toISOString(); }
 
   const sb = getSupabase();
   const { error } = await sb.from(TABLE).update(row).eq('id', id);
