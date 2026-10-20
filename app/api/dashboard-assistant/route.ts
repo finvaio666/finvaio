@@ -5,6 +5,8 @@ import { logAiUsage } from '@/lib/aiUsage';
 import { isEvalRequest } from '@/lib/evalTag';
 import { withDisclaimer } from '@/lib/disclaimer';
 import { guardQuestion, quotaStatus } from '@/lib/aiGuard';
+import { detectQuoteRequest, priceDetectedRequest, formatPrecomputedQuote, detectCoiRequest, formatPrecomputedCoi } from '@/lib/premiumIntent';
+import { compareMedicalCoi } from '@/lib/coiComparison';
 import {
   MODEL_FALLBACKS,
   fetchClients,
@@ -58,6 +60,23 @@ export async function POST(req: NextRequest) {
   const clients   = config ? await fetchClients(config) : [];
   const sharedCtx = config ? await buildSharedContext(config, body.question, clients).catch(() => '') : '';
 
+  // Same pricing as the chat page: a COI or standard-package question is
+  // priced in code before the model writes a word, so figures never come
+  // from the model's own judgement.
+  let precomputed = '';
+  const coiReq = detectCoiRequest([body.question]);
+  if (coiReq) {
+    const coi = compareMedicalCoi({ ...coiReq });
+    if (coi.ok) precomputed = formatPrecomputedCoi(coi);
+  }
+  if (!precomputed) {
+    const quoteReq = detectQuoteRequest([body.question]);
+    if (quoteReq) {
+      const quote = priceDetectedRequest(quoteReq);
+      if (quote.ok) precomputed = formatPrecomputedQuote(quote);
+    }
+  }
+
   const systemPrompt = `You are FINVA, the daily co-pilot for ${advisorName}, a licensed financial advisor in Malaysia. Today is ${today}.
 
 You answer from the advisor's live data below: a dashboard snapshot of today's priorities, PLUS detailed records for any client mentioned in the question. Be concise, specific and action-oriented — like a sharp executive assistant.
@@ -80,7 +99,8 @@ ${SHARED_DATA_RULES}
 
 === LIVE DASHBOARD DATA ===
 ${body.context || '(no data provided)'}
-${sharedCtx}`;
+${sharedCtx}
+${precomputed}`;
 
   try {
     const genAI = new GoogleGenerativeAI(key);

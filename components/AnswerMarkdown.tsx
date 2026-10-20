@@ -32,10 +32,15 @@ export default function AnswerMarkdown({ children, size = 13 }: { children: stri
           ul: ({ children }) => <ul style={{ margin: '0 0 10px', paddingLeft: 20 }}>{children}</ul>,
           ol: ({ children }) => <ol style={{ margin: '0 0 10px', paddingLeft: 20 }}>{children}</ol>,
           li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
-          strong: ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--text)' }}>{children}</strong>,
+          // Bold = "don't miss this": a soft marker highlight so key figures,
+          // insurers and decisions jump out when an FA scans the answer.
+          strong: ({ children }) => (
+            <strong style={{ fontWeight: 700, color: 'var(--text)', background: 'rgba(243,115,56,0.14)', borderRadius: 3, padding: '0 3px', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}>{children}</strong>
+          ),
           hr: () => <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '12px 0' }} />,
+          // The "Key points" box every advice answer opens with.
           blockquote: ({ children }) => (
-            <blockquote style={{ margin: '0 0 10px', padding: '6px 12px', borderLeft: '3px solid #F37338', background: 'rgba(243,115,56,0.06)', color: 'var(--text2)' }}>{children}</blockquote>
+            <blockquote className="answer-keypoints" style={{ margin: '0 0 14px', padding: '10px 14px 4px', borderLeft: '4px solid #F37338', borderRadius: 8, background: 'rgba(243,115,56,0.08)', color: 'var(--text)' }}>{children}</blockquote>
           ),
           code: ({ children }) => (
             <code style={{ background: 'rgba(0,0,0,0.06)', borderRadius: 4, padding: '1px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.92em' }}>{children}</code>
