@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import AnswerMarkdown from '@/components/AnswerMarkdown';
+import SuggestToKb from '@/components/SuggestToKb';
 import TokenMeter, { type Quota } from '@/components/TokenMeter';
 import { useClients, formatAUM, formatDate, initials } from '@/components/useClients';
 import { upperName } from '@/lib/displayName';
@@ -187,6 +188,7 @@ function AskAria({ buildContext, onTasksAdded, dataLoading }: { buildContext: ()
               <AnswerMarkdown>{answer}</AnswerMarkdown>
             </div>
           )}
+          {answer && !loading && <SuggestToKb key={asked} question={asked} answer={answer} />}
           {answer && !loading && (
             <button
               onClick={() => { setAnswer(''); setAsked(''); }}
