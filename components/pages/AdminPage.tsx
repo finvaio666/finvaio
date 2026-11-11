@@ -12,6 +12,7 @@ import DonutBreakdown from '@/components/DonutBreakdown';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import NewNotesTab from '@/components/NewNotesTab';
 import AiUsageTab from '@/components/AiUsageTab';
+import LoginLogTab from '@/components/LoginLogTab';
 import KbReviewTab from '@/components/KbReviewTab';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -804,7 +805,7 @@ function NeedsActionTab({ groups, onConfirm, confirmingKey }: {
   );
 }
 
-type AdminTab = 'today' | 'investment' | 'action' | 'newnotes' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality' | 'aiusage' | 'kb';
+type AdminTab = 'today' | 'investment' | 'action' | 'newnotes' | 'insurance' | 'advisors' | 'clients' | 'platforms' | 'quality' | 'aiusage' | 'logins' | 'kb';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -967,6 +968,7 @@ export default function AdminPage() {
               { id: 'platforms',  label: '🏦 Platforms'  },
               { id: 'quality',    label: '🩺 Data Quality' },
               { id: 'aiusage',    label: '💸 AI Usage' },
+              { id: 'logins',     label: '🔑 Logins' },
               { id: 'kb',         label: '📚 KB Review' },
             ] as { id: AdminTab; label: string }[]).map(t => (
               <button
@@ -1090,6 +1092,8 @@ export default function AdminPage() {
           {tab === 'quality' && <DataQualityTab report={quality} error={qualErr} onRescan={loadOverview} />}
 
           {tab === 'aiusage' && <AiUsageTab />}
+
+          {tab === 'logins' && <LoginLogTab />}
 
           {tab === 'kb' && <KbReviewTab />}
 

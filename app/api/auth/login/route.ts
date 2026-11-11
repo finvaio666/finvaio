@@ -3,6 +3,7 @@ import { SignJWT } from 'jose';
 import { Client, isFullPage } from '@notionhq/client';
 import bcrypt from 'bcryptjs';
 import * as sbUsers from '@/lib/repos/users';
+import { recordLogin, type LoginOutcome } from '@/lib/repos/loginLog';
 const useSupabaseUsers = () => process.env.DATA_SOURCE_USERS === 'supabase';
 
 // ── Simple in-memory rate limiter ─────────────────────────────────────────────
@@ -34,7 +35,12 @@ export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
            ?? req.headers.get('x-real-ip')
            ?? 'unknown';
+  const userAgent = req.headers.get('user-agent') ?? '';
+
   if (!checkRateLimit(ip)) {
+    // Username isn't parsed yet at this point, and deliberately so — we block
+    // before touching the body. Logged as unknown so the burst is still visible.
+    await recordLogin({ username: '(rate limited)', outcome: 'rate_limited', ip, userAgent });
     return NextResponse.json(
       { error: 'Too many login attempts. Please wait 5 minutes and try again.' },
       { status: 429 }
@@ -64,11 +70,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Server configuration error.' }, { status: 500 });
   }
 
-  if (useSupabaseUsers()) {
+  // Read once into a plain value: useSupabaseUsers is named like a React hook,
+  // so calling it inside the `audit` closure below trips rules-of-hooks.
+  const viaSupabase = useSupabaseUsers();
+
+  // Audit trail — see lib/repos/loginLog.ts. Never throws, so it can't block a login.
+  const audit = (outcome: LoginOutcome, extra: { advisorId?: string; name?: string; role?: string } = {}) =>
+    recordLogin({ username, outcome, ip, userAgent, source: viaSupabase ? 'supabase' : 'notion', ...extra });
+
+  if (viaSupabase) {
     const found = await sbUsers.verifyLogin(username).catch(() => null);
-    if (!found) return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+    if (!found) {
+      // verifyLogin filters on active=true, so an inactive account is
+      // indistinguishable from a missing one here.
+      await audit('unknown_user');
+      return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+    }
     const valid = await bcrypt.compare(password, found.passwordHash);
-    if (!valid) return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+    if (!valid) {
+      await audit('bad_password', { advisorId: found.notionId, name: found.name, role: found.role });
+      return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+    }
+    await audit('success', { advisorId: found.notionId, name: found.name, role: found.role });
     const secret = new TextEncoder().encode(authSecret);
     const token  = await new SignJWT({ advisorId: found.notionId, username, role: found.role })
       .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('7d').sign(secret);
@@ -82,6 +105,10 @@ export async function POST(req: NextRequest) {
   const notion = new Client({ auth: hostKey });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let userPage: any = null;
+  // Unlike the Supabase path, this one sees deactivated accounts too — worth
+  // distinguishing in the audit trail, since someone trying a disabled
+  // colleague's credentials is a different event from a typo'd username.
+  let matchedButInactive = false;
 
   try {
     const res = await notion.databases.query({
@@ -89,18 +116,28 @@ export async function POST(req: NextRequest) {
       filter: { property: 'Username', rich_text: { equals: username } },
     });
 
-    // Find the first active match
-    userPage = res.results.filter(isFullPage).find(p => {
-      const active = p.properties['Active']?.type === 'checkbox'
+    const matches = res.results.filter(isFullPage);
+    const isActive = (p: (typeof matches)[number]) =>
+      p.properties['Active']?.type === 'checkbox'
         ? (p.properties['Active'] as { type: 'checkbox'; checkbox: boolean }).checkbox
         : true; // default to active if column missing
-      return active;
-    }) ?? null;
+
+    // Find the first active match
+    userPage = matches.find(isActive) ?? null;
+    matchedButInactive = !userPage && matches.length > 0;
   } catch {
     return NextResponse.json({ error: 'Authentication service unavailable.' }, { status: 503 });
   }
 
+  /** Advisor display name off a Notion user page, for the audit trail. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pageName = (p: any): string =>
+    p?.properties?.['Name']?.type === 'title'
+      ? (p.properties['Name'].title?.[0]?.plain_text ?? '')
+      : '';
+
   if (!userPage) {
+    await audit(matchedButInactive ? 'inactive' : 'unknown_user');
     return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
   }
 
@@ -110,17 +147,20 @@ export async function POST(req: NextRequest) {
     ? (pwProp.rich_text?.[0]?.plain_text ?? '')
     : '';
 
-  const valid = await bcrypt.compare(password, storedHash);
-  if (!valid) {
-    return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
-  }
-
-  // ── 3. Sign JWT with advisor identity ───────────────────────────────────────
   const roleProp = userPage.properties['Role'];
   const role: string = roleProp?.type === 'select'
     ? (roleProp.select?.name ?? 'Advisor')
     : 'Advisor';
 
+  const valid = await bcrypt.compare(password, storedHash);
+  if (!valid) {
+    await audit('bad_password', { advisorId: userPage.id, name: pageName(userPage), role });
+    return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+  }
+
+  await audit('success', { advisorId: userPage.id, name: pageName(userPage), role });
+
+  // ── 3. Sign JWT with advisor identity ───────────────────────────────────────
   const secret = new TextEncoder().encode(authSecret);
   const token  = await new SignJWT({ advisorId: userPage.id, username, role })
     .setProtectedHeader({ alg: 'HS256' })

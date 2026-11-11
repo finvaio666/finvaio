@@ -88,15 +88,15 @@ export async function getAdvisorConfig(advisorId: string): Promise<AdvisorConfig
 
 /** Look up an ACTIVE user by username for login. Returns the stored hash +
  *  identity; the caller runs bcrypt.compare (keeps bcrypt logic in the route). */
-export async function verifyLogin(username: string): Promise<{ notionId: string; role: string; passwordHash: string } | null> {
+export async function verifyLogin(username: string): Promise<{ notionId: string; name: string; role: string; passwordHash: string } | null> {
   const sb = getSupabase();
   const { data, error } = await sb.from(TABLE)
-    .select('notion_id, role, password_hash, active')
+    .select('notion_id, name, role, password_hash, active')
     .eq('username', username).eq('active', true).limit(1).maybeSingle();
   if (error) throw new Error(`users verifyLogin failed: ${error.message}`);
   if (!data) return null;
-  const r = data as { notion_id: string; role: string | null; password_hash: string | null };
-  return { notionId: r.notion_id, role: r.role ?? 'Advisor', passwordHash: r.password_hash ?? '' };
+  const r = data as { notion_id: string; name: string | null; role: string | null; password_hash: string | null };
+  return { notionId: r.notion_id, name: r.name ?? '', role: r.role ?? 'Advisor', passwordHash: r.password_hash ?? '' };
 }
 
 /** List all users (admin console). `id` is the notion_id, matching the Notion path. */
