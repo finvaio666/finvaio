@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import ClientSearchCombobox from '@/components/ClientSearchCombobox';
 import { upperName } from '@/lib/displayName';
+import EducationPlanner from '@/components/EducationPlanner';
 
 // ─── Client data ──────────────────────────────────────────────────────────────
 interface ClientData {
@@ -493,146 +494,9 @@ function RetirementCalculator({ preloadClient }: { preloadClient?: ClientData | 
 }
 
 // ─── Education Calculator ─────────────────────────────────────────────────────
+// Ported from "Education Calculator_2022.xlsm" — see components/EducationPlanner.tsx + lib/educationFees.ts
 function EducationCalculator({ preloadClient }: { preloadClient?: ClientData | null }) {
-  const [f, setF] = useState({
-    clientName: '', childName: '', childAge: 5, universityAge: 18,
-    currentEducationCost: 120000, educationInflation: 5.0,
-    currentSavings: 0, monthlySavings: 500, savingsReturn: 5.0,
-  });
-  const [pdfLoading, setPdfLoading] = useState(false);
-
-  useEffect(() => {
-    if (!preloadClient) return;
-    setF(prev => ({ ...prev, clientName: preloadClient.name }));
-  }, [preloadClient]);
-
-  const set = (k: keyof typeof f) => (v: number | string) => setF(prev => ({ ...prev, [k]: v }));
-
-  const years = Math.max(f.universityAge - f.childAge, 0);
-  const eduInflRate = f.educationInflation / 100;
-  const retRate = f.savingsReturn / 100;
-
-  const futureCost = fvLumpSum(f.currentEducationCost, eduInflRate, years);
-  const projectedSavings = fvLumpSum(f.currentSavings, retRate, years) + fvMonthly(f.monthlySavings, retRate, years);
-  const gap = futureCost - projectedSavings;
-  const isOnTrack = gap <= 0;
-  const additionalMonthlyNeeded = isOnTrack ? 0 : pmtNeeded(gap, retRate, years);
-
-  const handleDownload = async () => {
-    setPdfLoading(true);
-    try {
-      await downloadPDF({
-        reportType: 'Education Planning Report',
-        clientName: upperName(f.clientName) || 'Client',
-        subtitle: f.childName ? `For ${f.childName}  ·  University in ${years} years` : `University in ${years} years`,
-        sections: [
-          {
-            title: 'Child & Education Details',
-            rows: [
-              { label: "Child's name", value: f.childName || '—' },
-              { label: "Child's current age", value: `${f.childAge} years old` },
-              { label: 'Target university age', value: `${f.universityAge} years old` },
-              { label: 'Years until university', value: `${years} years` },
-              { label: 'Current education cost (today\'s value)', value: fmt(f.currentEducationCost) },
-              { label: 'Education inflation rate', value: `${f.educationInflation}% p.a.` },
-            ],
-          },
-          {
-            title: 'Education Savings Plan',
-            rows: [
-              { label: 'Current education savings', value: fmt(f.currentSavings) },
-              { label: 'Monthly savings contribution', value: fmt(f.monthlySavings) },
-              { label: 'Expected return on savings', value: `${f.savingsReturn}% p.a.` },
-            ],
-          },
-          {
-            title: 'Projection Results',
-            rows: [
-              { label: 'Inflation-adjusted education cost', value: fmtK(futureCost) },
-              { label: 'Projected savings at university age', value: fmtK(projectedSavings) },
-              { label: isOnTrack ? 'Funding surplus' : 'Funding gap', value: isOnTrack ? `+${fmtK(Math.abs(gap))}` : fmtK(gap), highlight: isOnTrack ? 'positive' : 'negative' },
-              ...(!isOnTrack ? [
-                { label: 'Additional monthly savings needed', value: fmt(additionalMonthlyNeeded), highlight: 'negative' as const },
-                { label: 'Total monthly savings needed', value: fmt(f.monthlySavings + additionalMonthlyNeeded) },
-              ] : []),
-            ],
-          },
-        ],
-        summary: isOnTrack
-          ? { status: 'positive', headline: `✅ FULLY FUNDED — Surplus: +${fmtK(Math.abs(gap))}`, detail: `${f.childName || 'Child'}\'s education fund is on track with projected savings exceeding the cost.` }
-          : { status: 'negative', headline: `⚠️ EDUCATION GAP — Shortfall: ${fmtK(gap)}`, detail: `Increase monthly savings by ${fmt(additionalMonthlyNeeded)} to fully fund ${f.childName || 'child'}\'s education.` },
-        assumptions: `Education inflation ${f.educationInflation}% p.a.  ·  Savings return ${f.savingsReturn}% p.a.  ·  Reference: Local private ~RM 150K–300K, Overseas ~RM 400K–800K`,
-      });
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Client & Child Details</div>
-        {[
-          { label: 'Client Name', key: 'clientName' as const },
-          { label: 'Child Name', key: 'childName' as const },
-        ].map(({ label, key }) => (
-          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</label>
-            <input value={f[key] as string} onChange={e => setF(p => ({ ...p, [key]: e.target.value }))}
-              style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '8px 12px', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 13, outline: 'none' }} />
-          </div>
-        ))}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Child's Current Age" value={f.childAge} onChange={set('childAge')} prefix="" suffix="yrs" step={1} min={0} />
-          <Field label="University Age" value={f.universityAge} onChange={set('universityAge')} prefix="" suffix="yrs" step={1} min={16} />
-        </div>
-
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 8, marginBottom: 4 }}>Education Cost</div>
-        <Field label="Current Education Cost (today's value)" value={f.currentEducationCost} onChange={set('currentEducationCost')} />
-        <Field label="Education Inflation Rate" value={f.educationInflation} onChange={set('educationInflation')} prefix="" suffix="%" step={0.5} />
-
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 8, marginBottom: 4 }}>Education Savings</div>
-        <Field label="Current Education Savings" value={f.currentSavings} onChange={set('currentSavings')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Monthly Savings" value={f.monthlySavings} onChange={set('monthlySavings')} />
-          <Field label="Expected Return" value={f.savingsReturn} onChange={set('savingsReturn')} prefix="" suffix="%" step={0.5} />
-        </div>
-
-        <div style={{ padding: 12, background: 'var(--surface2)', borderRadius: 'var(--r-sm)', fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
-          💡 Local university: ~RM 80K–150K · Private local: ~RM 150K–300K · Overseas: ~RM 400K–800K
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ background: isOnTrack ? 'var(--accent-dim)' : 'var(--red-dim)', border: `1px solid ${isOnTrack ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'}`, borderRadius: 'var(--r)', padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: isOnTrack ? 'var(--accent)' : 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-            {isOnTrack ? '✅ Fully Funded' : '⚠️ Education Gap'}
-          </div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 32, color: isOnTrack ? 'var(--accent)' : 'var(--red)', lineHeight: 1 }}>
-            {isOnTrack ? `+${fmtK(Math.abs(gap))}` : fmtK(gap)}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>
-            {f.childName ? `${f.childName}'s education fund` : 'Education fund'} {isOnTrack ? 'surplus' : 'shortfall'}
-          </div>
-        </div>
-
-        <div className="section" style={{ margin: 0 }}>
-          <div className="section-header">
-            <div className="section-title">
-              <span className="section-dot" style={{ background: 'var(--blue)' }} />
-              {f.childName ? `${f.childName}'s Education Plan` : 'Education Projection'}
-            </div>
-            <DownloadButton onClick={handleDownload} loading={pdfLoading} />
-          </div>
-          <ResultRow label="Inflation-adjusted education cost" value={fmtK(futureCost)} />
-          <ResultRow label="Projected savings at university age" value={fmtK(projectedSavings)} />
-          <ResultRow label={isOnTrack ? 'Surplus' : 'Funding gap'} value={isOnTrack ? `+${fmtK(Math.abs(gap))}` : fmtK(gap)} highlight positive={isOnTrack} />
-          {!isOnTrack && <ResultRow label="Additional monthly savings needed" value={fmt(additionalMonthlyNeeded)} highlight positive={false} />}
-          {!isOnTrack && <ResultRow label="Total monthly savings needed" value={fmt(f.monthlySavings + additionalMonthlyNeeded)} />}
-        </div>
-      </div>
-    </div>
-  );
+  return <EducationPlanner key={preloadClient?.id ?? 'prospect'} clientName={preloadClient?.name} onDownload={downloadPDF} DownloadButton={DownloadButton} />;
 }
 
 // ─── Emergency Fund Calculator ────────────────────────────────────────────────
